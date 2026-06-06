@@ -1,0 +1,1 @@
+"""Campaign stress-test adapters."""

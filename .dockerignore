@@ -1,0 +1,9 @@
+.venv
+__pycache__
+*.pyc
+.DS_Store
+.env
+data/processed/*.sqlite3
+data/processed/tenants
+.playwright-mcp
+*.png

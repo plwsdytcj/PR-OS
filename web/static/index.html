@@ -1,0 +1,1119 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PR AI OS - Media Copilot</title>
+    <link rel="icon" href="/favicon.ico" type="image/svg+xml" />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">PR</div>
+          <div>
+            <div class="brand-name">PR AI OS</div>
+            <div class="brand-subtitle">Media Copilot</div>
+          </div>
+        </div>
+        <nav class="nav" aria-label="主导航">
+          <div class="nav-primary">
+            <button class="nav-item active" data-view="workspace">工作台</button>
+            <button class="nav-item" data-view="projectRun">新建项目</button>
+            <button class="nav-item" data-view="creators">达人库</button>
+            <button class="nav-item" data-view="brief">Brief 推荐</button>
+            <button class="nav-item" data-view="platformOS">Campaign OS</button>
+            <button class="nav-item" data-view="symbolicOS">符号 OS</button>
+          </div>
+
+          <details class="nav-group" open>
+            <summary>资源与治理</summary>
+            <button class="nav-item" data-view="ingest">数据接入</button>
+            <button class="nav-item" data-view="governance">数据治理</button>
+            <button class="nav-item" data-view="creatorCommercial">博主商业档案</button>
+          </details>
+
+          <details class="nav-group">
+            <summary>协作与分发</summary>
+            <button class="nav-item" data-view="proposal">方案导出</button>
+            <button class="nav-item" data-view="collaboration">客户协作</button>
+            <button class="nav-item" data-view="clientPortal">甲方方案页</button>
+            <button class="nav-item" data-view="briefDistribution">Brief 分发</button>
+          </details>
+
+          <details class="nav-group">
+            <summary>符号引擎</summary>
+            <button class="nav-item" data-view="symbolicCreator">博主符号档案</button>
+            <button class="nav-item" data-view="symbolicBrand">品牌符号分析</button>
+            <button class="nav-item" data-view="symbolicMatch">符号匹配</button>
+            <button class="nav-item" data-view="symbolicGraph">符号图谱</button>
+            <button class="nav-item" data-view="stressTest">压力测试</button>
+          </details>
+
+          <details class="nav-group">
+            <summary>系统</summary>
+            <button class="nav-item" data-view="dataSources">数据源设置</button>
+          </details>
+        </nav>
+        <div class="workspace-switcher">
+          <label for="tenantInput">Workspace</label>
+          <div class="tenant-row">
+            <input id="tenantInput" value="default" />
+            <button id="tenantApplyBtn" class="secondary" type="button">切换</button>
+          </div>
+          <label for="accessKeyInput">Access key</label>
+          <div class="tenant-row">
+            <input id="accessKeyInput" type="password" placeholder="可选" />
+            <button id="accessKeyApplyBtn" class="secondary" type="button">保存</button>
+          </div>
+          <span id="tenantStatus">default</span>
+        </div>
+        <div class="sidebar-footer">
+          <div class="status-dot"></div>
+          <span id="serverStatus">连接中</span>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <div class="eyebrow">PR AI OS / Signal Command</div>
+            <h1>媒介公司 AI 工作台</h1>
+            <p>把达人资源、甲方反馈、博主响应和投后案例变成一条可执行的传播操作系统。</p>
+          </div>
+          <button id="refreshBtn" class="icon-btn" title="刷新" aria-label="刷新">↻</button>
+        </header>
+
+        <section id="workspace" class="view active">
+          <div class="hero-console">
+            <div>
+              <div class="eyebrow">Live project cockpit</div>
+              <h2>从 Excel 到 Campaign OS 的五段式闭环</h2>
+              <p>先把私有达人库跑起来，再接甲方协作、博主商业档案、Brief 分发和投后复盘。</p>
+              <div class="hero-stickers" aria-label="核心玩法">
+                <span>Creator Radar</span>
+                <span>Brief Arcade</span>
+                <span>Case Loop</span>
+              </div>
+            </div>
+            <div class="hero-radar" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+
+          <div class="metrics">
+            <div class="metric">
+              <span>已接入达人</span>
+              <strong id="totalProfiles">0</strong>
+            </div>
+            <div class="metric">
+              <span>已完成画像</span>
+              <strong id="enrichedProfiles">0</strong>
+            </div>
+            <div class="metric">
+              <span>可用连接器</span>
+              <strong id="connectorCount">0</strong>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h2>OS Flow</h2>
+              <button id="loadSampleBtn" class="primary">导入示例数据</button>
+            </div>
+            <div class="flow">
+              <div><strong>Phase 1</strong><span>Excel / CSV</span></div>
+              <span>→</span>
+              <div><strong>Phase 1.5</strong><span>符号图谱</span></div>
+              <span>→</span>
+              <div><strong>Phase 2</strong><span>甲方协作</span></div>
+              <span>→</span>
+              <div><strong>Phase 3-4</strong><span>博主响应</span></div>
+              <span>→</span>
+              <div><strong>Phase 5</strong><span>Campaign OS</span></div>
+            </div>
+          </div>
+
+          <div class="grid two">
+            <div class="panel">
+              <h2>当前能力</h2>
+              <ul class="plain-list">
+                <li>支持 Excel / CSV、人工录入、链接录入、Mock API、OneAPI Connector。</li>
+                <li>自动生成行业标签、内容能力标签、预算标签和风险提示。</li>
+                <li>按行业、内容能力、传播阶段、报价、风险和数据可信度做匹配评分。</li>
+                <li>Phase 1.5 增加符号档案、品牌符号分析、叙事路径和压力测试。</li>
+              </ul>
+            </div>
+            <div class="panel">
+              <h2>建议演示路径</h2>
+              <ol class="plain-list">
+                <li>点击导入示例数据。</li>
+                <li>进入 Brief 推荐，使用默认新能源车 brief。</li>
+                <li>查看推荐表与 Markdown 方案。</li>
+              </ol>
+            </div>
+          </div>
+        </section>
+
+        <section id="projectRun" class="view">
+          <div class="project-run-hero">
+            <div>
+              <div class="eyebrow">new pr mission</div>
+              <h2>输入一个 PR 需求，跑完整传播链路</h2>
+              <p>系统会自动解析 brief、校准品牌和产品符号、扫描私有达人库、选择 KOL、生成内容路径、跑压力测试，并创建 Campaign Room。</p>
+            </div>
+            <div class="project-run-badge">
+              <span>Brief</span>
+              <strong>→</strong>
+              <span>KOL</span>
+              <strong>→</strong>
+              <span>Room</span>
+            </div>
+          </div>
+
+          <div class="grid two project-run-grid">
+            <div class="panel project-run-input">
+              <h2>PR 需求输入</h2>
+              <form id="projectRunForm" class="form">
+                <div class="field-row">
+                  <input name="client_name" value="某新能源汽车品牌" placeholder="客户 / 品牌名称" required />
+                  <input name="project_name" value="新能源 SUV 年轻化预热" placeholder="项目名称" required />
+                </div>
+                <textarea name="brief" required>预算50万，新能源SUV新品上市预热，目标用户是25-40岁一二线城市年轻家庭和科技兴趣人群。希望突出科技感、智能化、高端感和城市生活方式。平台优先抖音、小红书、B站，需要选择合适KOL并做投放前风险推演。</textarea>
+                <div class="field-row">
+                  <input name="top_n" type="number" value="8" min="3" max="30" />
+                  <button id="projectRunSubmitBtn" class="primary" type="submit">一键生成完整方案</button>
+                </div>
+              </form>
+            </div>
+            <div class="panel">
+              <h2>运行状态</h2>
+              <div id="projectRunSteps" class="project-run-steps">
+                <div class="meta">等待输入 PR 需求。</div>
+              </div>
+            </div>
+          </div>
+
+          <div id="projectRunResult" class="project-run-result hidden">
+            <div class="metrics">
+              <div class="metric">
+                <span>推荐 KOL</span>
+                <strong id="projectRunKolCount">0</strong>
+              </div>
+              <div class="metric">
+                <span>图谱节点</span>
+                <strong id="projectRunNodeCount">0</strong>
+              </div>
+              <div class="metric">
+                <span>压力测试</span>
+                <strong id="projectRunSimulationCount">0</strong>
+              </div>
+            </div>
+
+            <div class="panel project-run-graph-panel">
+              <div class="panel-header">
+                <div>
+                  <h2>MiroFish-like 分析过程图</h2>
+                  <p id="projectRunGraphMeta">品牌、产品、社会语境、KOL、叙事路径和风险节点。</p>
+                </div>
+                <button id="projectRunOpenRoomBtn" class="primary" type="button">进入 Campaign Room</button>
+              </div>
+              <div id="projectRunStageLegend" class="graph-stage-legend"></div>
+              <div class="project-run-graph-layout">
+                <div id="projectRunGraphCanvas" class="symbolic-graph project-run-graph"></div>
+                <aside id="projectRunNodeInspector" class="graph-node-inspector">
+                  <div class="meta">点击图谱节点查看分析依据。</div>
+                </aside>
+              </div>
+            </div>
+
+            <div class="grid two">
+              <div class="panel">
+                <h2>KOL 推荐名单</h2>
+                <div id="projectRunKolList" class="creator-grid"></div>
+              </div>
+              <div class="panel">
+                <h2>压力测试摘要</h2>
+                <div id="projectRunSimulation" class="feedback-list"></div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <h2>内容叙事资产</h2>
+              <div id="projectRunNarratives" class="creator-grid"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="ingest" class="view">
+          <div class="grid two">
+            <div class="panel">
+              <h2>Excel / CSV 导入</h2>
+              <form id="fileForm" class="form">
+                <input id="fileInput" type="file" accept=".xlsx,.csv" />
+                <select id="importTemplateSelect">
+                  <option value="">自动匹配导入模板</option>
+                </select>
+                <label class="checkline"><input id="replaceInput" type="checkbox" /> 替换当前达人库</label>
+                <button class="primary" type="submit">解析并预览</button>
+              </form>
+            </div>
+            <div class="panel">
+              <h2>人工新增达人</h2>
+              <form id="manualForm" class="form">
+                <div class="field-row">
+                  <input name="name" placeholder="达人名称" required />
+                  <select name="platform">
+                    <option>抖音</option>
+                    <option>小红书</option>
+                    <option>B站</option>
+                    <option>快手</option>
+                    <option>微博</option>
+                    <option>视频号</option>
+                    <option>公众号</option>
+                  </select>
+                </div>
+                <input name="homepage_url" placeholder="主页链接" />
+                <div class="field-row">
+                  <input name="follower_count" type="number" placeholder="粉丝数" />
+                  <input name="listed_price" type="number" placeholder="报价" />
+                </div>
+                <input name="cooperation_brands" placeholder="合作品牌，逗号分隔" />
+                <textarea name="bio" placeholder="简介 / 内容方向"></textarea>
+                <textarea name="manual_notes" placeholder="媒介备注 / 履约反馈 / 风险"></textarea>
+                <button class="primary" type="submit">保存达人</button>
+              </form>
+            </div>
+          </div>
+
+          <div id="importReviewPanel" class="panel hidden">
+            <div class="panel-header">
+              <div>
+                <h2>导入预览</h2>
+                <p id="importReviewMeta">等待解析</p>
+              </div>
+              <div class="review-actions">
+                <label class="checkline"><input id="saveTemplateInput" type="checkbox" /> 保存为模板</label>
+                <input id="templateNameInput" placeholder="模板名称，如 OST 刊例模板" />
+                <button id="confirmImportBtn" class="primary" type="button">确认导入</button>
+              </div>
+            </div>
+            <div id="importReviewList" class="review-list"></div>
+            <div id="qualityReport" class="quality-report hidden"></div>
+          </div>
+
+          <div class="grid two">
+            <div class="panel">
+              <h2>达人主页 / 内容链接</h2>
+              <form id="linksForm" class="form">
+                <textarea id="linksInput" placeholder="每行一个链接"></textarea>
+                <button class="primary" type="submit">解析链接</button>
+              </form>
+            </div>
+            <div class="panel">
+              <h2>导入模板</h2>
+              <div id="templateList" class="template-list"></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>API Connector</h2>
+            <form id="apiForm" class="form">
+              <div class="field-row">
+                <select name="provider">
+                  <option value="mock">Mock API</option>
+                  <option value="oneapi">OneAPI</option>
+                </select>
+                <select name="platform">
+                  <option>抖音</option>
+                  <option>小红书</option>
+                  <option>B站</option>
+                  <option>快手</option>
+                  <option>微博</option>
+                </select>
+              </div>
+              <input name="identifier" autocomplete="username" placeholder="达人 ID / handle / 主页链接" required />
+              <input name="api_key" type="password" autocomplete="current-password" placeholder="OneAPI Key，可选" />
+              <button class="primary" type="submit">调用 API</button>
+            </form>
+          </div>
+        </section>
+
+        <section id="creators" class="view">
+          <div class="panel">
+            <div class="panel-header">
+              <h2>达人库</h2>
+              <input id="creatorSearch" class="search" placeholder="搜索名称、平台、标签、摘要" />
+            </div>
+            <div id="creatorList" class="creator-grid"></div>
+          </div>
+        </section>
+
+        <section id="governance" class="view">
+          <div class="metrics">
+            <div class="metric">
+              <span>疑似重复</span>
+              <strong id="duplicateCount">0</strong>
+            </div>
+            <div class="metric">
+              <span>质量问题</span>
+              <strong id="qualityIssueCount">0</strong>
+            </div>
+            <div class="metric">
+              <span>缺报价</span>
+              <strong id="missingPriceCount">0</strong>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h2>疑似重复达人</h2>
+              <button id="refreshGovernanceBtn" class="secondary" type="button">刷新治理队列</button>
+            </div>
+            <div class="table-wrap">
+              <table id="duplicateTable">
+                <thead>
+                  <tr>
+                    <th>置信度</th>
+                    <th>原因</th>
+                    <th>达人 A</th>
+                    <th>达人 B</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>数据质量修复队列</h2>
+            <div class="table-wrap">
+              <table id="qualityTable">
+                <thead>
+                  <tr>
+                    <th>达人</th>
+                    <th>平台</th>
+                    <th>缺失字段</th>
+                    <th>异常提示</th>
+                    <th>来源</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="brief" class="view">
+          <div class="grid brief-grid">
+            <div class="panel">
+              <h2>甲方 Brief</h2>
+              <textarea id="briefInput" class="brief-input">我们是新能源汽车品牌，预算50万，准备做新能源SUV新品上市预热。目标用户是25-40岁一二线城市男性，希望突出科技感、智能化和高端感。平台优先抖音、小红书、懂车帝。</textarea>
+              <div class="field-row">
+                <input id="budgetInput" type="number" placeholder="预算覆盖，可选" />
+                <button id="recommendBtn" class="primary">生成推荐</button>
+              </div>
+            </div>
+            <div class="panel">
+              <h2>解析结果</h2>
+              <pre id="briefParsed" class="json-view">等待生成</pre>
+            </div>
+          </div>
+          <div class="panel">
+            <h2>推荐结果</h2>
+            <div class="table-wrap">
+              <table id="resultTable">
+                <thead>
+                  <tr>
+                    <th>达人</th>
+                    <th>平台</th>
+                    <th>匹配分</th>
+                    <th>等级</th>
+                    <th>角色</th>
+                    <th>预算</th>
+                    <th>报价</th>
+                    <th>可信度</th>
+                    <th>推荐理由</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="proposal" class="view">
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Markdown 投放方案</h2>
+              <button id="downloadProposalBtn" class="secondary">下载</button>
+            </div>
+            <textarea id="proposalOutput" class="proposal-output" placeholder="请先生成推荐"></textarea>
+          </div>
+        </section>
+
+        <section id="collaboration" class="view">
+          <div class="grid two">
+            <div class="panel">
+              <h2>创建甲方协作方案</h2>
+              <form id="collabCreateForm" class="form">
+                <div class="field-row">
+                  <input name="client_name" placeholder="客户名称" value="某新能源汽车品牌" required />
+                  <input name="project_name" placeholder="项目名称" value="新能源 SUV 新品上市预热" required />
+                </div>
+                <textarea name="brief" placeholder="甲方 Brief" required>预算50万，准备做新能源SUV新品上市预热。目标用户是25-40岁一二线城市男性，希望突出科技感、智能化和高端感。平台优先抖音、小红书、懂车帝。</textarea>
+                <div class="field-row">
+                  <input name="top_n" type="number" value="12" min="3" max="50" />
+                  <button class="primary" type="submit">生成协作方案</button>
+                </div>
+              </form>
+            </div>
+            <div class="panel">
+              <div class="panel-header">
+                <h2>协作方案列表</h2>
+                <button id="refreshCollabBtn" class="secondary" type="button">刷新</button>
+              </div>
+              <div id="collabProposalList" class="template-list"></div>
+            </div>
+          </div>
+
+          <div id="collabDetailPanel" class="panel hidden">
+            <div class="panel-header">
+              <div>
+                <h2 id="collabDetailTitle">方案详情</h2>
+                <p id="collabDetailMeta">等待选择方案</p>
+              </div>
+              <div class="review-actions">
+                <button id="openClientPreviewBtn" class="secondary" type="button">打开甲方视角</button>
+                <button id="saveShareSettingsBtn" class="secondary" type="button">保存分享设置</button>
+                <button id="exportProposalBtn" class="secondary" type="button">导出最终方案</button>
+                <button id="finalizeProposalBtn" class="primary" type="button">标记最终确认</button>
+              </div>
+            </div>
+            <div id="collabShareBox" class="share-box"></div>
+            <div class="grid two">
+              <div>
+                <h2>候选达人</h2>
+                <div class="table-wrap">
+                  <table id="collabCandidateTable">
+                    <thead>
+                      <tr>
+                        <th>达人</th>
+                        <th>平台</th>
+                        <th>匹配</th>
+                        <th>角色</th>
+                        <th>预算</th>
+                        <th>甲方状态</th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+              <div>
+                <h2>反馈与偏好</h2>
+                <div id="collabFeedbackList" class="feedback-list"></div>
+                <pre id="clientPreferenceOutput" class="json-view">暂无偏好画像</pre>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="clientPortal" class="view">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>甲方方案页</h2>
+                <p>使用分享 token 打开授权方案，模拟甲方在线查看和反馈。</p>
+              </div>
+              <div class="field-row compact-row">
+                <input id="clientShareTokenInput" placeholder="分享 token" />
+                <button id="loadClientShareBtn" class="primary" type="button">打开方案</button>
+              </div>
+            </div>
+            <div id="clientProposalView" class="client-proposal-empty">等待打开分享方案。</div>
+          </div>
+        </section>
+
+        <section id="creatorCommercial" class="view">
+          <div class="grid two">
+            <div class="panel">
+              <h2>发送博主商业档案邀请</h2>
+              <form id="creatorInviteForm" class="form">
+                <select id="commercialCreatorSelect" name="creator_id"></select>
+                <div class="field-row">
+                  <input name="expires_days" type="number" value="14" min="1" max="60" />
+                  <button class="primary" type="submit">生成邀请</button>
+                </div>
+              </form>
+              <div id="commercialInvitationList" class="template-list"></div>
+            </div>
+            <div class="panel">
+              <h2>博主填写入口</h2>
+              <div class="field-row">
+                <input id="creatorInviteTokenInput" placeholder="邀请 token" />
+                <button id="loadCreatorInviteBtn" class="primary" type="button">打开邀请</button>
+              </div>
+              <form id="creatorSubmissionForm" class="form hidden">
+                <input name="token" type="hidden" />
+                <input name="price_range" placeholder="报价区间，如 2万-3万" />
+                <input name="availability" placeholder="档期，如 6月可排 3 条" />
+                <input name="industry_fit_tags" placeholder="适合行业，逗号分隔" />
+                <input name="content_capability_tags" placeholder="内容能力，逗号分隔" />
+                <input name="suitable_goals" placeholder="适合目标，如 新品预热,种草" />
+                <textarea name="commercial_positioning" placeholder="商业定位 / 合作说明"></textarea>
+                <div class="panel-subsection">
+                  <h2>合作案例</h2>
+                  <div class="field-row">
+                    <input name="case_brand_name" placeholder="品牌名" />
+                    <input name="case_industry" placeholder="行业" />
+                  </div>
+                  <div class="field-row">
+                    <input name="case_format" placeholder="内容形式" />
+                    <input name="case_views" placeholder="曝光 / 阅读" />
+                  </div>
+                </div>
+                <button class="primary" type="submit">提交给媒介审核</button>
+              </form>
+              <pre id="creatorInviteOutput" class="json-view">等待打开邀请</pre>
+            </div>
+          </div>
+
+          <div class="grid two">
+            <div class="panel">
+              <div class="panel-header">
+                <h2>媒介审核队列</h2>
+                <button id="refreshCommercialBtn" class="secondary" type="button">刷新</button>
+              </div>
+              <div id="commercialSubmissionList" class="feedback-list"></div>
+            </div>
+            <div class="panel">
+              <h2>商业主页内部视角</h2>
+              <pre id="commercialProfileOutput" class="json-view">审核通过后会生成商业档案。</pre>
+            </div>
+          </div>
+        </section>
+
+        <section id="briefDistribution" class="view">
+          <div class="grid two">
+            <div class="panel">
+              <h2>创建标准 Brief 分发</h2>
+              <form id="distributionCreateForm" class="form">
+                <div class="field-row">
+                  <input name="client_name" value="某新能源汽车品牌" placeholder="客户名称" />
+                  <input name="project_name" value="SUV 新品预热" placeholder="项目名称" />
+                </div>
+                <textarea name="brief">预算50万，新能源SUV新品上市预热，突出科技感、智能化，平台优先抖音、小红书。</textarea>
+                <div class="field-row">
+                  <input name="top_n" type="number" value="8" min="1" max="30" />
+                  <button class="primary" type="submit">生成分发名单</button>
+                </div>
+              </form>
+              <div id="distributionBriefList" class="template-list"></div>
+            </div>
+            <div class="panel">
+              <h2>博主 Brief 响应入口</h2>
+              <div class="field-row">
+                <input id="creatorBriefTokenInput" placeholder="Brief token" />
+                <button id="loadCreatorBriefBtn" class="primary" type="button">打开 Brief</button>
+              </div>
+              <form id="creatorBriefResponseForm" class="form hidden">
+                <input name="token" type="hidden" />
+                <select name="interest">
+                  <option value="interested">有兴趣</option>
+                  <option value="maybe">待确认</option>
+                  <option value="declined">不接</option>
+                </select>
+                <input name="quote" type="number" placeholder="报价" />
+                <input name="availability" placeholder="可执行档期" />
+                <textarea name="content_direction" placeholder="内容方向"></textarea>
+                <textarea name="questions" placeholder="问题 / 需要补充的信息"></textarea>
+                <button class="primary" type="submit">提交响应</button>
+              </form>
+              <pre id="creatorBriefOutput" class="json-view">等待打开 Brief。</pre>
+            </div>
+          </div>
+
+          <div id="distributionDetailPanel" class="panel hidden">
+            <div class="panel-header">
+              <div>
+                <h2 id="distributionDetailTitle">分发详情</h2>
+                <p id="distributionDetailMeta">等待选择 Brief</p>
+              </div>
+              <button id="pushDistributionBtn" class="primary" type="button">推送给博主</button>
+            </div>
+            <div id="distributionRecipientList" class="template-list"></div>
+            <pre id="distributionSummaryOutput" class="json-view">等待博主响应。</pre>
+          </div>
+        </section>
+
+        <section id="platformOS" class="view">
+          <div id="platformMetrics" class="metrics"></div>
+          <div class="grid two">
+            <div class="panel">
+              <h2>创建 Campaign 项目</h2>
+              <form id="platformCampaignForm" class="form">
+                <div class="field-row">
+                  <input name="client_name" value="某新能源汽车品牌" placeholder="客户名称" />
+                  <input name="project_name" value="新能源 SUV 发布战役" placeholder="项目名称" />
+                </div>
+                <textarea name="brief">预算50万，新能源SUV新品上市预热，突出科技感、智能化和高端感。平台优先抖音、小红书、B站，需要投放前风险推演。</textarea>
+                <button class="primary" type="submit">生成 Campaign 与 3 套方案</button>
+              </form>
+            </div>
+            <div class="panel">
+              <h2>Campaign 项目列表</h2>
+              <div id="platformCampaignList" class="template-list"></div>
+            </div>
+          </div>
+          <div class="grid two">
+            <div class="panel">
+              <h2>闭环状态</h2>
+              <div id="platformLifecycle" class="timeline-list"></div>
+            </div>
+            <div class="panel">
+              <h2>下一步动作</h2>
+              <div id="platformNextActions" class="feedback-list"></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h2>最近对象</h2>
+            <pre id="platformRecentOutput" class="json-view">等待加载。</pre>
+          </div>
+          <div id="platformCampaignDetail" class="panel campaign-room hidden">
+            <div class="panel-header">
+              <div>
+                <span class="card-kicker">Campaign Room</span>
+                <h2 id="platformCampaignTitle">Campaign 作战室</h2>
+                <p id="platformCampaignMeta">等待选择项目</p>
+              </div>
+              <div class="decision-actions">
+                <button id="refreshCampaignRoomBtn" class="secondary" type="button">刷新作战室</button>
+                <button id="platformArchiveBtn" class="secondary" type="button">归档项目</button>
+              </div>
+            </div>
+            <div id="campaignRoomSummary" class="campaign-room-summary"></div>
+            <div class="campaign-room-layout">
+              <aside class="campaign-room-rail">
+                <h2>下一步</h2>
+                <div id="campaignRoomActions" class="feedback-list"></div>
+                <h2>项目时间线</h2>
+                <div id="campaignRoomTimeline" class="timeline-list"></div>
+              </aside>
+              <div class="campaign-room-main">
+                <h2>方案与推演</h2>
+                <div id="platformPlanList" class="creator-grid"></div>
+                <h2>达人资产</h2>
+                <div id="campaignRoomCreatorList" class="creator-grid"></div>
+                <div class="grid two">
+                  <div class="panel-subsection">
+                    <h2>Brief 分发状态</h2>
+                    <div id="campaignRoomDistributionList" class="template-list"></div>
+                  </div>
+                  <div class="panel-subsection">
+                    <h2>投后复盘</h2>
+                    <div id="campaignRoomReviewList" class="feedback-list"></div>
+                  </div>
+                </div>
+                <h2>投后复盘录入</h2>
+                <form id="postReviewForm" class="form">
+                  <input name="campaign_id" type="hidden" />
+                  <select id="postReviewCreatorSelect" name="creator_id"></select>
+                  <input name="content_url" placeholder="内容链接" />
+                  <div class="field-row">
+                    <input name="actual_price" type="number" placeholder="实际价格" />
+                    <input name="views" type="number" placeholder="曝光 / 播放" />
+                  </div>
+                  <div class="field-row">
+                    <input name="likes" type="number" placeholder="点赞" />
+                    <input name="comments" type="number" placeholder="评论" />
+                  </div>
+                  <textarea name="brand_feedback" placeholder="品牌反馈"></textarea>
+                  <input name="delivery_rating" type="number" min="0" max="5" step="0.5" placeholder="履约评分 0-5" />
+                  <button class="primary" type="submit">保存复盘并回流</button>
+                </form>
+                <details class="campaign-room-raw">
+                  <summary>查看作战室 JSON</summary>
+                  <pre id="platformCampaignOutput" class="json-view">等待选择项目。</pre>
+                </details>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="dataSources" class="view">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>数据源与引擎</h2>
+                <p>集中检查 Excel、达人 API、LLM 和推演引擎的可用状态。</p>
+              </div>
+              <button id="refreshDataSourcesBtn" class="secondary" type="button">刷新状态</button>
+            </div>
+            <div id="dataSourceGrid" class="data-source-grid"></div>
+          </div>
+          <div class="grid two">
+            <div class="panel">
+              <h2>连接测试</h2>
+              <form id="dataSourceTestForm" class="form">
+                <select name="source_id">
+                  <option value="mock_api">Mock API</option>
+                  <option value="oneapi">OneAPI</option>
+                  <option value="glm">GLM</option>
+                  <option value="mirofish">MiroFish CLI</option>
+                  <option value="excel">Excel / CSV</option>
+                </select>
+                <div class="field-row">
+                  <select name="platform">
+                    <option>小红书</option>
+                    <option>抖音</option>
+                    <option>B站</option>
+                    <option>快手</option>
+                    <option>微博</option>
+                  </select>
+                  <input name="identifier" placeholder="平台 ID，可选" />
+                </div>
+                <input name="api_key" type="password" placeholder="API Key，可选；为空则读环境变量" />
+                <input name="base_url" placeholder="Base URL，可选" />
+                <button class="primary" type="submit">测试连接</button>
+              </form>
+            </div>
+            <div class="panel">
+              <h2>测试结果</h2>
+              <pre id="dataSourceTestOutput" class="json-view">等待测试。</pre>
+            </div>
+          </div>
+        </section>
+
+        <section id="symbolicOS" class="view">
+          <div class="grid two">
+            <div class="panel">
+              <div class="panel-header">
+                <h2>社会符号网络</h2>
+                <button id="generateSocialReportBtn" class="primary" type="button">生成报告</button>
+              </div>
+              <form id="socialReportForm" class="form">
+                <div class="field-row">
+                  <input name="period" placeholder="周期" value="本周" />
+                  <input name="title" placeholder="报告标题" value="本周社会符号网络报告" />
+                </div>
+                <textarea name="raw_input" placeholder="粘贴热搜、客户行业观察、平台评论、舆情摘要">AI工具爆发，年轻人讨论效率焦虑和副业自由。消费降级和性价比讨论持续升温。新能源车用户关注城市通勤、家庭安全、智驾体验和价格争议。</textarea>
+              </form>
+              <div id="socialReportCard" class="symbolic-os-card"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-header">
+                <h2>能指标签库</h2>
+                <button id="addSignifierTagBtn" class="secondary" type="button">新增标签</button>
+              </div>
+              <form id="signifierTagForm" class="form compact-form">
+                <div class="field-row">
+                  <input name="name" placeholder="标签名称" />
+                  <input name="tag_type" placeholder="标签类型" value="传播标签" />
+                </div>
+                <input name="related_tags" placeholder="关联标签，逗号分隔" />
+                <input name="opposite_tags" placeholder="相反标签，逗号分隔" />
+                <input name="metaphor_relations" placeholder="隐喻关系，逗号分隔" />
+                <textarea name="risk_notes" placeholder="风险说明"></textarea>
+              </form>
+              <div id="signifierTagList" class="tag-library"></div>
+            </div>
+          </div>
+          <div class="grid two">
+            <div class="panel">
+              <h2>投后符号修正</h2>
+              <div id="feedbackCorrectionList" class="correction-list"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-header">
+                <h2>产品符号档案</h2>
+                <button id="generateProductSymbolicBtn" class="secondary" type="button">生成产品档案</button>
+              </div>
+              <form id="productSymbolicForm" class="form compact-form">
+                <div class="field-row">
+                  <input name="brand_name" placeholder="品牌名称" value="某新能源汽车品牌" />
+                  <input name="category" placeholder="品类" value="汽车" />
+                </div>
+                <input name="product_name" placeholder="产品名称" value="新能源 SUV" />
+                <textarea name="use_scenarios" placeholder="使用场景，逗号分隔">城市通勤，家庭出行，周末露营</textarea>
+                <textarea name="functional_value" placeholder="功能价值，逗号分隔">智能座舱，安全辅助，空间承载</textarea>
+              </form>
+              <div id="productSymbolicList" class="product-symbolic-list"></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h2>内容叙事资产</h2>
+            <div id="narrativeAssetList" class="narrative-asset-list"></div>
+          </div>
+          <div class="panel">
+            <h2>品牌-博主匹配资产</h2>
+            <div id="matchAssetList" class="match-asset-list"></div>
+          </div>
+          <div class="panel">
+            <h2>符号 OS 原始数据</h2>
+            <pre id="symbolicOSOutput" class="json-view">等待加载</pre>
+          </div>
+        </section>
+
+        <section id="symbolicCreator" class="view">
+          <div class="grid two">
+            <div class="panel">
+              <h2>博主符号档案生成器</h2>
+              <form id="creatorSymbolicForm" class="form">
+                <select id="symbolicCreatorSelect" name="creator_id"></select>
+                <textarea name="content_sample" placeholder="粘贴近 10-30 条内容标题/正文样本"></textarea>
+                <textarea name="comment_sample" placeholder="粘贴评论区高频反馈，可选"></textarea>
+                <textarea name="case_sample" placeholder="粘贴合作案例，可选"></textarea>
+                <button class="primary" type="submit">生成符号档案</button>
+              </form>
+            </div>
+            <div class="panel">
+              <div class="panel-header">
+                <h2>符号档案结果</h2>
+                <button id="saveCreatorSymbolicBtn" class="secondary" type="button">保存编辑</button>
+              </div>
+              <div id="creatorSymbolicEditor" class="symbolic-editor hidden"></div>
+              <textarea id="creatorSymbolicOutput" class="json-editor" placeholder="等待生成"></textarea>
+            </div>
+          </div>
+        </section>
+
+        <section id="symbolicBrand" class="view">
+          <div class="grid two">
+            <div class="panel">
+              <h2>品牌 / 产品符号分析器</h2>
+              <form id="brandSymbolicForm" class="form">
+                <div class="field-row">
+                  <input name="brand_name" placeholder="品牌名称" value="某新能源汽车品牌" required />
+                  <input name="industry" placeholder="行业" value="汽车" />
+                </div>
+                <input name="product" placeholder="产品" value="新能源 SUV" />
+                <textarea name="brief" placeholder="客户 brief / 产品介绍">预算50万，准备做新能源SUV新品上市预热。目标用户是25-40岁一二线城市男性，希望突出科技感、智能化和高端感。</textarea>
+                <input name="target_tags" placeholder="希望获得的目标标签，逗号分隔" />
+                <input name="danger_tags" placeholder="希望避开的危险标签，逗号分隔" />
+                <button class="primary" type="submit">生成品牌符号档案</button>
+              </form>
+            </div>
+            <div class="panel">
+              <div class="panel-header">
+                <h2>品牌符号档案</h2>
+                <div class="button-row">
+                  <button id="calibrateBrandSymbolicBtn" class="secondary" type="button">社会校准</button>
+                  <button id="saveBrandSymbolicBtn" class="secondary" type="button">保存编辑</button>
+                </div>
+              </div>
+              <div id="brandCalibrationSummary" class="calibration-summary hidden"></div>
+              <div id="brandSymbolicEditor" class="symbolic-editor hidden"></div>
+              <textarea id="brandSymbolicOutput" class="json-editor" placeholder="等待生成"></textarea>
+            </div>
+          </div>
+        </section>
+
+        <section id="symbolicMatch" class="view">
+          <div class="panel">
+            <div class="panel-header">
+              <h2>符号适配推荐器</h2>
+              <div class="button-row">
+                <button id="symbolicMatchBtn" class="primary">生成符号匹配</button>
+                <button id="saveMatchAssetsBtn" class="secondary" type="button">保存匹配资产</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table id="symbolicResultTable">
+                <thead>
+                  <tr>
+                    <th>博主</th>
+                    <th>符号分</th>
+                    <th>等级</th>
+                    <th>目标标签</th>
+                    <th>隐喻关系</th>
+                    <th>转喻关系</th>
+                    <th>匹配理由</th>
+                    <th>风险</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <h2>内容叙事路径</h2>
+              <button id="saveNarrativeAssetsBtn" class="secondary" type="button">保存叙事路径</button>
+            </div>
+            <pre id="narrativeOutput" class="json-view">等待生成</pre>
+          </div>
+        </section>
+
+        <section id="symbolicGraph" class="view">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>品牌 × 博主 × 符号标签图谱</h2>
+                <p>展示品牌目标标签、博主符号资产、内容路径和风险标签之间的关系。</p>
+              </div>
+              <button id="refreshSymbolicGraphBtn" class="primary" type="button">刷新图谱</button>
+            </div>
+            <div class="graph-legend">
+              <span class="legend brand">品牌</span>
+              <span class="legend product">产品</span>
+              <span class="legend creator">博主</span>
+              <span class="legend tag-node">目标标签</span>
+              <span class="legend social-node">社会语境</span>
+              <span class="legend narrative">叙事路径</span>
+              <span class="legend risk-node">风险</span>
+            </div>
+            <div id="symbolicGraphCanvas" class="symbolic-graph">
+              <div class="meta">请先生成品牌符号档案和符号匹配。</div>
+            </div>
+          </div>
+        </section>
+
+        <section id="stressTest" class="view">
+          <div class="panel simulation-hero">
+            <div class="panel-header">
+              <div>
+                <h2>Simulation Layer</h2>
+                <p>把 Campaign 当成一个小型传播系统，先推演，再投放。</p>
+              </div>
+              <div id="engineStatus" class="engine-status">正在检查引擎状态</div>
+            </div>
+            <div class="field-row">
+              <select id="stressEngine">
+                <option value="llm_fallback">OS fallback 推演</option>
+                <option value="mirofish">MiroFish CLI，可选</option>
+              </select>
+              <button id="stressTestBtn" class="primary">运行推演</button>
+              <button id="demoStressTestBtn" class="secondary" type="button">示例推演</button>
+            </div>
+          </div>
+          <div class="grid two simulation-grid">
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>推演图谱</h2>
+                  <p>角色、内容节点、评论区和风险路径。</p>
+                </div>
+                <span id="simulationEngineBadge" class="status-pill warn">等待运行</span>
+              </div>
+              <div id="simulationGraphCanvas" class="simulation-graph">
+                <div class="meta">请先生成品牌符号档案和符号匹配，再运行推演。</div>
+              </div>
+            </div>
+            <div class="panel">
+              <h2>推演结论</h2>
+              <div id="simulationSummary" class="simulation-summary">等待生成</div>
+              <div class="simulation-columns">
+                <div>
+                  <h3>正向反馈</h3>
+                  <ul id="simulationPositiveList" class="plain-list"></ul>
+                </div>
+                <div>
+                  <h3>负向反馈</h3>
+                  <ul id="simulationNegativeList" class="plain-list"></ul>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="grid three simulation-grid">
+            <div class="panel">
+              <h2>事件时间线</h2>
+              <div id="simulationTimeline" class="simulation-timeline">
+                <div class="meta">等待推演事件。</div>
+              </div>
+            </div>
+            <div class="panel">
+              <h2>Agent 反应</h2>
+              <div id="agentReactionGrid" class="agent-reaction-grid">
+                <div class="meta">等待角色反馈。</div>
+              </div>
+            </div>
+            <div class="panel">
+              <h2>风险与优化</h2>
+              <div id="simulationRiskList" class="risk-board"></div>
+              <div id="simulationSuggestions" class="suggestion-board"></div>
+            </div>
+          </div>
+          <div class="panel simulation-raw-panel">
+            <details>
+              <summary>查看原始 JSON</summary>
+              <pre id="stressOutput" class="json-view">等待生成</pre>
+            </details>
+          </div>
+        </section>
+      </main>
+    </div>
+    <div id="creatorModal" class="modal hidden">
+      <div class="modal-backdrop" data-close-modal="true"></div>
+      <section class="modal-panel">
+        <div class="panel-header">
+          <div>
+            <h2 id="creatorModalTitle">达人详情</h2>
+            <p id="creatorModalMeta">加载中</p>
+          </div>
+          <button id="closeCreatorModalBtn" class="icon-btn" type="button" title="关闭">×</button>
+        </div>
+        <form id="creatorEditForm" class="form">
+          <input name="creator_id" type="hidden" />
+          <div class="field-row">
+            <input name="name" placeholder="达人名称" required />
+            <select name="platform">
+              <option>抖音</option>
+              <option>小红书</option>
+              <option>B站</option>
+              <option>快手</option>
+              <option>微博</option>
+              <option>视频号</option>
+              <option>公众号</option>
+              <option>懂车帝</option>
+              <option>未知</option>
+            </select>
+          </div>
+          <div class="field-row">
+            <input name="platform_user_id" placeholder="平台 ID" />
+            <input name="homepage_url" placeholder="主页链接" />
+          </div>
+          <div class="field-row">
+            <input name="follower_count" type="number" min="0" placeholder="粉丝数" />
+            <input name="listed_price" type="number" min="0" placeholder="报价" />
+          </div>
+          <div class="field-row">
+            <input name="region" placeholder="地区" />
+            <input name="contact" placeholder="联系方式" />
+          </div>
+          <input name="cooperation_brands" placeholder="合作品牌，逗号分隔" />
+          <input name="cooperation_formats" placeholder="合作形式 / 标签，逗号分隔" />
+          <textarea name="bio" placeholder="简介 / 内容方向"></textarea>
+          <textarea name="manual_notes" placeholder="媒介备注 / 履约反馈 / 风险"></textarea>
+          <div>
+            <h3 class="detail-heading">数据来源</h3>
+            <div id="creatorDataSources" class="tag-list"></div>
+          </div>
+          <div>
+            <h3 class="detail-heading">当前画像标签</h3>
+            <div id="creatorTags" class="tag-list"></div>
+          </div>
+          <button class="primary" type="submit">保存并重新画像</button>
+        </form>
+      </section>
+    </div>
+    <div id="toast" class="toast"></div>
+    <div id="accessGate" class="access-gate hidden">
+      <section class="access-gate-panel">
+        <span class="card-kicker">Access required</span>
+        <h2>输入 Access Key</h2>
+        <p>当前服务启用了访问保护。输入部署环境里的 PR_AI_OS_ACCESS_KEY 后继续使用。</p>
+        <input id="gateAccessKeyInput" type="password" placeholder="Access Key" />
+        <div class="decision-actions">
+          <button id="gateAccessKeyBtn" class="primary" type="button">进入</button>
+          <button id="gateAccessClearBtn" class="secondary" type="button">清空</button>
+        </div>
+      </section>
+    </div>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
