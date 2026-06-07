@@ -10,6 +10,9 @@ const state = {
   activeAgentRun: null,
   activeAgentArtifacts: [],
   agentPollTimer: null,
+  knowledgeDocuments: [],
+  knowledgeStats: null,
+  knowledgeSearchResults: [],
   clientPortalProjects: [],
   creators: [],
   lastProposal: "",
@@ -81,6 +84,7 @@ const SYMBOLIC_EDITOR_FIELDS = {
 const VIEW_TITLES = {
   workspace: ["工作台", "从达人库到 Campaign OS 的五段式闭环。"],
   agentWorkspace: ["AI Agent", "让 PR 项目经理 Agent 调用工具、生成过程日志和交付产物。"],
+  knowledge: ["知识库", "把公司案例、客户偏好、风险规则和方案模板变成 Agent 可检索的 RAG 记忆。"],
   projectRun: ["新建 PR 项目", "输入一个需求，自动跑完 brief、符号图谱、KOL 选择和 Campaign Room。"],
   ingest: ["数据接入", "把 Excel、链接和 API 变成统一 KOL Profile。"],
   creators: ["达人库", "扫描、修正和调用你的私有 KOL 资产。"],
@@ -298,6 +302,14 @@ async function loadAgentTasks() {
   const data = await api("/api/agent/tasks");
   state.agentTasks = data.items || [];
   renderAgentTasks();
+}
+
+async function loadKnowledge() {
+  if (state.currentIdentity?.user?.user_type === "client") return;
+  const data = await api("/api/knowledge");
+  state.knowledgeDocuments = data.items || [];
+  state.knowledgeStats = data.stats || null;
+  renderKnowledge();
 }
 
 async function loadCommercial() {
@@ -840,6 +852,100 @@ function renderAgentArtifact(artifact) {
   `;
 }
 
+function renderKnowledge() {
+  renderKnowledgeStats();
+  renderKnowledgeDocuments();
+  renderKnowledgeSearchResults();
+}
+
+function renderKnowledgeStats() {
+  const node = $("#knowledgeStats");
+  if (!node) return;
+  const stats = state.knowledgeStats || {};
+  const bySource = stats.source_counts || {};
+  node.innerHTML = `
+    <div>
+      <span>文档</span>
+      <strong>${fmtNumber(stats.documents)}</strong>
+    </div>
+    <div>
+      <span>Chunks</span>
+      <strong>${fmtNumber(stats.chunks)}</strong>
+    </div>
+    <div>
+      <span>来源类型</span>
+      <strong>${fmtNumber(Object.keys(bySource).length)}</strong>
+    </div>
+  `;
+}
+
+function renderKnowledgeDocuments() {
+  const list = $("#knowledgeDocumentList");
+  if (!list) return;
+  if (!state.knowledgeDocuments.length) {
+    list.innerHTML = emptyState("暂无知识文档", "先写入客户偏好、行业案例、风险规则或方案模板。");
+    return;
+  }
+  list.innerHTML = state.knowledgeDocuments
+    .map((doc) => {
+      const tags = (doc.tags || []).slice(0, 6).map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`).join("");
+      return `
+        <article class="knowledge-card">
+          <div class="card-kicker">${escapeHTML(doc.source_type || "manual")} · ${escapeHTML(doc.industry || "通用")}</div>
+          <div class="creator-card-head">
+            <h3>${escapeHTML(doc.title || "未命名知识")}</h3>
+            <button class="secondary open-knowledge-doc-btn" data-document-id="${escapeHTML(doc.document_id)}" type="button">详情</button>
+          </div>
+          <p>${escapeHTML(doc.summary || "已切分为可检索知识片段，点击详情查看 chunk 内容。").slice(0, 160)}</p>
+          <div class="tag-list">${tags || '<span class="meta">暂无标签</span>'}</div>
+          <div class="meta">${escapeHTML(doc.client_id || "无客户绑定")} · ${fmtNumber(doc.chunk_count || 0)} chunks · ${escapeHTML(doc.updated_at || "")}</div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderKnowledgeSearchResults() {
+  const node = $("#knowledgeSearchResults");
+  if (!node) return;
+  if (!state.knowledgeSearchResults.length) {
+    node.innerHTML = emptyState("暂无检索结果", "输入问题后会按关键词和本地向量相似度混合排序。");
+    return;
+  }
+  node.innerHTML = state.knowledgeSearchResults
+    .map((item, index) => {
+      const tags = (item.tags || []).slice(0, 5).map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`).join("");
+      return `
+        <article class="knowledge-result">
+          <div class="knowledge-rank">${String(index + 1).padStart(2, "0")}</div>
+          <div>
+            <div class="card-kicker">${escapeHTML(item.source_type || item.source || "knowledge")} · score ${Math.round(Number(item.score || 0) * 100)}</div>
+            <strong>${escapeHTML(item.title || "知识片段")}</strong>
+            <p>${escapeHTML(item.content || item.summary || "")}</p>
+            <div class="tag-list">${tags}</div>
+            <div class="meta">${escapeHTML(item.industry || "通用")} · ${escapeHTML(item.document_id || item.ref_id || "")}</div>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderKnowledgeDetail(data) {
+  const doc = data.document || {};
+  const chunks = data.chunks || [];
+  state.knowledgeSearchResults = chunks.map((chunk) => ({
+    ...chunk,
+    title: doc.title || chunk.title,
+    source_type: doc.source_type,
+    industry: doc.industry,
+    tags: doc.tags,
+    score: chunk.score || 1,
+  }));
+  renderKnowledgeSearchResults();
+  toast(`已加载知识详情：${doc.title || doc.document_id}`);
+}
+
 function stopAgentPolling() {
   if (state.agentPollTimer) {
     clearInterval(state.agentPollTimer);
@@ -897,6 +1003,7 @@ async function reloadAll() {
   await loadGovernance();
   await loadSymbolicEngines();
   await loadAgentTasks();
+  await loadKnowledge();
   await loadCollaboration();
   await loadOrganization();
   await loadCommercial();
@@ -2432,6 +2539,13 @@ function bindEvents() {
           toast(error.message, true);
         }
       }
+      if (button.dataset.view === "knowledge") {
+        try {
+          await loadKnowledge();
+        } catch (error) {
+          toast(error.message, true);
+        }
+      }
     })
   );
   $$(".nav-group").forEach((group) => {
@@ -2548,6 +2662,45 @@ function bindEvents() {
   $("#refreshDataSourcesBtn").addEventListener("click", () => loadDataSources().then(() => toast("数据源状态已刷新")));
   $("#refreshOrganizationBtn")?.addEventListener("click", () => loadOrganization().then(() => toast("组织数据已刷新")));
   $("#refreshAgentTasksBtn")?.addEventListener("click", () => loadAgentTasks().then(() => toast("Agent 任务已刷新")));
+  $("#refreshKnowledgeBtn")?.addEventListener("click", () => loadKnowledge().then(() => toast("知识库已刷新")));
+  $("#knowledgeForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const payload = formToObject(form);
+    if (!payload.title || !payload.content) {
+      toast("请填写标题和正文", true);
+      return;
+    }
+    try {
+      await api("/api/knowledge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      form.reset();
+      await loadKnowledge();
+      toast("知识已写入");
+    } catch (error) {
+      toast(error.message, true);
+    }
+  });
+  $("#knowledgeSearchForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const payload = formToObject(event.currentTarget);
+    payload.top_k = Number(payload.top_k || 5);
+    try {
+      const data = await api("/api/knowledge/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      state.knowledgeSearchResults = data.items || [];
+      renderKnowledgeSearchResults();
+      toast(`检索到 ${state.knowledgeSearchResults.length} 条知识`);
+    } catch (error) {
+      toast(error.message, true);
+    }
+  });
   $("#agentChatForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const payload = formToObject(event.currentTarget);
@@ -2752,6 +2905,13 @@ function bindEvents() {
     const button = event.target.closest(".open-platform-campaign-btn");
     if (!button) return;
     await openCampaignRoom(button.dataset.campaignId);
+  });
+
+  document.addEventListener("click", async (event) => {
+    const button = event.target.closest(".open-knowledge-doc-btn");
+    if (!button) return;
+    const data = await api(`/api/knowledge/${button.dataset.documentId}`);
+    renderKnowledgeDetail(data);
   });
 
   document.addEventListener("click", (event) => {

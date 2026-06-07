@@ -35,12 +35,14 @@ def main() -> None:
         "数据源设置",
         "组织管理",
         "AI Agent",
+        "知识库",
         "smoke_data_sources.py",
         "smoke_storage_adapter.py",
         "smoke_phase6a_auth.py",
         "smoke_phase6b_org.py",
         "smoke_phase7a_agent.py",
         "smoke_phase7b_agent_streaming.py",
+        "smoke_phase7c_knowledge_rag.py",
         "smoke_agent_model_provider.py",
     ]:
         assert text in readme
@@ -54,6 +56,7 @@ def main() -> None:
         "Phase 6B",
         "Phase 7A",
         "Phase 7B",
+        "Phase 7C",
         "AGENT_PROVIDER",
     ]:
         assert text in readme

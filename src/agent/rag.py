@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from src.collaboration.storage import load_all_proposals, load_feedback, load_preference
+from src.knowledge.service import search_knowledge_base
 from src.platform_os.storage import load_all_campaign_projects
 from src.storage.db import load_profiles
 
@@ -15,7 +16,7 @@ def search_pr_knowledge(db_path: Path, query: str, top_k: int = 5) -> list[dict[
     knowledge base is introduced.
     """
     terms = [item for item in query.lower().replace("，", " ").replace("。", " ").split() if item]
-    docs: list[dict[str, Any]] = []
+    docs: list[dict[str, Any]] = search_knowledge_base(db_path, query=query, top_k=top_k * 2)
 
     for proposal in load_all_proposals(db_path):
         text = f"{proposal.client_name} {proposal.project_name} {proposal.brief_text} {proposal.brief_summary}"

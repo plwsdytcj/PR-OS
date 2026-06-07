@@ -103,6 +103,8 @@ from src.intelligence.brief_parser import parse_brief
 from src.intelligence.data_quality import find_duplicate_candidates, governance_summary, quality_issues, strong_dedupe_profiles
 from src.intelligence.matching import rank_creators
 from src.intelligence.profiling import enrich_profiles
+from src.knowledge.service import create_knowledge_document, knowledge_document_detail, knowledge_stats, list_knowledge_documents, search_knowledge_base
+from src.knowledge.storage import init_knowledge_db
 from src.normalize.mapper import infer_column_mapping, map_dataframe_to_profiles
 from src.platform_os.service import (
     add_post_campaign_review,
@@ -229,6 +231,7 @@ def _tenant_paths(tenant: str) -> tuple[Path, Path]:
 def _init_db_bundle(path: Path | PathLike[str]) -> None:
     init_db(path)
     init_agent_db(path)
+    init_knowledge_db(path)
     init_auth_db(path)
     init_symbolic_db(path)
     init_symbolic_os_db(path)
@@ -609,6 +612,61 @@ async def agent_run_approve(run_id: str) -> dict[str, Any]:
         return approve_agent_run(DB_PATH, run_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/knowledge")
+def knowledge_list() -> dict[str, Any]:
+    require_internal("read")
+    return {"items": list_knowledge_documents(DB_PATH), "stats": knowledge_stats(DB_PATH)}
+
+
+@app.post("/api/knowledge")
+async def knowledge_create(payload: dict[str, Any]) -> dict[str, Any]:
+    identity = require_internal("write")
+    try:
+        result = create_knowledge_document(
+            DB_PATH,
+            title=str(payload.get("title") or ""),
+            content=str(payload.get("content") or ""),
+            source_type=str(payload.get("source_type") or "manual"),
+            source_ref=str(payload.get("source_ref") or ""),
+            client_id=str(payload.get("client_id") or ""),
+            project_id=str(payload.get("project_id") or ""),
+            industry=str(payload.get("industry") or ""),
+            tags=payload.get("tags") or "",
+            metadata={"created_by": identity.user.user_id},
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result
+
+
+@app.get("/api/knowledge/{document_id}")
+def knowledge_detail(document_id: str) -> dict[str, Any]:
+    require_internal("read")
+    result = knowledge_document_detail(DB_PATH, document_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="knowledge document not found")
+    return result
+
+
+@app.post("/api/knowledge/search")
+async def knowledge_search(payload: dict[str, Any]) -> dict[str, Any]:
+    require_internal("read")
+    query = str(payload.get("query") or "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="query is required")
+    return {
+        "items": search_knowledge_base(
+            DB_PATH,
+            query=query,
+            top_k=int(payload.get("top_k") or 5),
+            client_id=str(payload.get("client_id") or ""),
+            project_id=str(payload.get("project_id") or ""),
+            industry=str(payload.get("industry") or ""),
+            source_type=str(payload.get("source_type") or ""),
+        )
+    }
 
 
 @app.post("/api/auth/bootstrap-admin")

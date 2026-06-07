@@ -31,6 +31,7 @@
           <details class="nav-group" open>
             <summary>资源与治理</summary>
             <button class="nav-item" data-view="ingest">数据接入</button>
+            <button class="nav-item" data-view="knowledge">知识库</button>
             <button class="nav-item" data-view="governance">数据治理</button>
             <button class="nav-item" data-view="creatorCommercial">博主商业档案</button>
           </details>
@@ -220,6 +221,65 @@
               <h2>产物面板</h2>
               <div id="agentArtifactList" class="agent-artifact-list"></div>
             </aside>
+          </div>
+        </section>
+
+        <section id="knowledge" class="view">
+          <div class="knowledge-hero">
+            <div>
+              <div class="eyebrow">Phase 7C / RAG memory</div>
+              <h2>公司知识库</h2>
+              <p>沉淀客户偏好、行业案例、达人履约、风险规则和方案模板，让 Agent 先查资料再做判断。</p>
+            </div>
+            <div id="knowledgeStats" class="knowledge-stats"></div>
+          </div>
+
+          <div class="grid two">
+            <div class="panel">
+              <h2>导入知识</h2>
+              <form id="knowledgeForm" class="form">
+                <div class="field-row">
+                  <input name="title" placeholder="标题，如 新能源车小红书打法" required />
+                  <select name="source_type">
+                    <option value="manual">manual</option>
+                    <option value="case">case</option>
+                    <option value="client_preference">client_preference</option>
+                    <option value="creator_history">creator_history</option>
+                    <option value="risk_policy">risk_policy</option>
+                    <option value="template">template</option>
+                  </select>
+                </div>
+                <div class="field-row">
+                  <input name="client_id" placeholder="客户 ID，可选" />
+                  <input name="industry" placeholder="行业，如 新能源汽车" />
+                </div>
+                <input name="tags" placeholder="标签，逗号分隔" />
+                <textarea name="content" required>新能源车在小红书更适合从城市生活方式、智能座舱体验、家庭出行场景切入。客户通常更接受生活方式博主和科技体验博主组合，纯硬核测评需要控制比例。</textarea>
+                <button class="primary" type="submit">写入知识库</button>
+              </form>
+            </div>
+            <div class="panel">
+              <div class="panel-header">
+                <h2>检索测试</h2>
+                <button id="refreshKnowledgeBtn" class="secondary" type="button">刷新</button>
+              </div>
+              <form id="knowledgeSearchForm" class="form">
+                <div class="field-row">
+                  <input name="query" value="新能源 SUV 小红书 年轻用户 KOL 风险" placeholder="输入检索问题" required />
+                  <input name="top_k" type="number" value="5" min="1" max="12" />
+                </div>
+                <button class="primary" type="submit">搜索知识</button>
+              </form>
+              <div id="knowledgeSearchResults" class="knowledge-results"></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h2>知识文档</h2>
+              <p>每篇文档会自动切 chunk，并生成本地 embedding fallback。</p>
+            </div>
+            <div id="knowledgeDocumentList" class="knowledge-doc-list"></div>
           </div>
         </section>
 

@@ -108,6 +108,32 @@ CREATE TABLE IF NOT EXISTS agent_artifacts (
     PRIMARY KEY (tenant_id, artifact_id)
 );
 
+CREATE TABLE IF NOT EXISTS knowledge_documents (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    document_id TEXT NOT NULL,
+    source_type TEXT NOT NULL DEFAULT 'manual',
+    client_id TEXT NOT NULL DEFAULT '',
+    project_id TEXT NOT NULL DEFAULT '',
+    industry TEXT NOT NULL DEFAULT '',
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, document_id)
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_chunks (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    chunk_id TEXT NOT NULL,
+    document_id TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL DEFAULT 0,
+    source_type TEXT NOT NULL DEFAULT 'manual',
+    client_id TEXT NOT NULL DEFAULT '',
+    project_id TEXT NOT NULL DEFAULT '',
+    industry TEXT NOT NULL DEFAULT '',
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, chunk_id)
+);
+
 CREATE TABLE IF NOT EXISTS creator_symbolic_profiles (
     tenant_id TEXT NOT NULL DEFAULT 'default',
     creator_id TEXT NOT NULL,

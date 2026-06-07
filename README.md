@@ -16,6 +16,7 @@ PR AI OS is a local-first MVP for media agencies managing KOL resources, brand b
 - Phase 6B: organization management console for internal users, client accounts, client portal members, and project access grants.
 - Phase 7A: PR Project Manager Agent workspace with task/run/event/artifact runtime, local RAG placeholder, tool execution, and human approval.
 - Phase 7B: streaming-style Agent execution with async run start, background tool execution, and polling event updates.
+- Phase 7C: Knowledge RAG layer with document/chunk storage, local embedding fallback, knowledge search APIs, frontend knowledge console, and Agent RAG integration.
 - Production foundations: workspace-level data isolation, optional access key, centralized data-source status/testing, and pluggable storage/auth adapters.
 
 ## Install
@@ -220,6 +221,23 @@ The Agent Workspace now supports a Manus-like live execution loop:
 
 This uses polling first for deployment simplicity. It can later be upgraded to SSE or WebSocket without changing the event/artifact persistence model.
 
+## Phase 7C Knowledge RAG
+
+The `知识库` page turns company materials into searchable Agent memory:
+
+- Create knowledge documents from internal cases, client preferences, creator history, risk policies, and proposal templates.
+- Automatically split documents into chunks and generate deterministic local embeddings as a fallback.
+- Search knowledge with hybrid keyword/vector scoring.
+- Keep tenant/workspace isolation for documents and chunks.
+- Feed knowledge search results into the Agent before it runs KOL selection, project execution, and proposal generation.
+
+Core knowledge APIs:
+
+- `GET /api/knowledge`
+- `POST /api/knowledge`
+- `GET /api/knowledge/{document_id}`
+- `POST /api/knowledge/search`
+
 ## PostgreSQL / pgvector Migration
 
 The app remains local-first SQLite by default, but the repo includes a PostgreSQL/pgvector migration path:
@@ -256,6 +274,10 @@ python3 scripts/migrate_sqlite_to_postgres.py --sqlite data/processed/phase1_web
 - `GET /api/agent/runs/{run_id}`
 - `GET /api/agent/runs/{run_id}/events`
 - `POST /api/agent/runs/{run_id}/approve`
+- `GET /api/knowledge`
+- `POST /api/knowledge`
+- `GET /api/knowledge/{document_id}`
+- `POST /api/knowledge/search`
 - `POST /api/import/file`
 - `POST /api/import/manual`
 - `POST /api/import/links`
@@ -304,6 +326,7 @@ python3 scripts/smoke_phase6a_auth.py
 python3 scripts/smoke_phase6b_org.py
 python3 scripts/smoke_phase7a_agent.py
 python3 scripts/smoke_phase7b_agent_streaming.py
+python3 scripts/smoke_phase7c_knowledge_rag.py
 python3 scripts/smoke_agent_model_provider.py
 python3 scripts/smoke_data_sources.py
 python3 scripts/smoke_storage_adapter.py
