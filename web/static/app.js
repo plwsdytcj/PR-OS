@@ -9,6 +9,7 @@ const state = {
   agentTasks: [],
   activeAgentRun: null,
   activeAgentArtifacts: [],
+  agentPollTimer: null,
   clientPortalProjects: [],
   creators: [],
   lastProposal: "",
@@ -837,6 +838,34 @@ function renderAgentArtifact(artifact) {
       ${detail}
     </article>
   `;
+}
+
+function stopAgentPolling() {
+  if (state.agentPollTimer) {
+    clearInterval(state.agentPollTimer);
+    state.agentPollTimer = null;
+  }
+}
+
+function startAgentPolling(runId) {
+  stopAgentPolling();
+  if (!runId) return;
+  const tick = async () => {
+    try {
+      const data = await api(`/api/agent/runs/${runId}`);
+      renderAgentRun(data);
+      const status = data.run?.status || "";
+      if (!["running"].includes(status)) {
+        stopAgentPolling();
+        await loadAgentTasks();
+      }
+    } catch (error) {
+      stopAgentPolling();
+      toast(error.message, true);
+    }
+  };
+  tick();
+  state.agentPollTimer = setInterval(tick, 1000);
 }
 
 function formToObject(form) {
@@ -2414,6 +2443,7 @@ function bindEvents() {
     });
   });
   $("#tenantApplyBtn").addEventListener("click", async () => {
+    stopAgentPolling();
     const nextTenant = normalizeTenant($("#tenantInput").value);
     state.tenant = nextTenant;
     localStorage.setItem("pr_ai_os_tenant", nextTenant);
@@ -2489,6 +2519,7 @@ function bindEvents() {
       return;
     }
     if (event.target.closest("#authLogoutBtn")) {
+      stopAgentPolling();
       await api("/api/auth/logout", { method: "POST" });
       state.currentIdentity = null;
       renderAuthUser();
@@ -2506,6 +2537,7 @@ function bindEvents() {
       if (runId) {
         const data = await api(`/api/agent/runs/${runId}`);
         renderAgentRun(data);
+        if (data.run?.status === "running") startAgentPolling(runId);
       }
     }
   });
@@ -2525,14 +2557,15 @@ function bindEvents() {
         button.disabled = true;
         button.textContent = "执行中...";
       }
-      const data = await api("/api/agent/chat", {
+      const data = await api("/api/agent/chat/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       renderAgentRun(data);
+      startAgentPolling(data.run?.run_id);
       await loadAgentTasks();
-      toast("Agent 执行完成，等待人工确认");
+      toast("Agent 已启动，执行过程会实时刷新");
     } catch (error) {
       toast(error.message, true);
     } finally {

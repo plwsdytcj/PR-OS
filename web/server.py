@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import pandas as pd
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -35,7 +35,7 @@ from src.auth.service import (
     users_exist,
 )
 from src.auth.storage import init_auth_db, load_all_clients, load_all_project_access, load_all_users, load_client_users_for_client
-from src.agent.runtime import approve_agent_run, get_agent_run, get_agent_task, list_agent_tasks, run_agent_chat
+from src.agent.runtime import approve_agent_run, execute_agent_run, get_agent_run, get_agent_task, list_agent_tasks, run_agent_chat, start_agent_chat
 from src.agent.storage import init_agent_db
 from src.connectors.excel_connector import load_table_file
 from src.connectors.link_connector import parse_links
@@ -558,6 +558,30 @@ async def agent_chat(payload: dict[str, Any]) -> dict[str, Any]:
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/agent/chat/start")
+async def agent_chat_start(payload: dict[str, Any], background_tasks: BackgroundTasks) -> dict[str, Any]:
+    identity = require_internal("project_run")
+    message = str(payload.get("message") or payload.get("brief") or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
+    top_n = int(payload.get("top_n") or 8)
+    db_path = _db_path_ctx.get()
+    try:
+        started = start_agent_chat(
+            db_path,
+            message=message,
+            task_id=str(payload.get("task_id") or ""),
+            client_name=str(payload.get("client_name") or ""),
+            project_name=str(payload.get("project_name") or ""),
+            top_n=top_n,
+            created_by=identity.user.user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    background_tasks.add_task(execute_agent_run, db_path, started["run"]["run_id"], top_n)
+    return started
 
 
 @app.get("/api/agent/runs/{run_id}")

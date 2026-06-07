@@ -40,6 +40,7 @@ def main() -> None:
         "smoke_phase6a_auth.py",
         "smoke_phase6b_org.py",
         "smoke_phase7a_agent.py",
+        "smoke_phase7b_agent_streaming.py",
         "smoke_agent_model_provider.py",
     ]:
         assert text in readme
@@ -52,6 +53,7 @@ def main() -> None:
         "PR_AI_OS_AUTH_ENABLED",
         "Phase 6B",
         "Phase 7A",
+        "Phase 7B",
         "AGENT_PROVIDER",
     ]:
         assert text in readme

@@ -15,6 +15,7 @@ PR AI OS is a local-first MVP for media agencies managing KOL resources, brand b
 - Phase 6A: local identity adapter, internal roles, client portal login, project access grants, and authenticated client feedback.
 - Phase 6B: organization management console for internal users, client accounts, client portal members, and project access grants.
 - Phase 7A: PR Project Manager Agent workspace with task/run/event/artifact runtime, local RAG placeholder, tool execution, and human approval.
+- Phase 7B: streaming-style Agent execution with async run start, background tool execution, and polling event updates.
 - Production foundations: workspace-level data isolation, optional access key, centralized data-source status/testing, and pluggable storage/auth adapters.
 
 ## Install
@@ -208,6 +209,17 @@ The `AI Agent` page is the first Manus-like PR Agent OS layer:
 
 This version deliberately keeps the runtime local and replaceable. Later phases can plug in OpenAI Agents SDK, Qwen/DeepSeek adapters, pgvector RAG, streaming, and more complex workflow engines without changing the business tool layer.
 
+## Phase 7B Streaming Agent Execution
+
+The Agent Workspace now supports a Manus-like live execution loop:
+
+- `POST /api/agent/chat/start` creates a run immediately and returns `run_id`.
+- FastAPI background execution writes events and artifacts as each tool step completes.
+- The frontend polls `GET /api/agent/runs/{run_id}` every second and updates the event stream.
+- The confirmation button appears when the run reaches `waiting_approval`.
+
+This uses polling first for deployment simplicity. It can later be upgraded to SSE or WebSocket without changing the event/artifact persistence model.
+
 ## PostgreSQL / pgvector Migration
 
 The app remains local-first SQLite by default, but the repo includes a PostgreSQL/pgvector migration path:
@@ -240,6 +252,7 @@ python3 scripts/migrate_sqlite_to_postgres.py --sqlite data/processed/phase1_web
 - `GET /api/agent/tasks`
 - `GET /api/agent/tasks/{task_id}`
 - `POST /api/agent/chat`
+- `POST /api/agent/chat/start`
 - `GET /api/agent/runs/{run_id}`
 - `GET /api/agent/runs/{run_id}/events`
 - `POST /api/agent/runs/{run_id}/approve`
@@ -290,6 +303,7 @@ python3 scripts/smoke_access_key.py
 python3 scripts/smoke_phase6a_auth.py
 python3 scripts/smoke_phase6b_org.py
 python3 scripts/smoke_phase7a_agent.py
+python3 scripts/smoke_phase7b_agent_streaming.py
 python3 scripts/smoke_agent_model_provider.py
 python3 scripts/smoke_data_sources.py
 python3 scripts/smoke_storage_adapter.py

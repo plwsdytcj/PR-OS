@@ -87,6 +87,32 @@ def run_agent_chat(
     top_n: int = 8,
     created_by: str = "",
 ) -> dict[str, Any]:
+    task, run = prepare_agent_run(db_path, message, task_id=task_id, client_name=client_name, project_name=project_name, created_by=created_by)
+    execute_agent_run(db_path, run.run_id, top_n=top_n)
+    return get_agent_run(db_path, run.run_id) or {"run": run.to_dict(), "task": task.to_dict(), "events": [], "artifacts": []}
+
+
+def start_agent_chat(
+    db_path: Path,
+    message: str,
+    task_id: str = "",
+    client_name: str = "",
+    project_name: str = "",
+    top_n: int = 8,
+    created_by: str = "",
+) -> dict[str, Any]:
+    task, run = prepare_agent_run(db_path, message, task_id=task_id, client_name=client_name, project_name=project_name, created_by=created_by)
+    return {"task": task.to_dict(), "run": run.to_dict(), "top_n": top_n}
+
+
+def prepare_agent_run(
+    db_path: Path,
+    message: str,
+    task_id: str = "",
+    client_name: str = "",
+    project_name: str = "",
+    created_by: str = "",
+) -> tuple[AgentTask, AgentRun]:
     task = load_task(db_path, task_id) if task_id else None
     if task is None:
         task = create_agent_task(db_path, message=message, client_name=client_name, project_name=project_name, created_by=created_by)
@@ -97,8 +123,22 @@ def run_agent_chat(
 
     run = AgentRun(run_id=run_id_for(task.task_id, message), task_id=task.task_id, user_message=message, created_by=created_by)
     upsert_run(db_path, run)
+    task.status = "running"
+    task.current_run_id = run.run_id
+    task.updated_at = now_iso()
+    upsert_task(db_path, task)
+    return task, run
 
-    sequence = 1
+
+def execute_agent_run(db_path: Path, run_id: str, top_n: int = 8) -> None:
+    run = load_run(db_path, run_id)
+    if run is None:
+        raise ValueError("run not found")
+    task = load_task(db_path, run.task_id)
+    if task is None:
+        raise ValueError("agent task not found")
+    message = run.user_message or task.brief
+    sequence = len(load_events_for_run(db_path, run_id)) + 1
 
     def event(event_type: str, status: str, title: str, summary: str = "", tool_name: str = "", payload: dict[str, Any] | None = None, artifact_id: str = "") -> AgentEvent:
         nonlocal sequence
@@ -133,6 +173,13 @@ def run_agent_chat(
         return item
 
     try:
+        run.status = "running"
+        run.updated_at = now_iso()
+        task.status = "running"
+        task.updated_at = now_iso()
+        upsert_run(db_path, run)
+        upsert_task(db_path, task)
+
         event("message", "completed", "理解项目需求", "已接收需求，准备检索组织记忆并调用 PR OS 工具。", payload={"message": message})
 
         event("tool_call", "running", "检索组织记忆", "查询历史提案、客户反馈、Campaign Room 和达人画像。", tool_name="search_knowledge")
@@ -174,7 +221,7 @@ def run_agent_chat(
             project_name=task.project_name,
             brief=task.brief,
             top_n=top_n,
-            created_by=created_by or "agent",
+            created_by=run.created_by or "agent",
         )
         proposal_artifact = artifact(
             "proposal",
@@ -224,8 +271,6 @@ def run_agent_chat(
         upsert_run(db_path, run)
         upsert_task(db_path, task)
         raise
-
-    return get_agent_run(db_path, run.run_id) or {"run": run.to_dict(), "task": task.to_dict(), "events": [], "artifacts": []}
 
 
 def approve_agent_run(db_path: Path, run_id: str) -> dict[str, Any]:
