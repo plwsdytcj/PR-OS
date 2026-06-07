@@ -231,6 +231,21 @@
                 </form>
                 <div id="agentEventStream" class="agent-event-stream"></div>
               </div>
+              <div id="agentReasoningPanel" class="panel agent-reasoning-panel hidden">
+                <div class="panel-header">
+                  <div>
+                    <h2>Agent 推理图谱</h2>
+                    <p>把 brief、知识证据、KOL 标签、风险、方案和记忆回流连成可视化过程。</p>
+                  </div>
+                  <span id="agentReasoningMeta" class="status-pill ok">graph</span>
+                </div>
+                <div class="agent-reasoning-layout">
+                  <div id="agentReasoningGraphCanvas" class="symbolic-graph agent-reasoning-graph"></div>
+                  <aside id="agentReasoningInspector" class="graph-node-inspector">
+                    <div class="meta">点击节点查看推理依据。</div>
+                  </aside>
+                </div>
+              </div>
             </div>
 
             <aside class="agent-artifacts panel">

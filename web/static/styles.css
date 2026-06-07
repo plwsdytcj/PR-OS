@@ -1201,6 +1201,80 @@ button {
   max-width: min(980px, 92vw);
 }
 
+.agent-reasoning-panel {
+  margin-top: 18px;
+}
+
+.agent-reasoning-layout {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.34fr);
+}
+
+.agent-reasoning-graph {
+  min-height: 640px;
+  background: #fffdf4;
+  border: 3px solid #17120d;
+  box-shadow: 6px 6px 0 #b9ffea;
+}
+
+.agent-reasoning-node rect {
+  fill: #17120d;
+  stroke: #fffdf4;
+  stroke-width: 3;
+  transition: filter 160ms ease, stroke 160ms ease, stroke-width 160ms ease;
+}
+
+.agent-reasoning-node text {
+  fill: #fffdf4;
+  font-size: 11px;
+  font-weight: 850;
+  pointer-events: none;
+}
+
+.agent-reasoning-node.selected rect {
+  filter: drop-shadow(0 0 10px rgba(255, 210, 63, 0.92));
+  stroke: #ffd23f;
+  stroke-width: 5;
+}
+
+.agent-reasoning-node.brief rect {
+  fill: #111827;
+}
+
+.agent-reasoning-node.intent rect,
+.agent-reasoning-node.plan_step rect {
+  fill: #2563eb;
+}
+
+.agent-reasoning-node.knowledge rect {
+  fill: #0f766e;
+}
+
+.agent-reasoning-node.creator rect {
+  fill: #7c3aed;
+}
+
+.agent-reasoning-node.tag rect {
+  fill: #ca8a04;
+}
+
+.agent-reasoning-node.risk rect {
+  fill: #b42318;
+}
+
+.agent-reasoning-node.proposal rect {
+  fill: #475569;
+}
+
+.agent-reasoning-node.memory rect {
+  fill: #00a676;
+}
+
+.agent-reasoning-node.tool_trace rect {
+  fill: #0f172a;
+}
+
 .knowledge-hero {
   align-items: center;
   background: #17120d;
@@ -3878,6 +3952,7 @@ tbody tr:hover td {
 
   .campaign-room-summary,
   .campaign-room-layout,
+  .agent-reasoning-layout,
   .knowledge-hero,
   .project-run-graph-layout,
   .project-run-hero {

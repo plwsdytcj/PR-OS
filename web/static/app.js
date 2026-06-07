@@ -10,6 +10,7 @@ const state = {
   activeAgentRun: null,
   activeAgentArtifacts: [],
   activeArtifactDetail: null,
+  activeAgentGraphNodeId: "",
   agentPollTimer: null,
   knowledgeDocuments: [],
   knowledgeStats: null,
@@ -825,6 +826,7 @@ function renderAgentRun(data) {
       : emptyState("暂无执行事件", "启动 Agent 后会显示每一步工具调用。");
   }
   renderAgentArtifacts();
+  renderAgentReasoningGraph();
 }
 
 function renderAgentArtifacts() {
@@ -833,6 +835,134 @@ function renderAgentArtifacts() {
   list.innerHTML = state.activeAgentArtifacts.length
     ? state.activeAgentArtifacts.map((artifact) => renderAgentArtifact(artifact)).join("")
     : emptyState("暂无产物", "Agent 会在这里沉淀知识检索、PR 运行结果和甲方方案。");
+}
+
+function activeReasoningGraphArtifact() {
+  return state.activeAgentArtifacts.find((artifact) => artifact.artifact_type === "reasoning_graph");
+}
+
+function renderAgentReasoningGraph() {
+  const panel = $("#agentReasoningPanel");
+  const artifact = activeReasoningGraphArtifact();
+  if (!panel) return;
+  if (!artifact?.payload?.nodes?.length) {
+    panel.classList.add("hidden");
+    return;
+  }
+  panel.classList.remove("hidden");
+  const graph = artifact.payload;
+  const meta = $("#agentReasoningMeta");
+  if (meta) meta.textContent = `${fmtNumber(graph.summary?.node_count)} nodes / ${fmtNumber(graph.summary?.edge_count)} edges`;
+  if (!state.activeAgentGraphNodeId || !(graph.nodes || []).some((node) => node.id === state.activeAgentGraphNodeId)) {
+    state.activeAgentGraphNodeId = graph.nodes[0]?.id || "";
+  }
+  renderAgentGraphInto("#agentReasoningGraphCanvas", graph);
+  renderAgentReasoningInspector();
+}
+
+function renderAgentGraphInto(selector, graph) {
+  const canvas = $(selector);
+  if (!canvas) return;
+  const nodes = graph.nodes || [];
+  const edges = graph.edges || [];
+  if (!nodes.length) {
+    canvas.innerHTML = '<div class="meta">暂无 Agent 推理图谱。</div>';
+    return;
+  }
+  const width = 1280;
+  const height = Math.max(680, Math.ceil(nodes.length / 4) * 132);
+  const positioned = layoutAgentGraphNodes(nodes, width, height);
+  const nodeMap = Object.fromEntries(positioned.map((node) => [node.id, node]));
+  const edgeSvg = edges
+    .filter((edge) => nodeMap[edge.source] && nodeMap[edge.target])
+    .map((edge) => {
+      const source = nodeMap[edge.source];
+      const target = nodeMap[edge.target];
+      const stroke = agentEdgeColor(edge.type);
+      const midX = (source.x + target.x) / 2;
+      const midY = (source.y + target.y) / 2;
+      return `
+        <path class="agent-graph-edge" d="M ${source.x} ${source.y} C ${source.x + 90} ${source.y}, ${target.x - 90} ${target.y}, ${target.x} ${target.y}" fill="none" stroke="${stroke}" stroke-width="1.8" />
+        <text x="${midX}" y="${midY - 8}" class="graph-edge-label">${escapeHTML(edge.label || edge.type || "")}</text>
+      `;
+    })
+    .join("");
+  const nodeSvg = positioned
+    .map((node) => {
+      const selected = state.activeAgentGraphNodeId === node.id ? " selected" : "";
+      const score = node.score ? `<tspan x="${node.x}" dy="15">score ${escapeHTML(node.score)}</tspan>` : "";
+      return `
+        <g class="graph-node agent-reasoning-node ${escapeHTML(node.type || "node")}${selected}" data-agent-node-id="${escapeHTML(node.id)}" tabindex="0" role="button" aria-label="${escapeHTML(node.label)}">
+          <rect x="${node.x - 58}" y="${node.y - 30}" width="116" height="60" rx="6"></rect>
+          <text x="${node.x}" y="${node.y - 4}" text-anchor="middle">${escapeHTML(shortLabel(node.label))}${score}</text>
+        </g>
+      `;
+    })
+    .join("");
+  canvas.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Agent 推理图谱">${edgeSvg}${nodeSvg}</svg>`;
+}
+
+function layoutAgentGraphNodes(nodes, width, height) {
+  const lanes = {
+    input: 0.07,
+    analysis: 0.18,
+    plan: 0.3,
+    evidence: 0.43,
+    ontology: 0.53,
+    kol_match: 0.62,
+    risk: 0.74,
+    trace: 0.82,
+    proposal: 0.9,
+    memory: 0.96,
+  };
+  const grouped = nodes.reduce((acc, node) => {
+    const lane = lanes[node.stage || "analysis"] === undefined ? 0.5 : lanes[node.stage || "analysis"];
+    acc[lane] = acc[lane] || [];
+    acc[lane].push(node);
+    return acc;
+  }, {});
+  return nodes.map((node) => {
+    const lane = lanes[node.stage || "analysis"] === undefined ? 0.5 : lanes[node.stage || "analysis"];
+    const group = grouped[lane];
+    const index = group.indexOf(node);
+    const gap = height / (group.length + 1);
+    return { ...node, x: Math.round(width * lane), y: Math.round(gap * (index + 1)) };
+  });
+}
+
+function agentEdgeColor(type) {
+  if (type === "risk") return "#ff3b30";
+  if (type === "match") return "#7c3aed";
+  if (type === "evidence") return "#2563eb";
+  if (type === "memory") return "#0f766e";
+  if (type === "trace") return "#111827";
+  return "#64748b";
+}
+
+function renderAgentReasoningInspector() {
+  const target = $("#agentReasoningInspector");
+  const graph = activeReasoningGraphArtifact()?.payload || {};
+  if (!target) return;
+  const nodes = graph.nodes || [];
+  const edges = graph.edges || [];
+  const node = nodes.find((item) => item.id === state.activeAgentGraphNodeId) || nodes[0];
+  if (!node) {
+    target.innerHTML = '<div class="meta">点击节点查看推理依据。</div>';
+    return;
+  }
+  state.activeAgentGraphNodeId = node.id;
+  const related = edges.filter((edge) => edge.source === node.id || edge.target === node.id).slice(0, 8);
+  target.innerHTML = `
+    <div class="card-kicker">${escapeHTML(node.stage || "reasoning")} · ${escapeHTML(node.type || "node")}</div>
+    <h3>${escapeHTML(node.label || node.id)}</h3>
+    ${node.score ? `<div class="node-score">${fmtNumber(node.score)}</div>` : ""}
+    <p>${escapeHTML(node.detail || "暂无详细说明。")}</p>
+    ${renderInspectorPayload(node.payload || {})}
+    <div class="inspector-links">
+      <strong>关系</strong>
+      ${related.map((edge) => `<span>${escapeHTML(edge.source === node.id ? "→" : "←")} ${escapeHTML(edge.label || edge.type || "relation")}</span>`).join("") || '<span>暂无关联边</span>'}
+    </div>
+  `;
 }
 
 function renderAgentArtifact(artifact) {
@@ -927,6 +1057,16 @@ function renderAgentArtifact(artifact) {
             `;
           })
           .join("")}
+      </div>
+    `;
+  } else if (artifact.artifact_type === "reasoning_graph") {
+    const summary = payload.summary || {};
+    detail = `
+      <div class="agent-artifact-metrics">
+        <span>节点 ${fmtNumber(summary.node_count)}</span>
+        <span>关系 ${fmtNumber(summary.edge_count)}</span>
+        <span>KOL ${fmtNumber(summary.kol_count)}</span>
+        <span>风险 ${fmtNumber(summary.risk_count)}</span>
       </div>
     `;
   }
@@ -3099,6 +3239,22 @@ function bindEvents() {
     const button = event.target.closest(".open-artifact-detail-btn");
     if (!button) return;
     openArtifactModal(button.dataset.artifactId);
+  });
+
+  document.addEventListener("click", (event) => {
+    const node = event.target.closest("#agentReasoningGraphCanvas [data-agent-node-id]");
+    if (!node) return;
+    state.activeAgentGraphNodeId = node.dataset.agentNodeId || "";
+    renderAgentReasoningGraph();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const node = event.target.closest?.("#agentReasoningGraphCanvas [data-agent-node-id]");
+    if (!node) return;
+    event.preventDefault();
+    state.activeAgentGraphNodeId = node.dataset.agentNodeId || "";
+    renderAgentReasoningGraph();
   });
 
   document.addEventListener("click", (event) => {

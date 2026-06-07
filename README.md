@@ -20,6 +20,7 @@ PR AI OS is a local-first MVP for media agencies managing KOL resources, brand b
 - Phase 7D: Agent planner, missing-field clarification, and detailed tool trace artifacts.
 - Phase 7E: Agent memory feedback loop with human-confirmed artifact-to-knowledge writeback.
 - Phase 7F: Agent experience hardening with plan approval, run controls, clarification resume, artifact detail, and editable memory review.
+- Phase 7G: Agent reasoning graph view linking brief, intent, knowledge evidence, KOL tags, risks, proposal, tool trace, and memory writeback.
 - Phase 7 PRD: see `Phase7_Agent_OS_PRD.md` for the Agent OS roadmap from 7A to 7E.
 - Production foundations: workspace-level data isolation, optional access key, centralized data-source status/testing, and pluggable storage/auth adapters.
 
@@ -274,6 +275,23 @@ Core 7F APIs:
 - `POST /api/agent/runs/{run_id}/cancel`
 - `POST /api/agent/runs/{run_id}/clarification`
 
+## Phase 7G Agent Reasoning Graph
+
+The Agent run now generates a `reasoning_graph` artifact and renders it in the Agent Workspace:
+
+- Brief node: the original internal or client-provided requirement.
+- Intent node: parsed objective, budget, product, platform, and stage.
+- Plan nodes: Agent execution plan steps.
+- Knowledge nodes: evidence from the company knowledge base.
+- KOL nodes: recommended creators and scores.
+- Tag nodes: matched brand/KOL tags that explain fit.
+- Risk nodes: risks from matching and simulation.
+- Proposal node: client-facing proposal output.
+- Tool trace nodes: evidence of tool execution.
+- Memory nodes: knowledge writeback suggestions.
+
+This is the current MiroFish-like explanatory graph for Agent reasoning. It is not a hidden chain-of-thought; it is an inspectable business reasoning graph built from artifacts and tool outputs.
+
 ## PostgreSQL / pgvector Migration
 
 The app remains local-first SQLite by default, but the repo includes a PostgreSQL/pgvector migration path:
@@ -369,6 +387,7 @@ python3 scripts/smoke_phase7b_agent_streaming.py
 python3 scripts/smoke_phase7c_knowledge_rag.py
 python3 scripts/smoke_phase7d_7e_agent_planner_memory.py
 python3 scripts/smoke_phase7f_agent_experience.py
+python3 scripts/smoke_phase7g_agent_reasoning_graph.py
 python3 scripts/smoke_agent_model_provider.py
 python3 scripts/smoke_data_sources.py
 python3 scripts/smoke_storage_adapter.py

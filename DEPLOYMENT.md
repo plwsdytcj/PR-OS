@@ -46,6 +46,7 @@ Authentication is also adapter-shaped:
 - Phase 7D adds Agent plan artifacts, missing-field clarification, and detailed tool trace artifacts.
 - Phase 7E adds human-confirmed Agent memory writeback into the knowledge base.
 - Phase 7F adds plan approval, run cancellation, clarification resume, artifact detail, and editable memory review controls.
+- Phase 7G adds an Agent reasoning graph artifact and visual canvas linking brief, knowledge, KOL tags, risks, proposal, trace, and memory.
 - Future providers such as Authing, Feishu SSO, OIDC, and SAML should plug into the identity provider layer instead of rewriting business permissions.
 
 Object files are handled by the object storage adapter:
@@ -131,6 +132,7 @@ python3 scripts/smoke_phase7b_agent_streaming.py
 python3 scripts/smoke_phase7c_knowledge_rag.py
 python3 scripts/smoke_phase7d_7e_agent_planner_memory.py
 python3 scripts/smoke_phase7f_agent_experience.py
+python3 scripts/smoke_phase7g_agent_reasoning_graph.py
 python3 scripts/smoke_agent_model_provider.py
 python3 scripts/smoke_data_sources.py
 python3 scripts/smoke_tenant_api.py

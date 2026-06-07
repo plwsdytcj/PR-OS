@@ -175,6 +175,7 @@ Phase 7C Knowledge RAG
 Phase 7D Agent Planner / Tool Trace / Clarification
 Phase 7E Memory Feedback Loop
 Phase 7F Agent Experience Hardening
+Phase 7G Agent Reasoning Graph View
 ```
 
 ---
@@ -613,9 +614,93 @@ waiting_plan_approval
 
 ---
 
-## 12. 技术架构
+## 12. Phase 7G：Agent Reasoning Graph View
 
-### 12.1 当前技术选择
+状态：**已完成**
+
+### 12.1 目标
+
+把 Agent 的中间过程从“事件流 + 产物卡”升级成“可视化推理图谱”。
+
+7G 的目标不是暴露模型的隐藏思维链，而是把业务上可解释的证据关系画出来：
+
+```text
+甲方 Brief
+→ 解析目标
+→ 执行计划
+→ 知识库证据
+→ KOL 标签
+→ 候选 KOL
+→ 风险信号
+→ 甲方方案
+→ 记忆回流
+```
+
+### 12.2 核心模块
+
+#### 12.2.1 Reasoning Graph Artifact
+
+Agent 正常执行后生成 `reasoning_graph` artifact。
+
+节点类型包括：
+
+- `brief`：甲方或内部输入；
+- `intent`：解析目标；
+- `plan_step`：执行计划；
+- `knowledge`：知识库证据；
+- `creator`：候选 KOL；
+- `tag`：匹配标签和符号；
+- `risk`：风险信号；
+- `proposal`：甲方方案；
+- `tool_trace`：工具调用证据；
+- `memory`：记忆回流建议。
+
+#### 12.2.2 Agent 推理图画布
+
+`AI Agent` 页面新增推理图谱区域。
+
+用户可以看到：
+
+- Agent 为什么这样理解 brief；
+- 它检索到了哪些知识；
+- 哪些标签影响了 KOL 匹配；
+- 哪些风险被识别；
+- 哪些 KOL 进入方案；
+- 哪些内容将沉淀为知识库记忆。
+
+#### 12.2.3 节点详情
+
+点击图中节点后，右侧 inspector 展示：
+
+- 节点类型；
+- 所属阶段；
+- 说明；
+- score；
+- payload；
+- 关联关系。
+
+### 12.3 已实现能力
+
+- `src/agent/reasoning_graph.py`；
+- Agent run 自动生成 `reasoning_graph` artifact；
+- 前端 `Agent 推理图谱` SVG 画布；
+- 节点点击 inspector；
+- artifact 详情中可查看完整 graph payload；
+- Phase 7G smoke 测试。
+
+### 12.4 7G 不做
+
+- 不做真实 MiroFish 引擎替换；
+- 不做拖拽编辑图谱；
+- 不做实时动态图动画；
+- 不做跨项目知识图谱查询；
+- 不暴露 LLM 隐藏 chain-of-thought。
+
+---
+
+## 13. 技术架构
+
+### 13.1 当前技术选择
 
 当前 Phase 7 采用轻量、可替换的本地优先架构：
 
@@ -630,7 +715,7 @@ Knowledge RAG module
 Object storage adapter
 ```
 
-### 12.2 为什么暂不直接上 LangGraph
+### 13.2 为什么暂不直接上 LangGraph
 
 当前阶段不需要过早引入复杂工作流框架。
 
@@ -642,7 +727,7 @@ Object storage adapter
 - 本地可控更重要；
 - 未来仍可把 planner/runtime 替换为 LangGraph 或 OpenAI Agents SDK。
 
-### 12.3 未来可替换点
+### 13.3 未来可替换点
 
 未来可以替换：
 
@@ -655,9 +740,9 @@ Object storage adapter
 
 ---
 
-## 13. 数据模型
+## 14. 数据模型
 
-### 13.1 Agent
+### 14.1 Agent
 
 核心对象：
 
@@ -666,14 +751,14 @@ Object storage adapter
 - `agent_events`；
 - `agent_artifacts`。
 
-### 13.2 Knowledge
+### 14.2 Knowledge
 
 核心对象：
 
 - `knowledge_documents`；
 - `knowledge_chunks`。
 
-### 13.3 7D 新增建议
+### 14.3 7D 新增建议
 
 建议新增：
 
@@ -685,9 +770,9 @@ Object storage adapter
 
 ---
 
-## 14. 页面结构
+## 15. 页面结构
 
-### 14.1 已有页面
+### 15.1 已有页面
 
 - `AI Agent`：Agent 任务、事件流、产物；
 - `知识库`：知识写入、搜索、文档列表；
@@ -695,7 +780,7 @@ Object storage adapter
 - `Campaign OS`：项目作战室；
 - `组织管理`：用户和客户权限。
 
-### 14.2 7D / 7F 页面增强
+### 15.2 7D / 7F / 7G 页面增强
 
 `AI Agent` 页面需要新增：
 
@@ -704,10 +789,12 @@ Object storage adapter
 - 工具 trace 面板；
 - artifact detail；
 - plan approval 状态。
+- Agent reasoning graph；
+- graph node inspector。
 
 ---
 
-## 15. 成功标准
+## 16. 成功标准
 
 Phase 7 整体成功标准：
 
@@ -721,7 +808,7 @@ Phase 7 整体成功标准：
 
 ---
 
-## 16. 当前状态
+## 17. 当前状态
 
 截至 2026-06-07：
 
@@ -731,29 +818,30 @@ Phase 7 整体成功标准：
 - Phase 7D：已实现；
 - Phase 7E：已实现。
 - Phase 7F：已实现。
+- Phase 7G：已实现。
 
 当前最新代码提交以 `git log -1 --oneline` 为准。
 
 ---
 
-## 17. 下一步建议
+## 18. 下一步建议
 
-下一步优先做 Phase 8，或者继续做 Phase 7G 的深度体验增强：
+下一步优先做 Phase 8，或者继续做 Phase 7H 的高级控制：
 
 ```text
-Phase 8 Productionization / Phase 7G Advanced Agent Control
+Phase 8 Productionization / Phase 7H Advanced Agent Control
 ```
 
 原因：
 
-- 现在已经有 Agent、streaming、知识库、计划、追问、工具 trace、记忆回流和基础操作控制；
+- 现在已经有 Agent、streaming、知识库、计划、追问、工具 trace、记忆回流、基础操作控制和推理图谱；
 - 下一步更应该增强体验稳定性、真实团队使用、权限审计、SSE/WebSocket、PostgreSQL/pgvector 和部署；
 - 也可以把 plan approval、工具步骤编辑、自动复盘入库审核流继续做深。
 
 候选方向：
 
 ```text
-1. Phase 7G：Agent 高级控制，步骤编辑、中途暂停/恢复、多人协作观察。
+1. Phase 7H：Agent 高级控制，步骤编辑、中途暂停/恢复、多人协作观察。
 2. Phase 8：生产化，PostgreSQL/pgvector、云对象存储、企业 SSO、审计日志、部署。
 3. Phase 9：甲方协作 Agent，把甲方也接入对话式方案确认。
 ```

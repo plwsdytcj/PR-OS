@@ -7,6 +7,7 @@ from typing import Any
 from src.agent.memory import build_memory_suggestions, commit_memory_suggestion
 from src.agent.model_provider import AgentModelProvider
 from src.agent.planner import build_agent_plan, clarification_payload
+from src.agent.reasoning_graph import build_reasoning_graph
 from src.agent.schemas import (
     AgentArtifact,
     AgentEvent,
@@ -215,6 +216,7 @@ def execute_agent_run(db_path: Path, run_id: str, top_n: int = 8, require_plan_a
         upsert_task(db_path, task)
 
         if original_status == "waiting_plan_approval":
+            plan = _latest_plan_payload(db_path, task.task_id)
             event("planner", "completed", "计划已确认", "内部用户已确认计划，继续执行工具链。", tool_name="planner")
         else:
             plan = build_agent_plan(message, client_name=task.client_name, project_name=task.project_name, top_n=top_n)
@@ -379,6 +381,23 @@ def execute_agent_run(db_path: Path, run_id: str, top_n: int = 8, require_plan_a
             tool_name="tool_trace",
             payload={"count": len(tool_traces)},
             artifact_id=trace_artifact.artifact_id,
+        )
+
+        reasoning_graph = build_reasoning_graph(task, plan, knowledge, project, proposal, tool_traces, memory)
+        graph_artifact = artifact(
+            "reasoning_graph",
+            "Agent 推理图谱",
+            f"生成 {reasoning_graph['summary']['node_count']} 个节点和 {reasoning_graph['summary']['edge_count']} 条关系。",
+            reasoning_graph,
+        )
+        event(
+            "reasoning_graph",
+            "completed",
+            "生成 Agent 推理图谱",
+            graph_artifact.summary,
+            tool_name="build_reasoning_graph",
+            payload=reasoning_graph["summary"],
+            artifact_id=graph_artifact.artifact_id,
         )
 
         model_result = AgentModelProvider().final_answer(task, knowledge, project_summary, proposal["summary"])
@@ -555,6 +574,16 @@ def _task_payload(db_path: Path, task: AgentTask) -> dict[str, Any]:
         "runs": [run.to_dict() for run in runs],
         "artifacts": [artifact.to_dict() for artifact in artifacts],
     }
+
+
+def _latest_plan_payload(db_path: Path, task_id: str) -> dict[str, Any]:
+    for artifact in load_artifacts_for_task(db_path, task_id):
+        if artifact.artifact_type == "plan":
+            return artifact.payload
+    task = load_task(db_path, task_id)
+    if task:
+        return build_agent_plan(task.brief, client_name=task.client_name, project_name=task.project_name)
+    return {"status": "ready", "steps": []}
 
 
 def _final_answer(task: AgentTask, project_summary: dict[str, Any], proposal_summary: dict[str, Any]) -> str:
