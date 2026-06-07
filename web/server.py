@@ -35,7 +35,7 @@ from src.auth.service import (
     users_exist,
 )
 from src.auth.storage import init_auth_db, load_all_clients, load_all_project_access, load_all_users, load_client_users_for_client
-from src.agent.runtime import approve_agent_run, execute_agent_run, get_agent_run, get_agent_task, list_agent_tasks, run_agent_chat, start_agent_chat
+from src.agent.runtime import approve_agent_run, commit_agent_memory_suggestion, execute_agent_run, get_agent_run, get_agent_task, list_agent_tasks, run_agent_chat, start_agent_chat
 from src.agent.storage import init_agent_db
 from src.connectors.excel_connector import load_table_file
 from src.connectors.link_connector import parse_links
@@ -612,6 +612,20 @@ async def agent_run_approve(run_id: str) -> dict[str, Any]:
         return approve_agent_run(DB_PATH, run_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/agent/artifacts/{artifact_id}/knowledge")
+async def agent_artifact_to_knowledge(artifact_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    identity = require_internal("write")
+    try:
+        return commit_agent_memory_suggestion(
+            DB_PATH,
+            artifact_id,
+            suggestion_index=int(payload.get("suggestion_index") or 0),
+            created_by=identity.user.user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/knowledge")

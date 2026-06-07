@@ -307,7 +307,7 @@ Phase 7E Memory Feedback Loop
 
 ## 9. Phase 7D：Agent Planner / Tool Trace / Clarification
 
-状态：**下一步建议实现**
+状态：**已完成**
 
 ### 9.1 目标
 
@@ -406,7 +406,16 @@ Agent 先生成执行计划：
 - 至少支持 `search_knowledge`、`project_run`、`proposal` 三类工具 trace；
 - smoke 测试覆盖 clarification 和正常执行两条路径。
 
-### 9.5 7D 不做
+### 9.5 已实现能力
+
+- Agent run 先生成 `plan` artifact；
+- brief 缺预算、平台或产品时进入 `waiting_clarification`；
+- 生成 `clarification` artifact，并在 final answer 中返回追问问题；
+- 正常执行路径会记录 `tool_trace` artifact；
+- trace 覆盖 `search_knowledge`、`run_project`、`create_proposal`、`suggest_memory`；
+- 前端产物面板可以展示计划、追问和工具 trace。
+
+### 9.6 7D 不做
 
 - 不做多 Agent 协同；
 - 不做用户拖拽编辑流程图；
@@ -418,7 +427,7 @@ Agent 先生成执行计划：
 
 ## 10. Phase 7E：Memory Feedback Loop
 
-状态：**后续阶段**
+状态：**已完成**
 
 ### 10.1 目标
 
@@ -497,7 +506,16 @@ Agent 先生成执行计划：
 - 投后复盘可以形成 `creator_history`；
 - 下次 Agent 执行能检索到这些知识。
 
-### 10.5 7E 不做
+### 10.5 已实现能力
+
+- Agent 完成正常执行后生成 `memory_suggestions` artifact；
+- 默认生成项目案例、客户偏好线索、风险规则三类知识建议；
+- 前端产物面板可以点击“确认入库”；
+- `POST /api/agent/artifacts/{artifact_id}/knowledge` 将指定建议写入知识库；
+- 入库后可被 `/api/knowledge/search` 检索；
+- 已入库状态会回写到 memory suggestion artifact。
+
+### 10.6 7E 不做
 
 - 不做完全自动无审核入库；
 - 不做复杂知识图谱推理；
@@ -622,37 +640,31 @@ Phase 7 整体成功标准：
 - Phase 7A：已实现；
 - Phase 7B：已实现；
 - Phase 7C：已实现；
-- Phase 7D：建议下一步实现；
-- Phase 7E：建议后续实现。
+- Phase 7D：已实现；
+- Phase 7E：已实现。
 
-当前最新代码提交：
-
-```text
-db6c9cd Add knowledge RAG layer
-```
+当前最新代码提交以 `git log -1 --oneline` 为准。
 
 ---
 
 ## 16. 下一步建议
 
-下一步优先做：
+下一步优先做 Phase 8 或 Phase 7F，而不是继续定义 7D/7E：
 
 ```text
-Phase 7D Agent Planner / Tool Trace / Clarification
+Phase 7F Agent Experience Hardening / Phase 8 Productionization
 ```
 
 原因：
 
-- 现在已经有 Agent、streaming、知识库；
-- 但 Agent 还不够像真正项目经理；
-- 用户需要看到它怎么计划、怎么查、怎么调用工具；
-- brief 缺字段时需要追问；
-- 这一步会明显提升 AI Native 体验。
+- 现在已经有 Agent、streaming、知识库、计划、追问、工具 trace 和记忆回流；
+- 下一步更应该增强体验稳定性、真实团队使用、权限审计、SSE/WebSocket、PostgreSQL/pgvector 和部署；
+- 也可以把 plan approval、工具步骤编辑、自动复盘入库审核流继续做深。
 
-7D 完成后，再进入：
+候选方向：
 
 ```text
-Phase 7E Memory Feedback Loop
+1. Phase 7F：Agent 体验增强，计划确认、步骤编辑、中途暂停、artifact detail。
+2. Phase 8：生产化，PostgreSQL/pgvector、云对象存储、企业 SSO、审计日志、部署。
+3. Phase 9：甲方协作 Agent，把甲方也接入对话式方案确认。
 ```
-
-让项目结果自动变成公司知识资产。

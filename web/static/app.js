@@ -817,12 +817,54 @@ function renderAgentArtifacts() {
 function renderAgentArtifact(artifact) {
   const payload = artifact.payload || {};
   let detail = "";
-  if (artifact.artifact_type === "knowledge") {
+  if (artifact.artifact_type === "plan") {
+    detail = `
+      <div class="agent-plan">
+        <div class="status-pill ${payload.status === "ready" ? "ok" : "warn"}">${escapeHTML(payload.status || "planned")}</div>
+        ${(payload.steps || [])
+          .map(
+            (step, index) => `
+              <div class="agent-plan-step ${escapeHTML(step.status || "pending")}">
+                <span>${String(index + 1).padStart(2, "0")}</span>
+                <div>
+                  <strong>${escapeHTML(step.label || step.id)}</strong>
+                  <p>${escapeHTML(step.reason || "")}</p>
+                </div>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    `;
+  } else if (artifact.artifact_type === "clarification") {
+    detail = `
+      <div class="agent-clarification">
+        ${(payload.questions || []).map((question) => `<div class="feedback-item"><strong>需要补充</strong><p>${escapeHTML(question)}</p></div>`).join("")}
+        <div class="meta">${escapeHTML(payload.suggested_reply_format || "")}</div>
+      </div>
+    `;
+  } else if (artifact.artifact_type === "knowledge") {
     detail = (payload.items || [])
       .slice(0, 4)
       .map((item) => `<li>${escapeHTML(item.title)} <span>${escapeHTML(item.source)}</span></li>`)
       .join("");
     detail = `<ul class="agent-mini-list">${detail}</ul>`;
+  } else if (artifact.artifact_type === "tool_trace") {
+    detail = `
+      <div class="agent-trace-list">
+        ${(payload.items || [])
+          .map(
+            (item) => `
+              <div class="agent-trace-item ${escapeHTML(item.status || "completed")}">
+                <strong>${escapeHTML(item.tool_name)}</strong>
+                <span>${fmtNumber(item.elapsed_ms)}ms</span>
+                <p>${escapeHTML(item.output_summary || item.error || "")}</p>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    `;
   } else if (artifact.artifact_type === "project_run") {
     const summary = payload.summary || {};
     detail = `
@@ -840,6 +882,29 @@ function renderAgentArtifact(artifact) {
         <span>预算 ${fmtNumber(summary.budget_total)}</span>
       </div>
       <div class="meta">${escapeHTML(payload.proposal?.share_url || "")}</div>
+    `;
+  } else if (artifact.artifact_type === "memory_suggestions") {
+    detail = `
+      <div class="agent-memory-list">
+        ${(payload.suggestions || [])
+          .map((item, index) => {
+            const committed = payload.committed?.[String(index)];
+            return `
+              <article class="agent-memory-item ${committed ? "committed" : ""}">
+                <div class="card-kicker">${escapeHTML(item.source_type || "case")}</div>
+                <strong>${escapeHTML(item.title || "记忆建议")}</strong>
+                <p>${escapeHTML(item.content || "").slice(0, 180)}</p>
+                <div class="tag-list">${(item.tags || []).map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`).join("")}</div>
+                ${
+                  committed
+                    ? `<div class="meta">已入库：${escapeHTML(committed.document_id || "")}</div>`
+                    : `<button class="primary commit-memory-btn" data-artifact-id="${escapeHTML(artifact.artifact_id)}" data-suggestion-index="${index}" type="button">确认入库</button>`
+                }
+              </article>
+            `;
+          })
+          .join("")}
+      </div>
     `;
   }
   return `
@@ -2912,6 +2977,26 @@ function bindEvents() {
     if (!button) return;
     const data = await api(`/api/knowledge/${button.dataset.documentId}`);
     renderKnowledgeDetail(data);
+  });
+
+  document.addEventListener("click", async (event) => {
+    const button = event.target.closest(".commit-memory-btn");
+    if (!button) return;
+    try {
+      await api(`/api/agent/artifacts/${button.dataset.artifactId}/knowledge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ suggestion_index: Number(button.dataset.suggestionIndex || 0) }),
+      });
+      if (state.activeAgentRun?.run?.run_id) {
+        const data = await api(`/api/agent/runs/${state.activeAgentRun.run.run_id}`);
+        renderAgentRun(data);
+      }
+      await loadKnowledge();
+      toast("记忆已写入知识库");
+    } catch (error) {
+      toast(error.message, true);
+    }
   });
 
   document.addEventListener("click", (event) => {

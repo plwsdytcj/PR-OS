@@ -17,6 +17,8 @@ PR AI OS is a local-first MVP for media agencies managing KOL resources, brand b
 - Phase 7A: PR Project Manager Agent workspace with task/run/event/artifact runtime, local RAG placeholder, tool execution, and human approval.
 - Phase 7B: streaming-style Agent execution with async run start, background tool execution, and polling event updates.
 - Phase 7C: Knowledge RAG layer with document/chunk storage, local embedding fallback, knowledge search APIs, frontend knowledge console, and Agent RAG integration.
+- Phase 7D: Agent planner, missing-field clarification, and detailed tool trace artifacts.
+- Phase 7E: Agent memory feedback loop with human-confirmed artifact-to-knowledge writeback.
 - Phase 7 PRD: see `Phase7_Agent_OS_PRD.md` for the Agent OS roadmap from 7A to 7E.
 - Production foundations: workspace-level data isolation, optional access key, centralized data-source status/testing, and pluggable storage/auth adapters.
 
@@ -239,6 +241,20 @@ Core knowledge APIs:
 - `GET /api/knowledge/{document_id}`
 - `POST /api/knowledge/search`
 
+## Phase 7D / 7E Agent Planning And Memory Loop
+
+The Agent layer now behaves more like a PR project manager instead of a fixed automation button:
+
+- Generates a `plan` artifact before running tools.
+- Returns a `clarification` artifact and pauses at `waiting_clarification` when the brief misses critical fields such as budget, platform, or product.
+- Records a `tool_trace` artifact with tool name, input summary, output summary, latency, status, and linked artifact.
+- Generates `memory_suggestions` from the run so internal users can confirm which project knowledge should be written back.
+- Commits selected memory suggestions into the Knowledge RAG layer through a human-confirmed API.
+
+Core memory API:
+
+- `POST /api/agent/artifacts/{artifact_id}/knowledge`
+
 ## PostgreSQL / pgvector Migration
 
 The app remains local-first SQLite by default, but the repo includes a PostgreSQL/pgvector migration path:
@@ -275,6 +291,7 @@ python3 scripts/migrate_sqlite_to_postgres.py --sqlite data/processed/phase1_web
 - `GET /api/agent/runs/{run_id}`
 - `GET /api/agent/runs/{run_id}/events`
 - `POST /api/agent/runs/{run_id}/approve`
+- `POST /api/agent/artifacts/{artifact_id}/knowledge`
 - `GET /api/knowledge`
 - `POST /api/knowledge`
 - `GET /api/knowledge/{document_id}`
@@ -328,6 +345,7 @@ python3 scripts/smoke_phase6b_org.py
 python3 scripts/smoke_phase7a_agent.py
 python3 scripts/smoke_phase7b_agent_streaming.py
 python3 scripts/smoke_phase7c_knowledge_rag.py
+python3 scripts/smoke_phase7d_7e_agent_planner_memory.py
 python3 scripts/smoke_agent_model_provider.py
 python3 scripts/smoke_data_sources.py
 python3 scripts/smoke_storage_adapter.py

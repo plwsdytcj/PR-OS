@@ -43,6 +43,8 @@ Authentication is also adapter-shaped:
 - Phase 7A adds the `AI Agent` page with local task/run/event/artifact storage and a replaceable agent runtime. Set `AGENT_PROVIDER=glm` to use GLM for Agent reasoning summaries.
 - Phase 7B makes Agent execution streaming-style with `POST /api/agent/chat/start`, background execution, and polling event updates.
 - Phase 7C adds the `知识库` page, knowledge document/chunk storage, hybrid RAG search, and Agent integration through `POST /api/knowledge/search`.
+- Phase 7D adds Agent plan artifacts, missing-field clarification, and detailed tool trace artifacts.
+- Phase 7E adds human-confirmed Agent memory writeback into the knowledge base.
 - Future providers such as Authing, Feishu SSO, OIDC, and SAML should plug into the identity provider layer instead of rewriting business permissions.
 
 Object files are handled by the object storage adapter:
@@ -126,6 +128,7 @@ python3 scripts/smoke_phase6b_org.py
 python3 scripts/smoke_phase7a_agent.py
 python3 scripts/smoke_phase7b_agent_streaming.py
 python3 scripts/smoke_phase7c_knowledge_rag.py
+python3 scripts/smoke_phase7d_7e_agent_planner_memory.py
 python3 scripts/smoke_agent_model_provider.py
 python3 scripts/smoke_data_sources.py
 python3 scripts/smoke_tenant_api.py

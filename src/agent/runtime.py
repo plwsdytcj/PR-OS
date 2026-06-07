@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
+from src.agent.memory import build_memory_suggestions, commit_memory_suggestion
 from src.agent.model_provider import AgentModelProvider
+from src.agent.planner import build_agent_plan, clarification_payload
 from src.agent.schemas import (
     AgentArtifact,
     AgentEvent,
@@ -17,6 +20,7 @@ from src.agent.schemas import (
 )
 from src.agent.storage import (
     load_all_tasks,
+    load_artifact,
     load_artifacts_for_task,
     load_events_for_run,
     load_run,
@@ -172,6 +176,33 @@ def execute_agent_run(db_path: Path, run_id: str, top_n: int = 8) -> None:
         upsert_artifact(db_path, item)
         return item
 
+    tool_traces: list[dict[str, Any]] = []
+
+    def trace_start(tool_name: str, input_summary: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        return {
+            "tool_name": tool_name,
+            "input_summary": input_summary,
+            "input_payload": payload or {},
+            "status": "running",
+            "started_at": now_iso(),
+            "_started_perf": perf_counter(),
+        }
+
+    def trace_end(trace: dict[str, Any], status: str, output_summary: str, payload: dict[str, Any] | None = None, error: str = "", artifact_id: str = "") -> None:
+        elapsed_ms = int((perf_counter() - float(trace.pop("_started_perf", perf_counter()))) * 1000)
+        trace.update(
+            {
+                "status": status,
+                "output_summary": output_summary,
+                "output_payload": payload or {},
+                "error": error,
+                "artifact_id": artifact_id,
+                "elapsed_ms": elapsed_ms,
+                "finished_at": now_iso(),
+            }
+        )
+        tool_traces.append(trace)
+
     try:
         run.status = "running"
         run.updated_at = now_iso()
@@ -180,11 +211,57 @@ def execute_agent_run(db_path: Path, run_id: str, top_n: int = 8) -> None:
         upsert_run(db_path, run)
         upsert_task(db_path, task)
 
+        plan = build_agent_plan(message, client_name=task.client_name, project_name=task.project_name, top_n=top_n)
+        plan_artifact = artifact(
+            "plan",
+            "Agent 执行计划",
+            "已生成执行计划。" if plan["status"] == "ready" else "已生成执行计划，但需要先补充关键信息。",
+            plan,
+        )
+        event(
+            "planner",
+            "completed" if plan["status"] == "ready" else "waiting",
+            "生成执行计划",
+            plan_artifact.summary,
+            tool_name="planner",
+            payload={"status": plan["status"], "missing_fields": plan.get("missing_fields", [])},
+            artifact_id=plan_artifact.artifact_id,
+        )
+
+        if plan["status"] == "needs_clarification":
+            clarification = clarification_payload(plan)
+            clarification_artifact = artifact(
+                "clarification",
+                "Agent 追问",
+                "当前 brief 缺少关键字段，Agent 暂停执行并等待补充。",
+                clarification,
+            )
+            event(
+                "clarification",
+                "waiting",
+                "等待补充信息",
+                "请补充预算、平台、产品或目标人群后重新启动 Agent。",
+                tool_name="clarification",
+                payload=clarification,
+                artifact_id=clarification_artifact.artifact_id,
+            )
+            run.status = "waiting_clarification"
+            run.final_answer = "需要补充信息：" + "；".join(clarification.get("questions") or [])
+            run.updated_at = now_iso()
+            task.status = "waiting_clarification"
+            task.current_run_id = run.run_id
+            task.updated_at = now_iso()
+            upsert_run(db_path, run)
+            upsert_task(db_path, task)
+            return
+
         event("message", "completed", "理解项目需求", "已接收需求，准备检索组织记忆并调用 PR OS 工具。", payload={"message": message})
 
         event("tool_call", "running", "检索组织记忆", "查询历史提案、客户反馈、Campaign Room 和达人画像。", tool_name="search_knowledge")
+        knowledge_trace = trace_start("search_knowledge", f"query={task.brief[:120]}", {"top_k": 6})
         knowledge = search_knowledge_tool(db_path, query=task.brief, top_k=6)
         knowledge_artifact = artifact("knowledge", "组织记忆检索", f"找到 {knowledge['count']} 条可参考记录。", knowledge)
+        trace_end(knowledge_trace, "completed", knowledge_artifact.summary, {"count": knowledge["count"]}, artifact_id=knowledge_artifact.artifact_id)
         event(
             "tool_result",
             "completed",
@@ -196,6 +273,7 @@ def execute_agent_run(db_path: Path, run_id: str, top_n: int = 8) -> None:
         )
 
         event("tool_call", "running", "运行 PR 项目链路", "解析 Brief、生成符号图谱、匹配 KOL、跑压力测试并创建 Campaign Room。", tool_name="run_project")
+        project_trace = trace_start("run_project", f"client={task.client_name}; project={task.project_name}; top_n={top_n}", {"top_n": top_n})
         project = run_project_tool(db_path, client_name=task.client_name, project_name=task.project_name, brief=task.brief, top_n=top_n)
         project_summary = project["summary"]
         project_artifact = artifact(
@@ -204,6 +282,7 @@ def execute_agent_run(db_path: Path, run_id: str, top_n: int = 8) -> None:
             f"推荐 {project_summary['matches']} 位 KOL，生成 {project_summary['narratives']} 条叙事资产。",
             project,
         )
+        trace_end(project_trace, "completed", project_artifact.summary, project_summary, artifact_id=project_artifact.artifact_id)
         event(
             "tool_result",
             "completed",
@@ -215,6 +294,7 @@ def execute_agent_run(db_path: Path, run_id: str, top_n: int = 8) -> None:
         )
 
         event("tool_call", "running", "生成甲方协作方案", "把推荐结果转为甲方可查看、可反馈的协作提案。", tool_name="create_proposal")
+        proposal_trace = trace_start("create_proposal", f"client={task.client_name}; project={task.project_name}; top_n={top_n}", {"top_n": top_n})
         proposal = create_proposal_tool(
             db_path,
             client_name=task.client_name,
@@ -229,6 +309,7 @@ def execute_agent_run(db_path: Path, run_id: str, top_n: int = 8) -> None:
             f"已生成 {proposal['summary']['candidate_count']} 位候选 KOL 的客户方案。",
             proposal,
         )
+        trace_end(proposal_trace, "completed", proposal_artifact.summary, proposal["summary"], artifact_id=proposal_artifact.artifact_id)
         event(
             "tool_result",
             "completed",
@@ -237,6 +318,42 @@ def execute_agent_run(db_path: Path, run_id: str, top_n: int = 8) -> None:
             tool_name="create_proposal",
             payload=proposal["summary"],
             artifact_id=proposal_artifact.artifact_id,
+        )
+
+        event("tool_call", "running", "生成记忆回流建议", "把本次项目产物整理为可确认入库的知识建议。", tool_name="suggest_memory")
+        memory_trace = trace_start("suggest_memory", f"task={task.task_id}", {"artifact_types": ["case", "client_preference", "risk_policy"]})
+        memory = build_memory_suggestions(task, knowledge, project, proposal)
+        memory_artifact = artifact(
+            "memory_suggestions",
+            "记忆回流建议",
+            f"生成 {len(memory.get('suggestions') or [])} 条可入库知识建议，等待人工确认。",
+            memory,
+        )
+        trace_end(memory_trace, "completed", memory_artifact.summary, {"count": len(memory.get("suggestions") or [])}, artifact_id=memory_artifact.artifact_id)
+        event(
+            "tool_result",
+            "completed",
+            "完成记忆回流建议",
+            memory_artifact.summary,
+            tool_name="suggest_memory",
+            payload={"count": len(memory.get("suggestions") or [])},
+            artifact_id=memory_artifact.artifact_id,
+        )
+
+        trace_artifact = artifact(
+            "tool_trace",
+            "工具调用 Trace",
+            f"记录 {len(tool_traces)} 次工具调用的输入、输出、耗时和状态。",
+            {"items": tool_traces, "count": len(tool_traces)},
+        )
+        event(
+            "tool_trace",
+            "completed",
+            "保存工具调用 Trace",
+            trace_artifact.summary,
+            tool_name="tool_trace",
+            payload={"count": len(tool_traces)},
+            artifact_id=trace_artifact.artifact_id,
         )
 
         model_result = AgentModelProvider().final_answer(task, knowledge, project_summary, proposal["summary"])
@@ -271,6 +388,34 @@ def execute_agent_run(db_path: Path, run_id: str, top_n: int = 8) -> None:
         upsert_run(db_path, run)
         upsert_task(db_path, task)
         raise
+
+
+def commit_agent_memory_suggestion(db_path: Path, artifact_id: str, suggestion_index: int = 0, created_by: str = "") -> dict[str, Any]:
+    result = commit_memory_suggestion(db_path, artifact_id, suggestion_index=suggestion_index, created_by=created_by)
+    artifact = load_artifact(db_path, artifact_id)
+    if artifact:
+        run = load_run(db_path, artifact.run_id)
+        next_sequence = len(load_events_for_run(db_path, artifact.run_id)) + 1
+        upsert_event(
+            db_path,
+            AgentEvent(
+                event_id=event_id_for(artifact.run_id, next_sequence, "记忆已入库"),
+                run_id=artifact.run_id,
+                task_id=artifact.task_id,
+                sequence=next_sequence,
+                event_type="memory",
+                status="completed",
+                title="记忆已入库",
+                summary=f"已将建议 {suggestion_index + 1} 写入知识库：{result['document']['title']}",
+                tool_name="commit_memory",
+                payload={"document_id": result["document"]["document_id"], "suggestion_index": suggestion_index},
+                artifact_id=artifact_id,
+            ),
+        )
+        if run:
+            run.updated_at = now_iso()
+            upsert_run(db_path, run)
+    return result
 
 
 def approve_agent_run(db_path: Path, run_id: str) -> dict[str, Any]:

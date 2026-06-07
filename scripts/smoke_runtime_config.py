@@ -43,6 +43,7 @@ def main() -> None:
         "smoke_phase7a_agent.py",
         "smoke_phase7b_agent_streaming.py",
         "smoke_phase7c_knowledge_rag.py",
+        "smoke_phase7d_7e_agent_planner_memory.py",
         "smoke_agent_model_provider.py",
     ]:
         assert text in readme
@@ -57,6 +58,8 @@ def main() -> None:
         "Phase 7A",
         "Phase 7B",
         "Phase 7C",
+        "Phase 7D",
+        "Phase 7E",
         "AGENT_PROVIDER",
     ]:
         assert text in readme
