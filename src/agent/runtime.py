@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from src.agent.model_provider import AgentModelProvider
 from src.agent.schemas import (
     AgentArtifact,
     AgentEvent,
@@ -191,8 +192,19 @@ def run_agent_chat(
             artifact_id=proposal_artifact.artifact_id,
         )
 
-        final_answer = _final_answer(task, project_summary, proposal["summary"])
-        event("assistant_message", "waiting", "等待人工确认", "下一步可以在组织管理里把方案授权给甲方客户账号。", payload={"final_answer": final_answer})
+        model_result = AgentModelProvider().final_answer(task, knowledge, project_summary, proposal["summary"])
+        final_answer = str(model_result.get("answer") or _final_answer(task, project_summary, proposal["summary"]))
+        event(
+            "assistant_message",
+            "waiting",
+            "等待人工确认",
+            "下一步可以在组织管理里把方案授权给甲方客户账号。",
+            payload={
+                "final_answer": final_answer,
+                "next_actions": model_result.get("next_actions") or [],
+                "model_status": model_result.get("model_status") or "fallback",
+            },
+        )
         run.status = "waiting_approval"
         run.final_answer = final_answer
         run.updated_at = now_iso()

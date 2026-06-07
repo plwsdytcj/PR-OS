@@ -53,6 +53,11 @@ GLM_API_KEY=
 GLM_MODEL=glm-4-flash
 GLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4/chat/completions
 
+AGENT_PROVIDER=glm
+AGENT_API_KEY=
+AGENT_MODEL=
+AGENT_BASE_URL=
+
 PR_AI_OS_ACCESS_KEY=
 PR_AI_OS_AUTH_ENABLED=false
 PR_AI_OS_COOKIE_SECURE=false
@@ -75,6 +80,7 @@ OBJECT_STORE_PUBLIC_BASE_URL=
 Behavior:
 
 - If `GLM_API_KEY` is missing, symbolic analysis uses local rule fallback.
+- `AGENT_PROVIDER=glm` makes the Agent Workspace use GLM for final reasoning summaries; `AGENT_API_KEY`, `AGENT_MODEL`, and `AGENT_BASE_URL` can override the `GLM_*` values.
 - If `ONEAPI_API_KEY` is missing, OneAPI status is shown as not configured; Mock API and Excel remain usable.
 - If MiroFish CLI is not installed, Campaign stress tests use the OS fallback Simulation Layer.
 - If `PR_AI_OS_ACCESS_KEY` is set, private API calls require `X-Access-Key`; public client/creator links remain accessible.
@@ -198,8 +204,9 @@ The `AI Agent` page is the first Manus-like PR Agent OS layer:
 - Call existing PR OS tools: project run, KOL matching, risk simulation, Campaign Room creation, and proposal generation.
 - Show each step as an event stream and save outputs as artifacts.
 - Stop at a human approval point before client delivery/authorization.
+- Use the Agent model adapter for final reasoning summaries. The current default is GLM via `AGENT_PROVIDER=glm`, with deterministic fallback if no model key is configured.
 
-This version deliberately keeps the runtime local and replaceable. Later phases can plug in OpenAI Agents SDK, Qwen/GLM/DeepSeek adapters, pgvector RAG, streaming, and more complex workflow engines without changing the business tool layer.
+This version deliberately keeps the runtime local and replaceable. Later phases can plug in OpenAI Agents SDK, Qwen/DeepSeek adapters, pgvector RAG, streaming, and more complex workflow engines without changing the business tool layer.
 
 ## PostgreSQL / pgvector Migration
 
@@ -283,6 +290,7 @@ python3 scripts/smoke_access_key.py
 python3 scripts/smoke_phase6a_auth.py
 python3 scripts/smoke_phase6b_org.py
 python3 scripts/smoke_phase7a_agent.py
+python3 scripts/smoke_agent_model_provider.py
 python3 scripts/smoke_data_sources.py
 python3 scripts/smoke_storage_adapter.py
 python3 scripts/smoke_runtime_config.py

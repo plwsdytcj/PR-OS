@@ -40,7 +40,7 @@ Authentication is also adapter-shaped:
 - Internal users can manage creators, campaigns, proposals, and client access.
 - Client users can only enter `/api/client/portal/*` and see projects explicitly granted to their client account.
 - Phase 6B adds the `组织管理` page for creating internal users, client accounts, client portal members, and project access grants.
-- Phase 7A adds the `AI Agent` page with local task/run/event/artifact storage and a replaceable agent runtime.
+- Phase 7A adds the `AI Agent` page with local task/run/event/artifact storage and a replaceable agent runtime. Set `AGENT_PROVIDER=glm` to use GLM for Agent reasoning summaries.
 - Future providers such as Authing, Feishu SSO, OIDC, and SAML should plug into the identity provider layer instead of rewriting business permissions.
 
 Object files are handled by the object storage adapter:
@@ -110,6 +110,8 @@ python3 scripts/migrate_sqlite_to_postgres.py \
 - `GLM_API_KEY`: optional GLM key for symbolic analysis.
 - `GLM_MODEL`: defaults to `glm-4-flash`.
 - `GLM_BASE_URL`: defaults to BigModel chat completions endpoint.
+- `AGENT_PROVIDER`: defaults to `glm`.
+- `AGENT_API_KEY`, `AGENT_MODEL`, `AGENT_BASE_URL`: optional Agent model override; empty values fall back to `GLM_*`.
 - `ONEAPI_API_KEY`: optional KOL data API key.
 - `ONEAPI_BASE_URL`: defaults to `https://api.getoneapi.com`.
 
@@ -120,6 +122,7 @@ python3 scripts/smoke_runtime_config.py
 python3 scripts/smoke_phase6a_auth.py
 python3 scripts/smoke_phase6b_org.py
 python3 scripts/smoke_phase7a_agent.py
+python3 scripts/smoke_agent_model_provider.py
 python3 scripts/smoke_data_sources.py
 python3 scripts/smoke_tenant_api.py
 python3 scripts/smoke_access_key.py

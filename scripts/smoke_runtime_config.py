@@ -12,6 +12,9 @@ def main() -> None:
     deploy = (ROOT / "DEPLOYMENT.md").read_text(encoding="utf-8")
     for key in [
         "GLM_API_KEY",
+        "AGENT_PROVIDER",
+        "AGENT_MODEL",
+        "AGENT_BASE_URL",
         "PR_AI_OS_ACCESS_KEY",
         "PR_AI_OS_AUTH_ENABLED",
         "PR_AI_OS_COOKIE_SECURE",
@@ -37,6 +40,7 @@ def main() -> None:
         "smoke_phase6a_auth.py",
         "smoke_phase6b_org.py",
         "smoke_phase7a_agent.py",
+        "smoke_agent_model_provider.py",
     ]:
         assert text in readme
     for text in [
@@ -48,6 +52,7 @@ def main() -> None:
         "PR_AI_OS_AUTH_ENABLED",
         "Phase 6B",
         "Phase 7A",
+        "AGENT_PROVIDER",
     ]:
         assert text in readme
         assert text in deploy
