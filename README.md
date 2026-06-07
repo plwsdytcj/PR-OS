@@ -17,6 +17,7 @@ PR AI OS is a local-first MVP for media agencies managing KOL resources, brand b
 - Phase 7A: PR Project Manager Agent workspace with task/run/event/artifact runtime, local RAG placeholder, tool execution, and human approval.
 - Phase 7B: streaming-style Agent execution with async run start, background tool execution, and polling event updates.
 - Phase 7C: Knowledge RAG layer with document/chunk storage, local embedding fallback, knowledge search APIs, frontend knowledge console, and Agent RAG integration.
+- Phase 7 PRD: see `Phase7_Agent_OS_PRD.md` for the Agent OS roadmap from 7A to 7E.
 - Production foundations: workspace-level data isolation, optional access key, centralized data-source status/testing, and pluggable storage/auth adapters.
 
 ## Install
