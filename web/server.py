@@ -4,6 +4,7 @@ import contextvars
 import json
 import os
 import re
+import secrets
 import sys
 from dataclasses import asdict
 from io import BytesIO
@@ -20,6 +21,22 @@ from fastapi.staticfiles import StaticFiles
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from src.auth.schemas import CLIENT_ROLES, INTERNAL_ROLES
+from src.auth.service import (
+    can_access_proposal,
+    create_client_account,
+    create_session,
+    create_user,
+    grant_project_access,
+    link_client_user,
+    logout_session,
+    resolve_identity,
+    role_can,
+    users_exist,
+)
+from src.auth.storage import init_auth_db, load_all_clients, load_all_project_access, load_all_users, load_client_users_for_client
+from src.agent.runtime import approve_agent_run, get_agent_run, get_agent_task, list_agent_tasks, run_agent_chat
+from src.agent.storage import init_agent_db
 from src.connectors.excel_connector import load_table_file
 from src.connectors.link_connector import parse_links
 from src.connectors.mock_api_connector import MockApiConnector
@@ -151,11 +168,14 @@ DEFAULT_DB_PATH = ROOT / "data" / "processed" / "phase1_web.sqlite3"
 DEFAULT_TEMPLATE_PATH = ROOT / "data" / "processed" / "import_templates.json"
 TENANT_ROOT = ROOT / "data" / "processed" / "tenants"
 ACCESS_KEY = os.getenv("PR_AI_OS_ACCESS_KEY", "").strip()
+AUTH_ENABLED = os.getenv("PR_AI_OS_AUTH_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+AUTH_COOKIE_NAME = "pr_ai_os_session"
 PUBLIC_PATH_PREFIXES = ("/", "/static/", "/favicon.ico", "/creator/brief/", "/creator/invite/")
-PUBLIC_API_PREFIXES = ("/api/client/", "/api/creator/brief/", "/api/creator/invite/")
+PUBLIC_API_PREFIXES = ("/api/client/share/", "/api/creator/brief/", "/api/creator/invite/")
 _TENANT_RE = re.compile(r"[^a-zA-Z0-9_-]+")
 _db_path_ctx: contextvars.ContextVar[Path] = contextvars.ContextVar("db_path", default=DEFAULT_DB_PATH)
 _template_path_ctx: contextvars.ContextVar[Path] = contextvars.ContextVar("template_path", default=DEFAULT_TEMPLATE_PATH)
+_identity_ctx: contextvars.ContextVar[Any] = contextvars.ContextVar("identity", default=None)
 
 
 class ContextPath(PathLike[str]):
@@ -208,6 +228,8 @@ def _tenant_paths(tenant: str) -> tuple[Path, Path]:
 
 def _init_db_bundle(path: Path | PathLike[str]) -> None:
     init_db(path)
+    init_agent_db(path)
+    init_auth_db(path)
     init_symbolic_db(path)
     init_symbolic_os_db(path)
     init_collaboration_db(path)
@@ -219,7 +241,102 @@ def _init_db_bundle(path: Path | PathLike[str]) -> None:
 _init_db_bundle(DB_PATH)
 
 
-def _auth_required_for(path: str) -> bool:
+def _auth_required_for(path: str, db_path: Path) -> bool:
+    if not AUTH_ENABLED and not users_exist(db_path):
+        return False
+    if path == "/api/status":
+        return False
+    if path.startswith("/api/auth/login") or path.startswith("/api/auth/bootstrap-admin") or path.startswith("/api/auth/me"):
+        return False
+    if path == "/" or path.startswith(PUBLIC_PATH_PREFIXES[1:]):
+        return False
+    if path.startswith(PUBLIC_API_PREFIXES):
+        return False
+    return path.startswith("/api/")
+
+
+def _access_key_valid(request: Request) -> bool:
+    if not ACCESS_KEY:
+        return False
+    return request.headers.get("X-Access-Key", "") == ACCESS_KEY
+
+
+def _path_allowed_for_identity(path: str, method: str, identity: Any) -> bool:
+    if identity is None:
+        return False
+    user = identity.user
+    if user.user_type == "internal":
+        if method in {"POST", "PUT", "PATCH", "DELETE"} and (path.startswith("/api/settings/") or path.startswith("/api/import/") or "/archive" in path):
+            return role_can(user, "write")
+        if method in {"POST", "PUT", "PATCH", "DELETE"} and request_write_method_hint(path):
+            return role_can(user, "write")
+        return role_can(user, "read") or role_can(user, "write")
+    if user.user_type == "client":
+        return path.startswith("/api/client/portal/") or path.startswith("/api/auth/")
+    return False
+
+
+def request_write_method_hint(path: str) -> bool:
+    return any(
+        marker in path
+        for marker in [
+            "/project-run",
+            "/recommend",
+            "/collaboration/",
+            "/platform/",
+            "/symbolic/",
+            "/distribution/",
+            "/creator-commercial/",
+        ]
+    )
+
+
+def current_identity() -> Any:
+    return _identity_ctx.get()
+
+
+def require_identity() -> Any:
+    identity = current_identity()
+    if identity is None:
+        raise HTTPException(status_code=401, detail="login required")
+    return identity
+
+
+def require_internal(action: str = "read") -> Any:
+    identity = require_identity()
+    if identity.user.user_type != "internal" or not role_can(identity.user, action):
+        raise HTTPException(status_code=403, detail="permission denied")
+    return identity
+
+
+def require_admin() -> Any:
+    identity = require_identity()
+    if identity.user.user_type != "internal" or identity.user.role != "admin":
+        raise HTTPException(status_code=403, detail="admin required")
+    return identity
+
+
+def _session_cookie_kwargs() -> dict[str, Any]:
+    return {"httponly": True, "samesite": "lax", "secure": os.getenv("PR_AI_OS_COOKIE_SECURE", "").lower() in {"1", "true", "yes"}}
+
+
+def _auth_bypass_for_access_key(request: Request) -> bool:
+    return _access_key_valid(request)
+
+
+def _auth_mode_active(db_path: Path) -> bool:
+    return AUTH_ENABLED or users_exist(db_path)
+
+
+def _public_status_auth_required(db_path: Path) -> bool:
+    return _auth_mode_active(db_path)
+
+
+def _auth_required_message(db_path: Path) -> str:
+    return "login required" if _auth_mode_active(db_path) else "access key required"
+
+
+def _legacy_access_key_required_for(path: str) -> bool:
     if not ACCESS_KEY:
         return False
     if path == "/api/status":
@@ -233,18 +350,28 @@ def _auth_required_for(path: str) -> bool:
 
 @app.middleware("http")
 async def tenant_context_middleware(request: Request, call_next):
-    if _auth_required_for(request.url.path) and request.headers.get("X-Access-Key", "") != ACCESS_KEY:
-        return JSONResponse({"detail": "access key required"}, status_code=401)
     tenant = _sanitize_tenant(request.headers.get("X-Tenant-ID") or request.query_params.get("tenant"))
     db_path, template_path = _tenant_paths(tenant)
     _init_db_bundle(db_path)
     db_token = _db_path_ctx.set(db_path)
     template_token = _template_path_ctx.set(template_path)
+    identity_token = None
     try:
+        identity = resolve_identity(db_path, request.cookies.get(AUTH_COOKIE_NAME, ""))
+        identity_token = _identity_ctx.set(identity)
+        if _legacy_access_key_required_for(request.url.path) and not _auth_mode_active(db_path) and not _access_key_valid(request):
+            return JSONResponse({"detail": "access key required"}, status_code=401)
+        if _auth_required_for(request.url.path, db_path) and not _auth_bypass_for_access_key(request):
+            if identity is None:
+                return JSONResponse({"detail": _auth_required_message(db_path)}, status_code=401)
+            if not _path_allowed_for_identity(request.url.path, request.method.upper(), identity):
+                return JSONResponse({"detail": "permission denied"}, status_code=403)
         response = await call_next(request)
         response.headers["X-Tenant-ID"] = tenant
         return response
     finally:
+        if identity_token is not None:
+            _identity_ctx.reset(identity_token)
         _db_path_ctx.reset(db_token)
         _template_path_ctx.reset(template_token)
 
@@ -375,7 +502,9 @@ def status() -> dict[str, Any]:
         "enriched_profiles": enriched,
         "database": str(DB_PATH),
         "tenant": _sanitize_tenant(_db_path_ctx.get().parent.name if _db_path_ctx.get().parent.parent == TENANT_ROOT else "default"),
-        "auth_required": bool(ACCESS_KEY),
+        "auth_required": _public_status_auth_required(_db_path_ctx.get()) or bool(ACCESS_KEY),
+        "auth_mode": "local" if _auth_mode_active(_db_path_ctx.get()) else ("access_key" if ACCESS_KEY else "open"),
+        "current_user": current_identity().user.to_dict() if current_identity() else None,
         "connectors": ["excel_csv", "manual", "link", "mock_api", "oneapi"],
         "phase_1_5": ["creator_symbolic_profile", "brand_symbolic_profile", "symbolic_matching", "narrative_path", "stress_test"],
         "phase_2": ["proposal_sharing", "client_feedback", "versioning", "brand_preference_profile", "client_portal"],
@@ -394,6 +523,286 @@ def status() -> dict[str, Any]:
             "os_dashboard",
         ],
     }
+
+
+@app.get("/api/agent/tasks")
+def agent_tasks() -> dict[str, Any]:
+    require_internal("read")
+    return {"items": list_agent_tasks(DB_PATH)}
+
+
+@app.get("/api/agent/tasks/{task_id}")
+def agent_task_detail(task_id: str) -> dict[str, Any]:
+    require_internal("read")
+    task = get_agent_task(DB_PATH, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="agent task not found")
+    return task
+
+
+@app.post("/api/agent/chat")
+async def agent_chat(payload: dict[str, Any]) -> dict[str, Any]:
+    identity = require_internal("project_run")
+    message = str(payload.get("message") or payload.get("brief") or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
+    try:
+        return run_agent_chat(
+            DB_PATH,
+            message=message,
+            task_id=str(payload.get("task_id") or ""),
+            client_name=str(payload.get("client_name") or ""),
+            project_name=str(payload.get("project_name") or ""),
+            top_n=int(payload.get("top_n") or 8),
+            created_by=identity.user.user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/agent/runs/{run_id}")
+def agent_run_detail(run_id: str) -> dict[str, Any]:
+    require_internal("read")
+    run = get_agent_run(DB_PATH, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="agent run not found")
+    return run
+
+
+@app.get("/api/agent/runs/{run_id}/events")
+def agent_run_events(run_id: str) -> dict[str, Any]:
+    require_internal("read")
+    run = get_agent_run(DB_PATH, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="agent run not found")
+    return {"items": run.get("events", []), "artifacts": run.get("artifacts", [])}
+
+
+@app.post("/api/agent/runs/{run_id}/approve")
+async def agent_run_approve(run_id: str) -> dict[str, Any]:
+    require_internal("write")
+    try:
+        return approve_agent_run(DB_PATH, run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/auth/bootstrap-admin")
+async def auth_bootstrap_admin(payload: dict[str, Any]) -> JSONResponse:
+    if users_exist(DB_PATH) and not _access_key_valid_request_payload(payload):
+        raise HTTPException(status_code=403, detail="admin already exists")
+    try:
+        user = create_user(
+            DB_PATH,
+            email=str(payload.get("email") or ""),
+            password=str(payload.get("password") or ""),
+            name=str(payload.get("name") or "Admin"),
+            user_type="internal",
+            role="admin",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    session = create_session(DB_PATH, user)
+    response = JSONResponse({"user": user.to_dict(), "session": session.to_dict(), "auth_mode": "local"})
+    response.set_cookie(AUTH_COOKIE_NAME, session.session_id, max_age=14 * 24 * 3600, **_session_cookie_kwargs())
+    return response
+
+
+def _access_key_valid_request_payload(payload: dict[str, Any]) -> bool:
+    return bool(ACCESS_KEY and str(payload.get("access_key") or "") == ACCESS_KEY)
+
+
+@app.post("/api/auth/login")
+async def auth_login(payload: dict[str, Any]) -> JSONResponse:
+    from src.auth.identity_provider import LocalIdentityProvider
+
+    provider = LocalIdentityProvider()
+    user = provider.authenticate(DB_PATH, str(payload.get("email") or ""), str(payload.get("password") or ""))
+    if user is None:
+        raise HTTPException(status_code=401, detail="invalid email or password")
+    session = create_session(DB_PATH, user)
+    response = JSONResponse({"user": user.to_dict(), "session": session.to_dict(), "auth_mode": "local"})
+    response.set_cookie(AUTH_COOKIE_NAME, session.session_id, max_age=14 * 24 * 3600, **_session_cookie_kwargs())
+    return response
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(request: Request) -> JSONResponse:
+    session_id = request.cookies.get(AUTH_COOKIE_NAME, "")
+    if session_id:
+        logout_session(DB_PATH, session_id)
+    response = JSONResponse({"ok": True})
+    response.delete_cookie(AUTH_COOKIE_NAME)
+    return response
+
+
+@app.get("/api/auth/me")
+def auth_me() -> dict[str, Any]:
+    identity = current_identity()
+    return {
+        "authenticated": identity is not None,
+        "identity": identity.to_dict() if identity else None,
+        "auth_required": _auth_mode_active(_db_path_ctx.get()),
+        "roles": {
+            "internal": sorted(INTERNAL_ROLES),
+            "client": sorted(CLIENT_ROLES),
+        },
+    }
+
+
+@app.get("/api/auth/users")
+def auth_users() -> dict[str, Any]:
+    require_admin()
+    return {"items": [user.to_dict() for user in load_all_users(DB_PATH)]}
+
+
+@app.post("/api/auth/users")
+async def auth_create_user(payload: dict[str, Any]) -> dict[str, Any]:
+    identity = require_admin()
+    try:
+        user = create_user(
+            DB_PATH,
+            email=str(payload.get("email") or ""),
+            password=str(payload.get("password") or ""),
+            name=str(payload.get("name") or ""),
+            user_type=str(payload.get("user_type") or "internal"),
+            role=str(payload.get("role") or "viewer"),
+            client_id=str(payload.get("client_id") or ""),
+        )
+        if user.user_type == "client" and user.client_id:
+            link_client_user(DB_PATH, user.client_id, user.user_id, user.role)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"user": user.to_dict(), "created_by": identity.user.user_id}
+
+
+@app.get("/api/auth/clients")
+def auth_clients() -> dict[str, Any]:
+    require_internal("read")
+    items = []
+    for client in load_all_clients(DB_PATH):
+        members = load_client_users_for_client(DB_PATH, client.client_id)
+        items.append(client.to_dict() | {"members": [member.to_dict() for member in members]})
+    return {"items": items}
+
+
+@app.post("/api/auth/clients")
+async def auth_create_client(payload: dict[str, Any]) -> dict[str, Any]:
+    identity = require_internal("write")
+    try:
+        client = create_client_account(DB_PATH, name=str(payload.get("name") or ""), company=str(payload.get("company") or ""), created_by=identity.user.user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"client": client.to_dict()}
+
+
+@app.post("/api/auth/clients/{client_id}/users")
+async def auth_link_client_user(client_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    require_internal("write")
+    email = str(payload.get("email") or "").strip()
+    user = load_user_by_email_safe(email)
+    try:
+        if user is None:
+            user = create_user(
+                DB_PATH,
+                email=email,
+                password=str(payload.get("password") or secrets.token_urlsafe(10)),
+                name=str(payload.get("name") or ""),
+                user_type="client",
+                role=str(payload.get("role") or "client_viewer"),
+                client_id=client_id,
+            )
+        link = link_client_user(DB_PATH, client_id, user.user_id, str(payload.get("role") or user.role or "client_viewer"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"user": user.to_dict(), "link": link.to_dict()}
+
+
+def load_user_by_email_safe(email: str) -> Any:
+    from src.auth.storage import load_user_by_email
+
+    return load_user_by_email(DB_PATH, email) if email else None
+
+
+@app.post("/api/auth/project-access")
+async def auth_grant_project_access(payload: dict[str, Any]) -> dict[str, Any]:
+    identity = require_internal("write")
+    try:
+        access = grant_project_access(
+            DB_PATH,
+            user_id=str(payload.get("user_id") or ""),
+            client_id=str(payload.get("client_id") or ""),
+            proposal_id=str(payload.get("proposal_id") or ""),
+            campaign_id=str(payload.get("campaign_id") or ""),
+            permissions=[str(item) for item in payload.get("permissions") or ["view"]],
+            created_by=identity.user.user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"access": access.to_dict()}
+
+
+@app.get("/api/auth/project-access")
+def auth_project_access() -> dict[str, Any]:
+    require_internal("read")
+    return {"items": [access.to_dict() for access in load_all_project_access(DB_PATH)]}
+
+
+@app.get("/api/client/portal/projects")
+def client_portal_projects() -> dict[str, Any]:
+    identity = require_identity()
+    if identity.user.user_type != "client":
+        raise HTTPException(status_code=403, detail="client user required")
+    proposals = []
+    for proposal in load_all_proposals(DB_PATH):
+        if can_access_proposal(DB_PATH, identity, proposal.client_id, proposal.proposal_id):
+            proposals.append(asdict(proposal) | {"share_url": proposal.public_url()})
+    return {"items": proposals}
+
+
+@app.get("/api/client/portal/proposals/{proposal_id}")
+def client_portal_proposal(proposal_id: str) -> dict[str, Any]:
+    identity = require_identity()
+    proposal = load_proposal(DB_PATH, proposal_id)
+    if proposal is None:
+        raise HTTPException(status_code=404, detail="proposal not found")
+    if not can_access_proposal(DB_PATH, identity, proposal.client_id, proposal.proposal_id):
+        raise HTTPException(status_code=403, detail="permission denied")
+    version = _current_version(proposal, load_versions(DB_PATH, proposal_id))
+    if version is None:
+        raise HTTPException(status_code=404, detail="proposal version not found")
+    return public_proposal_payload(proposal, version, load_feedback(DB_PATH, proposal_id))
+
+
+@app.post("/api/client/portal/proposals/{proposal_id}/feedback")
+async def client_portal_feedback(proposal_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    identity = require_identity()
+    proposal = load_proposal(DB_PATH, proposal_id)
+    if proposal is None:
+        raise HTTPException(status_code=404, detail="proposal not found")
+    if not can_access_proposal(DB_PATH, identity, proposal.client_id, proposal.proposal_id, action="comment"):
+        raise HTTPException(status_code=403, detail="permission denied")
+    if identity.user.role == "client_viewer":
+        raise HTTPException(status_code=403, detail="comment permission required")
+    version = _current_version(proposal, load_versions(DB_PATH, proposal.proposal_id))
+    if version is None:
+        raise HTTPException(status_code=404, detail="proposal version not found")
+    feedback = record_feedback(
+        DB_PATH,
+        proposal,
+        version,
+        target_type=str(payload.get("target_type") or "proposal"),
+        target_id=str(payload.get("target_id") or ""),
+        decision=str(payload.get("decision") or ""),
+        reason=str(payload.get("reason") or ""),
+        comment=str(payload.get("comment") or ""),
+        created_by=identity.user.user_id,
+    )
+    upsert_version(DB_PATH, version)
+    proposal.status = "待调整" if feedback.decision in {"rejected", "maybe"} else proposal.status
+    proposal.updated_at = _now()
+    upsert_proposal(DB_PATH, proposal)
+    return {"feedback": asdict(feedback), "proposal": public_proposal_payload(proposal, version, load_feedback(DB_PATH, proposal.proposal_id))}
 
 
 def _masked(value: str) -> str:

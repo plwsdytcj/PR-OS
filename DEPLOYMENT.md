@@ -7,7 +7,16 @@ cp .env.example .env
 scripts/run_web.sh
 ```
 
-Set `PR_AI_OS_ACCESS_KEY` in `.env` before exposing the app outside localhost.
+Set `PR_AI_OS_ACCESS_KEY` or enable local auth before exposing the app outside localhost.
+
+For Phase 6A local auth:
+
+```bash
+PR_AI_OS_AUTH_ENABLED=true
+PR_AI_OS_COOKIE_SECURE=false
+```
+
+Use `PR_AI_OS_COOKIE_SECURE=true` only behind HTTPS.
 
 ## Docker Compose
 
@@ -24,6 +33,15 @@ The compose stack starts:
 Current runtime remains local-first SQLite by default. PostgreSQL is provisioned for migration, analytics, and the next runtime storage adapter.
 
 If `DATABASE_URL` is set, the runtime storage modules use PostgreSQL JSONB tables instead of SQLite for core business objects. Leave `DATABASE_URL` empty to keep local SQLite mode.
+
+Authentication is also adapter-shaped:
+
+- Current provider: local email/password sessions.
+- Internal users can manage creators, campaigns, proposals, and client access.
+- Client users can only enter `/api/client/portal/*` and see projects explicitly granted to their client account.
+- Phase 6B adds the `组织管理` page for creating internal users, client accounts, client portal members, and project access grants.
+- Phase 7A adds the `AI Agent` page with local task/run/event/artifact storage and a replaceable agent runtime.
+- Future providers such as Authing, Feishu SSO, OIDC, and SAML should plug into the identity provider layer instead of rewriting business permissions.
 
 Object files are handled by the object storage adapter:
 
@@ -87,6 +105,8 @@ python3 scripts/migrate_sqlite_to_postgres.py \
 ## Environment Variables
 
 - `PR_AI_OS_ACCESS_KEY`: optional access key for private APIs.
+- `PR_AI_OS_AUTH_ENABLED`: optional Phase 6A login enforcement. If false, auth activates after the first local user is bootstrapped.
+- `PR_AI_OS_COOKIE_SECURE`: set true for HTTPS deployments.
 - `GLM_API_KEY`: optional GLM key for symbolic analysis.
 - `GLM_MODEL`: defaults to `glm-4-flash`.
 - `GLM_BASE_URL`: defaults to BigModel chat completions endpoint.
@@ -97,6 +117,9 @@ python3 scripts/migrate_sqlite_to_postgres.py \
 
 ```bash
 python3 scripts/smoke_runtime_config.py
+python3 scripts/smoke_phase6a_auth.py
+python3 scripts/smoke_phase6b_org.py
+python3 scripts/smoke_phase7a_agent.py
 python3 scripts/smoke_data_sources.py
 python3 scripts/smoke_tenant_api.py
 python3 scripts/smoke_access_key.py

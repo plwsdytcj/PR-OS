@@ -20,6 +20,7 @@
         <nav class="nav" aria-label="主导航">
           <div class="nav-primary">
             <button class="nav-item active" data-view="workspace">工作台</button>
+            <button class="nav-item" data-view="agentWorkspace">AI Agent</button>
             <button class="nav-item" data-view="projectRun">新建项目</button>
             <button class="nav-item" data-view="creators">达人库</button>
             <button class="nav-item" data-view="brief">Brief 推荐</button>
@@ -53,10 +54,14 @@
 
           <details class="nav-group">
             <summary>系统</summary>
+            <button class="nav-item" data-view="organization">组织管理</button>
             <button class="nav-item" data-view="dataSources">数据源设置</button>
           </details>
         </nav>
         <div class="workspace-switcher">
+          <div id="authUserBox" class="auth-user-box">
+            <span>未登录</span>
+          </div>
           <label for="tenantInput">Workspace</label>
           <div class="tenant-row">
             <input id="tenantInput" value="default" />
@@ -155,6 +160,66 @@
                 <li>查看推荐表与 Markdown 方案。</li>
               </ol>
             </div>
+          </div>
+        </section>
+
+        <section id="agentWorkspace" class="view">
+          <div class="agent-console">
+            <div>
+              <div class="eyebrow">Phase 7A / agent runtime</div>
+              <h2>PR 项目经理 Agent</h2>
+              <p>输入一个 PR 任务，Agent 会检索组织记忆、调用 PR OS 工具、生成执行日志和交付产物。</p>
+            </div>
+            <div class="agent-console-mark">
+              <span>Task</span>
+              <strong>→</strong>
+              <span>Tools</span>
+              <strong>→</strong>
+              <span>Artifacts</span>
+            </div>
+          </div>
+
+          <div class="agent-layout">
+            <aside class="agent-sidebar panel">
+              <div class="panel-header">
+                <h2>任务队列</h2>
+                <button id="refreshAgentTasksBtn" class="secondary" type="button">刷新</button>
+              </div>
+              <div id="agentTaskList" class="agent-task-list"></div>
+            </aside>
+
+            <div class="agent-main">
+              <div class="panel">
+                <h2>对话式任务输入</h2>
+                <form id="agentChatForm" class="form">
+                  <div class="field-row">
+                    <input name="client_name" value="Demo 新能源品牌" placeholder="客户 / 品牌名称" required />
+                    <input name="project_name" value="年轻人新能源 SUV 上市预热" placeholder="项目名称" required />
+                  </div>
+                  <textarea name="message" required>预算50万，新能源SUV上市预热，目标年轻用户，平台优先小红书和抖音。需要推荐KOL、生成客户可看的方案，并说明主要风险。</textarea>
+                  <div class="field-row">
+                    <input name="top_n" type="number" value="8" min="3" max="30" />
+                    <button id="agentRunBtn" class="primary" type="submit">启动 Agent</button>
+                  </div>
+                </form>
+              </div>
+
+              <div class="panel agent-run-panel">
+                <div class="panel-header">
+                  <div>
+                    <h2>执行过程</h2>
+                    <p id="agentRunMeta">等待 Agent 执行。</p>
+                  </div>
+                  <button id="agentApproveBtn" class="secondary hidden" type="button">确认本次产物</button>
+                </div>
+                <div id="agentEventStream" class="agent-event-stream"></div>
+              </div>
+            </div>
+
+            <aside class="agent-artifacts panel">
+              <h2>产物面板</h2>
+              <div id="agentArtifactList" class="agent-artifact-list"></div>
+            </aside>
           </div>
         </section>
 
@@ -524,17 +589,18 @@
         </section>
 
         <section id="clientPortal" class="view">
-          <div class="panel">
-            <div class="panel-header">
-              <div>
-                <h2>甲方方案页</h2>
-                <p>使用分享 token 打开授权方案，模拟甲方在线查看和反馈。</p>
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>甲方方案页</h2>
+                  <p>使用分享 token 打开授权方案，模拟甲方在线查看和反馈。</p>
               </div>
               <div class="field-row compact-row">
                 <input id="clientShareTokenInput" placeholder="分享 token" />
                 <button id="loadClientShareBtn" class="primary" type="button">打开方案</button>
               </div>
             </div>
+            <div id="clientPortalProjectList" class="template-list"></div>
             <div id="clientProposalView" class="client-proposal-empty">等待打开分享方案。</div>
           </div>
         </section>
@@ -741,6 +807,111 @@
                   <pre id="platformCampaignOutput" class="json-view">等待选择项目。</pre>
                 </details>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="organization" class="view">
+          <div class="org-command">
+            <div>
+              <div class="eyebrow">Phase 6B / agency console</div>
+              <h2>账号、客户和项目权限管理</h2>
+              <p>把内部团队、甲方账号和项目授权放到一个操作台里，减少脚本和接口依赖。</p>
+            </div>
+            <button id="refreshOrganizationBtn" class="primary" type="button">刷新组织数据</button>
+          </div>
+
+          <div id="orgMetrics" class="metrics"></div>
+
+          <div class="org-grid">
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>内部成员</h2>
+                  <p>创建 PR 团队账号，并分配内部角色。</p>
+                </div>
+              </div>
+              <form id="internalUserForm" class="form org-form">
+                <div class="field-row">
+                  <input name="name" placeholder="姓名" required />
+                  <input name="email" type="email" placeholder="邮箱" required />
+                </div>
+                <div class="field-row">
+                  <input name="password" type="password" placeholder="初始密码，至少 8 位" required />
+                  <select name="role">
+                    <option value="strategist">strategist</option>
+                    <option value="media_buyer">media_buyer</option>
+                    <option value="viewer">viewer</option>
+                    <option value="admin">admin</option>
+                  </select>
+                </div>
+                <button class="primary" type="submit">创建内部账号</button>
+              </form>
+              <div id="internalUserList" class="org-list"></div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>甲方客户</h2>
+                  <p>创建客户公司，再给客户开 portal 登录账号。</p>
+                </div>
+              </div>
+              <form id="clientAccountForm" class="form org-form">
+                <div class="field-row">
+                  <input name="name" placeholder="客户名称" required />
+                  <input name="company" placeholder="公司主体，可选" />
+                </div>
+                <button class="primary" type="submit">创建客户</button>
+              </form>
+              <form id="clientUserForm" class="form org-form">
+                <select id="clientUserClientSelect" name="client_id" required></select>
+                <div class="field-row">
+                  <input name="name" placeholder="甲方联系人" required />
+                  <input name="email" type="email" placeholder="登录邮箱" required />
+                </div>
+                <div class="field-row">
+                  <input name="password" type="password" placeholder="初始密码，至少 8 位" required />
+                  <select name="role">
+                    <option value="client_reviewer">client_reviewer</option>
+                    <option value="client_owner">client_owner</option>
+                    <option value="client_viewer">client_viewer</option>
+                  </select>
+                </div>
+                <button class="primary" type="submit">创建甲方账号</button>
+              </form>
+              <div id="clientAccountList" class="org-list"></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>项目授权</h2>
+                <p>把协作方案授权给指定甲方账号，控制客户门户可见范围。</p>
+              </div>
+            </div>
+            <form id="projectAccessForm" class="form org-access-form">
+              <select id="accessClientSelect" name="client_id" required></select>
+              <select id="accessUserSelect" name="user_id" required></select>
+              <select id="accessProposalSelect" name="proposal_id" required></select>
+              <label class="checkline"><input name="permission_view" type="checkbox" checked /> 查看</label>
+              <label class="checkline"><input name="permission_comment" type="checkbox" checked /> 评论</label>
+              <button class="primary" type="submit">授权给客户</button>
+            </form>
+            <div class="table-wrap">
+              <table id="projectAccessTable">
+                <thead>
+                  <tr>
+                    <th>甲方账号</th>
+                    <th>客户</th>
+                    <th>项目 / 提案</th>
+                    <th>权限</th>
+                    <th>创建时间</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
             </div>
           </div>
         </section>
@@ -1104,12 +1275,26 @@
     <div id="toast" class="toast"></div>
     <div id="accessGate" class="access-gate hidden">
       <section class="access-gate-panel">
-        <span class="card-kicker">Access required</span>
-        <h2>输入 Access Key</h2>
-        <p>当前服务启用了访问保护。输入部署环境里的 PR_AI_OS_ACCESS_KEY 后继续使用。</p>
-        <input id="gateAccessKeyInput" type="password" placeholder="Access Key" />
+        <span class="card-kicker">Identity required</span>
+        <h2>登录 PR AI OS</h2>
+        <p>内部团队和甲方客户使用账号登录。首次本地启用时可创建 admin。</p>
+        <form id="loginForm" class="form">
+          <input name="email" type="email" placeholder="邮箱" autocomplete="username" required />
+          <input name="password" type="password" placeholder="密码" autocomplete="current-password" required />
+          <button class="primary" type="submit">登录</button>
+        </form>
+        <details class="auth-details">
+          <summary>首次创建 admin / Access Key</summary>
+          <form id="bootstrapAdminForm" class="form">
+            <input name="email" type="email" placeholder="admin 邮箱" autocomplete="username" />
+            <input name="name" placeholder="姓名" />
+            <input name="password" type="password" placeholder="至少 8 位密码" autocomplete="new-password" />
+            <button class="secondary" type="submit">创建 admin</button>
+          </form>
+          <input id="gateAccessKeyInput" type="password" placeholder="Access Key" />
+        </details>
         <div class="decision-actions">
-          <button id="gateAccessKeyBtn" class="primary" type="button">进入</button>
+          <button id="gateAccessKeyBtn" class="secondary" type="button">用 Access Key 进入</button>
           <button id="gateAccessClearBtn" class="secondary" type="button">清空</button>
         </div>
       </section>

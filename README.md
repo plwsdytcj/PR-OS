@@ -12,7 +12,10 @@ PR AI OS is a local-first MVP for media agencies managing KOL resources, brand b
 - Phase 4: Brief distribution to creators and creator response collection.
 - Phase 5: Campaign OS dashboard, Campaign Room, multi-plan strategy, deep simulation, Brief distribution bridge, and post-campaign review feedback loop.
 - Project Run: one-click PR project workflow from raw brief to symbolic graph, KOL selection, narrative assets, stress test, and Campaign Room.
-- Production foundations: workspace-level data isolation, optional access key, and centralized data-source status/testing.
+- Phase 6A: local identity adapter, internal roles, client portal login, project access grants, and authenticated client feedback.
+- Phase 6B: organization management console for internal users, client accounts, client portal members, and project access grants.
+- Phase 7A: PR Project Manager Agent workspace with task/run/event/artifact runtime, local RAG placeholder, tool execution, and human approval.
+- Production foundations: workspace-level data isolation, optional access key, centralized data-source status/testing, and pluggable storage/auth adapters.
 
 ## Install
 
@@ -51,6 +54,8 @@ GLM_MODEL=glm-4-flash
 GLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4/chat/completions
 
 PR_AI_OS_ACCESS_KEY=
+PR_AI_OS_AUTH_ENABLED=false
+PR_AI_OS_COOKIE_SECURE=false
 
 ONEAPI_API_KEY=
 ONEAPI_BASE_URL=https://api.getoneapi.com
@@ -73,6 +78,8 @@ Behavior:
 - If `ONEAPI_API_KEY` is missing, OneAPI status is shown as not configured; Mock API and Excel remain usable.
 - If MiroFish CLI is not installed, Campaign stress tests use the OS fallback Simulation Layer.
 - If `PR_AI_OS_ACCESS_KEY` is set, private API calls require `X-Access-Key`; public client/creator links remain accessible.
+- If `PR_AI_OS_AUTH_ENABLED=true`, private APIs require login. If it is false, auth activates automatically after the first local user is created with `/api/auth/bootstrap-admin`.
+- `PR_AI_OS_COOKIE_SECURE=true` should be used only behind HTTPS.
 - If `DATABASE_URL` is empty, the app uses local SQLite; if set, storage modules use PostgreSQL JSONB tables.
 - `OBJECT_STORE_PROVIDER=local` stores uploaded source files under `data/objects`; `oss`, `r2`, `s3`, and `minio` use the S3-compatible adapter.
 
@@ -134,6 +141,66 @@ OBJECT_STORE_SECRET_ACCESS_KEY=...
 
 Uploaded Excel / CSV source files are saved through this adapter when imports are committed. Structured creator data remains in the database.
 
+## Phase 6A Auth And Client Portal
+
+The current auth layer is intentionally local-first:
+
+- Identity provider: local email/password sessions now; Authing, Feishu SSO, OIDC, or SAML can be added later behind the same adapter.
+- Internal roles: `admin`, `strategist`, `media_buyer`, `viewer`.
+- Client roles: `client_owner`, `client_reviewer`, `client_viewer`.
+- Client access: internal users grant a client access to selected proposals/projects; client users only see their portal routes.
+- Public routes: existing share-token proposal links, creator invite links, and creator brief links remain accessible without login.
+
+Bootstrap the first internal admin:
+
+```bash
+curl -X POST http://127.0.0.1:8601/api/auth/bootstrap-admin \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@example.com","password":"change-me","name":"Admin"}'
+```
+
+Core auth APIs:
+
+- `POST /api/auth/bootstrap-admin`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
+- `GET /api/auth/users`
+- `POST /api/auth/users`
+- `GET /api/auth/clients`
+- `POST /api/auth/clients`
+- `POST /api/auth/clients/{client_id}/users`
+- `POST /api/auth/project-access`
+- `GET /api/auth/project-access`
+- `GET /api/client/portal/projects`
+- `GET /api/client/portal/proposals/{proposal_id}`
+- `POST /api/client/portal/proposals/{proposal_id}/feedback`
+
+## Phase 6B Organization Console
+
+The `组织管理` page turns the Phase 6A auth layer into an operable internal admin workflow:
+
+- Create internal agency users and assign roles.
+- Create client accounts.
+- Create client portal users under a client account.
+- Grant a proposal/project to a specific client user with `view` and `comment` permissions.
+- Inspect the current access matrix: user, client, proposal, permissions, and created time.
+
+This is the intended path before managed SSO: use local auth for the internal PR team, keep the identity provider adapter boundary, and later replace the provider with Authing, Feishu SSO, OIDC, or SAML without changing campaign/client business logic.
+
+## Phase 7A Agent Workspace
+
+The `AI Agent` page is the first Manus-like PR Agent OS layer:
+
+- Create a PR task from a natural-language brief.
+- Run a PR Project Manager Agent through a task/run/event/artifact runtime.
+- Search local organization memory across proposals, client feedback, campaign rooms, and creator profiles.
+- Call existing PR OS tools: project run, KOL matching, risk simulation, Campaign Room creation, and proposal generation.
+- Show each step as an event stream and save outputs as artifacts.
+- Stop at a human approval point before client delivery/authorization.
+
+This version deliberately keeps the runtime local and replaceable. Later phases can plug in OpenAI Agents SDK, Qwen/GLM/DeepSeek adapters, pgvector RAG, streaming, and more complex workflow engines without changing the business tool layer.
+
 ## PostgreSQL / pgvector Migration
 
 The app remains local-first SQLite by default, but the repo includes a PostgreSQL/pgvector migration path:
@@ -159,6 +226,16 @@ python3 scripts/migrate_sqlite_to_postgres.py --sqlite data/processed/phase1_web
 ## Core APIs
 
 - `GET /api/status`
+- `POST /api/auth/bootstrap-admin`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
+- `GET /api/agent/tasks`
+- `GET /api/agent/tasks/{task_id}`
+- `POST /api/agent/chat`
+- `GET /api/agent/runs/{run_id}`
+- `GET /api/agent/runs/{run_id}/events`
+- `POST /api/agent/runs/{run_id}/approve`
 - `POST /api/import/file`
 - `POST /api/import/manual`
 - `POST /api/import/links`
@@ -203,6 +280,9 @@ python3 scripts/smoke_narrative_assets_api.py
 python3 scripts/smoke_match_assets_api.py
 python3 scripts/smoke_tenant_api.py
 python3 scripts/smoke_access_key.py
+python3 scripts/smoke_phase6a_auth.py
+python3 scripts/smoke_phase6b_org.py
+python3 scripts/smoke_phase7a_agent.py
 python3 scripts/smoke_data_sources.py
 python3 scripts/smoke_storage_adapter.py
 python3 scripts/smoke_runtime_config.py

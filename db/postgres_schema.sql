@@ -18,6 +18,96 @@ CREATE TABLE IF NOT EXISTS creator_embeddings (
     PRIMARY KEY (tenant_id, creator_id, source)
 );
 
+CREATE TABLE IF NOT EXISTS auth_users (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    user_id TEXT NOT NULL,
+    email TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, user_id),
+    UNIQUE (tenant_id, email)
+);
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    session_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, session_id)
+);
+
+CREATE TABLE IF NOT EXISTS clients (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    client_id TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, client_id)
+);
+
+CREATE TABLE IF NOT EXISTS client_users (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    link_id TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, link_id)
+);
+
+CREATE TABLE IF NOT EXISTS project_access (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    access_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    client_id TEXT NOT NULL DEFAULT '',
+    proposal_id TEXT NOT NULL DEFAULT '',
+    campaign_id TEXT NOT NULL DEFAULT '',
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, access_id)
+);
+
+CREATE TABLE IF NOT EXISTS agent_tasks (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    task_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, task_id)
+);
+
+CREATE TABLE IF NOT EXISTS agent_runs (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    run_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, run_id)
+);
+
+CREATE TABLE IF NOT EXISTS agent_events (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    event_id TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, event_id)
+);
+
+CREATE TABLE IF NOT EXISTS agent_artifacts (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    artifact_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    artifact_type TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, artifact_id)
+);
+
 CREATE TABLE IF NOT EXISTS creator_symbolic_profiles (
     tenant_id TEXT NOT NULL DEFAULT 'default',
     creator_id TEXT NOT NULL,
@@ -192,6 +282,9 @@ CREATE TABLE IF NOT EXISTS campaign_projects (
 );
 
 CREATE INDEX IF NOT EXISTS idx_creator_profiles_payload_gin ON creator_profiles USING GIN (payload);
+CREATE INDEX IF NOT EXISTS idx_auth_users_payload_gin ON auth_users USING GIN (payload);
+CREATE INDEX IF NOT EXISTS idx_clients_payload_gin ON clients USING GIN (payload);
+CREATE INDEX IF NOT EXISTS idx_project_access_payload_gin ON project_access USING GIN (payload);
 CREATE INDEX IF NOT EXISTS idx_campaign_projects_payload_gin ON campaign_projects USING GIN (payload);
 CREATE INDEX IF NOT EXISTS idx_proposals_payload_gin ON proposals USING GIN (payload);
 CREATE INDEX IF NOT EXISTS idx_distribution_briefs_payload_gin ON distribution_briefs USING GIN (payload);

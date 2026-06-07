@@ -1,6 +1,15 @@
 const state = {
   tenant: localStorage.getItem("pr_ai_os_tenant") || "default",
   accessKey: localStorage.getItem("pr_ai_os_access_key") || "",
+  authRequired: false,
+  currentIdentity: null,
+  authUsers: [],
+  authClients: [],
+  projectAccess: [],
+  agentTasks: [],
+  activeAgentRun: null,
+  activeAgentArtifacts: [],
+  clientPortalProjects: [],
   creators: [],
   lastProposal: "",
   lastBrand: null,
@@ -70,6 +79,7 @@ const SYMBOLIC_EDITOR_FIELDS = {
 
 const VIEW_TITLES = {
   workspace: ["工作台", "从达人库到 Campaign OS 的五段式闭环。"],
+  agentWorkspace: ["AI Agent", "让 PR 项目经理 Agent 调用工具、生成过程日志和交付产物。"],
   projectRun: ["新建 PR 项目", "输入一个需求，自动跑完 brief、符号图谱、KOL 选择和 Campaign Room。"],
   ingest: ["数据接入", "把 Excel、链接和 API 变成统一 KOL Profile。"],
   creators: ["达人库", "扫描、修正和调用你的私有 KOL 资产。"],
@@ -81,6 +91,7 @@ const VIEW_TITLES = {
   creatorCommercial: ["博主商业档案", "邀请博主补充报价、档期和案例。"],
   briefDistribution: ["Brief 分发", "把确认的需求推给博主并收集响应。"],
   platformOS: ["OS 总控台", "管理 Campaign、多方案、推演和投后回流。"],
+  organization: ["组织管理", "管理内部账号、甲方客户、客户成员和项目授权。"],
   dataSources: ["数据源设置", "检查达人 API、LLM、推演引擎和导入能力。"],
   symbolicOS: ["符号 OS", "维护社会符号网络、能指标签库和投后修正。"],
   symbolicCreator: ["博主符号档案", "把内容风格、受众幻想和风险变成标签。"],
@@ -116,12 +127,14 @@ function renderTenantStatus(tenant = state.tenant) {
   if (status) status.textContent = tenant || "default";
 }
 
-function showAccessGate() {
+function showAccessGate(message = "") {
   const gate = $("#accessGate");
   if (!gate) return;
-  $("#serverStatus").textContent = "需要 Access Key";
+  $("#serverStatus").textContent = "需要登录";
   gate.classList.remove("hidden");
   $("#gateAccessKeyInput").value = state.accessKey || "";
+  const title = gate.querySelector("p");
+  if (title && message) title.textContent = message === "login required" ? "请用内部或甲方账号登录后继续使用。" : message;
 }
 
 function hideAccessGate() {
@@ -136,8 +149,8 @@ async function api(path, options = {}) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (response.status === 401) {
-      showAccessGate();
-      throw new Error("需要 Access Key");
+      showAccessGate(data.detail || "login required");
+      throw new Error(data.detail === "login required" ? "需要登录" : data.detail || "需要登录");
     }
     throw new Error(data.detail || `请求失败：${response.status}`);
   }
@@ -189,13 +202,39 @@ function decorateViews() {
 async function refreshStatus() {
   const status = await api("/api/status");
   $("#serverStatus").textContent = "已连接";
+  state.authRequired = Boolean(status.auth_required);
   state.tenant = status.tenant || state.tenant || "default";
   localStorage.setItem("pr_ai_os_tenant", state.tenant);
   renderTenantStatus(state.tenant);
-  if (status.auth_required && !state.accessKey) $("#serverStatus").textContent = "需要 Access Key";
+  if (status.auth_required && !state.accessKey && !state.currentIdentity) $("#serverStatus").textContent = "需要登录";
   $("#totalProfiles").textContent = status.total_profiles;
   $("#enrichedProfiles").textContent = status.enriched_profiles;
   $("#connectorCount").textContent = status.connectors.length;
+}
+
+async function loadAuthMe() {
+  const data = await api("/api/auth/me");
+  state.authRequired = Boolean(data.auth_required);
+  state.currentIdentity = data.identity || null;
+  renderAuthUser();
+  return data;
+}
+
+function renderAuthUser() {
+  const box = $("#authUserBox");
+  if (!box) return;
+  const user = state.currentIdentity?.user;
+  if (!user) {
+    box.innerHTML = `
+      <span>未登录</span>
+      <button id="authOpenLoginBtn" class="secondary" type="button">登录</button>
+    `;
+    return;
+  }
+  box.innerHTML = `
+    <span>${escapeHTML(user.name || user.email)} · ${escapeHTML(user.role)}</span>
+    <button id="authLogoutBtn" class="secondary" type="button">退出</button>
+  `;
 }
 
 async function loadCreators() {
@@ -231,6 +270,33 @@ async function loadCollaboration() {
   const data = await api("/api/collaboration/proposals");
   state.collabProposals = data.items || [];
   renderCollaborationList();
+}
+
+async function loadOrganization() {
+  if (state.currentIdentity?.user?.user_type === "client") return;
+  const [clients, proposals, access] = await Promise.all([
+    api("/api/auth/clients"),
+    api("/api/collaboration/proposals"),
+    api("/api/auth/project-access"),
+  ]);
+  let users = { items: [] };
+  try {
+    users = await api("/api/auth/users");
+  } catch (error) {
+    users = { items: state.currentIdentity?.user ? [state.currentIdentity.user] : [] };
+  }
+  state.authUsers = users.items || [];
+  state.authClients = clients.items || [];
+  state.collabProposals = proposals.items || [];
+  state.projectAccess = access.items || [];
+  renderOrganization();
+}
+
+async function loadAgentTasks() {
+  if (state.currentIdentity?.user?.user_type === "client") return;
+  const data = await api("/api/agent/tasks");
+  state.agentTasks = data.items || [];
+  renderAgentTasks();
 }
 
 async function loadCommercial() {
@@ -507,6 +573,272 @@ function emptyState(title, detail = "") {
   `;
 }
 
+function userById(userId) {
+  return state.authUsers.find((user) => user.user_id === userId);
+}
+
+function clientById(clientId) {
+  return state.authClients.find((client) => client.client_id === clientId);
+}
+
+function proposalById(proposalId) {
+  return state.collabProposals.find((proposal) => proposal.proposal_id === proposalId);
+}
+
+function renderRolePill(role) {
+  const label = escapeHTML(role || "viewer");
+  const tone = String(role || "").includes("admin") || String(role || "").includes("owner") ? "hot" : String(role || "").includes("viewer") ? "quiet" : "cool";
+  return `<span class="role-pill ${tone}">${label}</span>`;
+}
+
+function renderOrganization() {
+  renderOrgMetrics();
+  renderInternalUsers();
+  renderClientAccounts();
+  renderOrgSelects();
+  renderProjectAccessTable();
+}
+
+function renderOrgMetrics() {
+  const node = $("#orgMetrics");
+  if (!node) return;
+  const internalCount = state.authUsers.filter((user) => user.user_type === "internal").length;
+  const clientUserCount = state.authUsers.filter((user) => user.user_type === "client").length;
+  node.innerHTML = `
+    <div class="metric">
+      <span>内部成员</span>
+      <strong>${fmtNumber(internalCount)}</strong>
+    </div>
+    <div class="metric">
+      <span>甲方客户</span>
+      <strong>${fmtNumber(state.authClients.length)}</strong>
+    </div>
+    <div class="metric">
+      <span>甲方账号</span>
+      <strong>${fmtNumber(clientUserCount)}</strong>
+    </div>
+    <div class="metric">
+      <span>项目授权</span>
+      <strong>${fmtNumber(state.projectAccess.length)}</strong>
+    </div>
+  `;
+}
+
+function renderInternalUsers() {
+  const list = $("#internalUserList");
+  if (!list) return;
+  const users = state.authUsers.filter((user) => user.user_type === "internal");
+  list.innerHTML = users.length
+    ? users
+        .map(
+          (user) => `
+            <article class="org-card">
+              <div>
+                <strong>${escapeHTML(user.name || user.email)}</strong>
+                <span>${escapeHTML(user.email)}</span>
+              </div>
+              <div class="org-card-side">
+                ${renderRolePill(user.role)}
+                <span class="meta">${escapeHTML(user.status || "active")}</span>
+              </div>
+            </article>
+          `
+        )
+        .join("")
+    : emptyState("暂无内部成员", "创建第一个 admin 后可继续添加团队成员。");
+}
+
+function renderClientAccounts() {
+  const list = $("#clientAccountList");
+  if (!list) return;
+  list.innerHTML = state.authClients.length
+    ? state.authClients
+        .map((client) => {
+          const members = (client.members || [])
+            .map((member) => {
+              const user = userById(member.user_id);
+              return `
+                <span class="mini-member">
+                  ${escapeHTML(user?.name || user?.email || member.user_id)}
+                  ${renderRolePill(member.role)}
+                </span>
+              `;
+            })
+            .join("");
+          return `
+            <article class="org-card client">
+              <div>
+                <strong>${escapeHTML(client.name)}</strong>
+                <span>${escapeHTML(client.company || "未填写公司主体")}</span>
+                <div class="member-strip">${members || '<span class="meta">暂无甲方账号</span>'}</div>
+              </div>
+              <div class="org-card-side">
+                <span class="meta">${escapeHTML(client.status || "active")}</span>
+              </div>
+            </article>
+          `;
+        })
+        .join("")
+    : emptyState("暂无客户", "先创建客户公司，再给甲方开账号。");
+}
+
+function renderOrgSelects() {
+  const clients = state.authClients;
+  const clientUsers = state.authUsers.filter((user) => user.user_type === "client");
+  const proposals = state.collabProposals;
+  const clientOptions = clients.map((client) => `<option value="${escapeHTML(client.client_id)}">${escapeHTML(client.name)}</option>`).join("");
+  const userOptions = clientUsers
+    .map((user) => {
+      const client = clientById(user.client_id);
+      const suffix = client ? ` · ${client.name}` : "";
+      return `<option value="${escapeHTML(user.user_id)}" data-client-id="${escapeHTML(user.client_id || "")}">${escapeHTML(user.name || user.email)}${escapeHTML(suffix)}</option>`;
+    })
+    .join("");
+  const proposalOptions = proposals
+    .map((proposal) => `<option value="${escapeHTML(proposal.proposal_id)}">${escapeHTML(proposal.project_name)} · ${escapeHTML(proposal.client_name)}</option>`)
+    .join("");
+
+  const clientUserClientSelect = $("#clientUserClientSelect");
+  const accessClientSelect = $("#accessClientSelect");
+  const accessUserSelect = $("#accessUserSelect");
+  const accessProposalSelect = $("#accessProposalSelect");
+  if (clientUserClientSelect) clientUserClientSelect.innerHTML = clientOptions || '<option value="">先创建客户</option>';
+  if (accessClientSelect) accessClientSelect.innerHTML = clientOptions || '<option value="">先创建客户</option>';
+  if (accessUserSelect) accessUserSelect.innerHTML = userOptions || '<option value="">先创建甲方账号</option>';
+  if (accessProposalSelect) accessProposalSelect.innerHTML = proposalOptions || '<option value="">先创建协作方案</option>';
+}
+
+function renderProjectAccessTable() {
+  const tbody = $("#projectAccessTable tbody");
+  if (!tbody) return;
+  tbody.innerHTML = state.projectAccess.length
+    ? state.projectAccess
+        .map((access) => {
+          const user = userById(access.user_id);
+          const client = clientById(access.client_id || user?.client_id);
+          const proposal = proposalById(access.proposal_id);
+          return `
+            <tr>
+              <td>
+                <strong>${escapeHTML(user?.name || user?.email || access.user_id)}</strong>
+                <div class="meta">${escapeHTML(user?.email || "")}</div>
+              </td>
+              <td>${escapeHTML(client?.name || access.client_id || "-")}</td>
+              <td>
+                <strong>${escapeHTML(proposal?.project_name || access.proposal_id || "-")}</strong>
+                <div class="meta">${escapeHTML(proposal?.client_name || "")}</div>
+              </td>
+              <td>${(access.permissions || []).map((item) => `<span class="tag">${escapeHTML(item)}</span>`).join("")}</td>
+              <td>${escapeHTML(access.created_at || "-")}</td>
+            </tr>
+          `;
+        })
+        .join("")
+    : `<tr><td colspan="5">${emptyState("暂无项目授权", "选择甲方账号和协作方案后即可授权。")}</td></tr>`;
+}
+
+function renderAgentTasks() {
+  const list = $("#agentTaskList");
+  if (!list) return;
+  list.innerHTML = state.agentTasks.length
+    ? state.agentTasks
+        .map(({ task, runs, artifacts }) => {
+          const latestRun = runs?.[0];
+          return `
+            <button class="agent-task-item" data-run-id="${escapeHTML(latestRun?.run_id || "")}" data-task-id="${escapeHTML(task.task_id)}" type="button">
+              <strong>${escapeHTML(task.title)}</strong>
+              <span>${escapeHTML(task.status)} · ${artifacts?.length || 0} 个产物</span>
+            </button>
+          `;
+        })
+        .join("")
+    : emptyState("暂无 Agent 任务", "输入一个 PR 需求后会生成任务、执行和产物。");
+}
+
+function renderAgentRun(data) {
+  state.activeAgentRun = data;
+  state.activeAgentArtifacts = data.artifacts || [];
+  const run = data.run || {};
+  const task = data.task || {};
+  const events = data.events || [];
+  const meta = $("#agentRunMeta");
+  if (meta) meta.textContent = task.title ? `${task.title} · ${run.status || "running"}` : "等待 Agent 执行。";
+  const approveBtn = $("#agentApproveBtn");
+  if (approveBtn) {
+    approveBtn.classList.toggle("hidden", !run.run_id || !["waiting_approval", "completed"].includes(run.status));
+    approveBtn.dataset.runId = run.run_id || "";
+  }
+  const stream = $("#agentEventStream");
+  if (stream) {
+    stream.innerHTML = events.length
+      ? events
+          .map(
+            (event) => `
+              <article class="agent-event ${escapeHTML(event.status)}">
+                <div class="agent-event-index">${String(event.sequence).padStart(2, "0")}</div>
+                <div>
+                  <div class="agent-event-head">
+                    <strong>${escapeHTML(event.title)}</strong>
+                    <span>${escapeHTML(event.status)}</span>
+                  </div>
+                  <p>${escapeHTML(event.summary || "")}</p>
+                  ${event.tool_name ? `<div class="meta">tool: ${escapeHTML(event.tool_name)}</div>` : ""}
+                </div>
+              </article>
+            `
+          )
+          .join("")
+      : emptyState("暂无执行事件", "启动 Agent 后会显示每一步工具调用。");
+  }
+  renderAgentArtifacts();
+}
+
+function renderAgentArtifacts() {
+  const list = $("#agentArtifactList");
+  if (!list) return;
+  list.innerHTML = state.activeAgentArtifacts.length
+    ? state.activeAgentArtifacts.map((artifact) => renderAgentArtifact(artifact)).join("")
+    : emptyState("暂无产物", "Agent 会在这里沉淀知识检索、PR 运行结果和甲方方案。");
+}
+
+function renderAgentArtifact(artifact) {
+  const payload = artifact.payload || {};
+  let detail = "";
+  if (artifact.artifact_type === "knowledge") {
+    detail = (payload.items || [])
+      .slice(0, 4)
+      .map((item) => `<li>${escapeHTML(item.title)} <span>${escapeHTML(item.source)}</span></li>`)
+      .join("");
+    detail = `<ul class="agent-mini-list">${detail}</ul>`;
+  } else if (artifact.artifact_type === "project_run") {
+    const summary = payload.summary || {};
+    detail = `
+      <div class="agent-artifact-metrics">
+        <span>KOL ${fmtNumber(summary.matches)}</span>
+        <span>叙事 ${fmtNumber(summary.narratives)}</span>
+        <span>步骤 ${fmtNumber(summary.steps)}</span>
+      </div>
+    `;
+  } else if (artifact.artifact_type === "proposal") {
+    const summary = payload.summary || {};
+    detail = `
+      <div class="agent-artifact-metrics">
+        <span>候选 ${fmtNumber(summary.candidate_count)}</span>
+        <span>预算 ${fmtNumber(summary.budget_total)}</span>
+      </div>
+      <div class="meta">${escapeHTML(payload.proposal?.share_url || "")}</div>
+    `;
+  }
+  return `
+    <article class="agent-artifact-card">
+      <div class="card-kicker">${escapeHTML(artifact.artifact_type)}</div>
+      <strong>${escapeHTML(artifact.title)}</strong>
+      <p>${escapeHTML(artifact.summary || "")}</p>
+      ${detail}
+    </article>
+  `;
+}
+
 function formToObject(form) {
   const formData = new FormData(form);
   const obj = {};
@@ -521,11 +853,23 @@ function formToObject(form) {
 
 async function reloadAll() {
   await refreshStatus();
+  const auth = await loadAuthMe();
+  if (state.authRequired && !auth.authenticated && !state.accessKey) {
+    showAccessGate("请用内部或甲方账号登录后继续使用。");
+    return;
+  }
+  if (state.currentIdentity?.user?.user_type === "client") {
+    await loadClientPortalProjects();
+    setView("clientPortal");
+    return;
+  }
   await loadCreators();
   await loadImportTemplates();
   await loadGovernance();
   await loadSymbolicEngines();
+  await loadAgentTasks();
   await loadCollaboration();
+  await loadOrganization();
   await loadCommercial();
   await loadDistribution();
   await loadPlatformDashboard();
@@ -1445,6 +1789,36 @@ async function loadClientShare(token) {
   setView("clientPortal");
 }
 
+async function loadClientPortalProjects() {
+  const list = $("#clientPortalProjectList");
+  if (!list || state.currentIdentity?.user?.user_type !== "client") return;
+  const data = await api("/api/client/portal/projects");
+  state.clientPortalProjects = data.items || [];
+  list.innerHTML = state.clientPortalProjects.length
+    ? state.clientPortalProjects
+        .map(
+          (proposal) => `
+            <div class="template-item">
+              <div>
+                <strong>${escapeHTML(proposal.project_name)}</strong>
+                <div class="meta">${escapeHTML(proposal.client_name)} · ${escapeHTML(proposal.status)} · v${proposal.current_version}</div>
+              </div>
+              <button class="primary client-portal-open-project-btn" data-proposal-id="${escapeHTML(proposal.proposal_id)}" type="button">打开项目</button>
+            </div>
+          `
+        )
+        .join("")
+    : emptyState("暂无可访问项目", "请联系项目负责人为你开通项目权限。");
+}
+
+async function loadClientPortalProposal(proposalId) {
+  const data = await api(`/api/client/portal/proposals/${proposalId}`);
+  state.activeClientShare = data;
+  $("#clientShareTokenInput").value = data.proposal?.share_token || "";
+  renderClientProposal(data);
+  setView("clientPortal");
+}
+
 function renderClientProposal(data) {
   const proposal = data.proposal;
   const candidates = data.candidates || [];
@@ -2012,7 +2386,25 @@ function downloadProposal() {
 
 function bindEvents() {
   renderTenantStatus();
-  $$(".nav-item").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
+  $$(".nav-item").forEach((button) =>
+    button.addEventListener("click", async () => {
+      setView(button.dataset.view);
+      if (button.dataset.view === "organization") {
+        try {
+          await loadOrganization();
+        } catch (error) {
+          toast(error.message, true);
+        }
+      }
+      if (button.dataset.view === "agentWorkspace") {
+        try {
+          await loadAgentTasks();
+        } catch (error) {
+          toast(error.message, true);
+        }
+      }
+    })
+  );
   $$(".nav-group").forEach((group) => {
     group.addEventListener("toggle", () => {
       if (!group.open) return;
@@ -2044,6 +2436,31 @@ function bindEvents() {
   $("#accessKeyInput").addEventListener("keydown", (event) => {
     if (event.key === "Enter") $("#accessKeyApplyBtn").click();
   });
+  $("#loginForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const payload = formToObject(event.currentTarget);
+    await api("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    hideAccessGate();
+    await reloadAll();
+    toast("已登录");
+  });
+  $("#bootstrapAdminForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const payload = formToObject(event.currentTarget);
+    if (state.accessKey) payload.access_key = state.accessKey;
+    await api("/api/auth/bootstrap-admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    hideAccessGate();
+    await reloadAll();
+    toast("Admin 已创建并登录");
+  });
   $("#gateAccessKeyBtn").addEventListener("click", async () => {
     state.accessKey = $("#gateAccessKeyInput").value.trim();
     localStorage.setItem("pr_ai_os_access_key", state.accessKey);
@@ -2066,11 +2483,150 @@ function bindEvents() {
   $("#gateAccessKeyInput").addEventListener("keydown", (event) => {
     if (event.key === "Enter") $("#gateAccessKeyBtn").click();
   });
+  document.addEventListener("click", async (event) => {
+    if (event.target.closest("#authOpenLoginBtn")) {
+      showAccessGate("请登录后继续使用。");
+      return;
+    }
+    if (event.target.closest("#authLogoutBtn")) {
+      await api("/api/auth/logout", { method: "POST" });
+      state.currentIdentity = null;
+      renderAuthUser();
+      await reloadAll();
+      toast("已退出登录");
+      return;
+    }
+    const projectBtn = event.target.closest(".client-portal-open-project-btn");
+    if (projectBtn) {
+      await loadClientPortalProposal(projectBtn.dataset.proposalId);
+    }
+    const agentTaskBtn = event.target.closest(".agent-task-item");
+    if (agentTaskBtn) {
+      const runId = agentTaskBtn.dataset.runId;
+      if (runId) {
+        const data = await api(`/api/agent/runs/${runId}`);
+        renderAgentRun(data);
+      }
+    }
+  });
   $("#refreshBtn").addEventListener("click", () => reloadAll().then(() => toast("已刷新")));
   $("#refreshGovernanceBtn").addEventListener("click", () => loadGovernance().then(() => toast("治理队列已刷新")));
   $("#refreshCollabBtn").addEventListener("click", () => loadCollaboration().then(() => toast("协作方案已刷新")));
   $("#refreshCommercialBtn").addEventListener("click", () => loadCommercial().then(() => toast("商业档案队列已刷新")));
   $("#refreshDataSourcesBtn").addEventListener("click", () => loadDataSources().then(() => toast("数据源状态已刷新")));
+  $("#refreshOrganizationBtn")?.addEventListener("click", () => loadOrganization().then(() => toast("组织数据已刷新")));
+  $("#refreshAgentTasksBtn")?.addEventListener("click", () => loadAgentTasks().then(() => toast("Agent 任务已刷新")));
+  $("#agentChatForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const payload = formToObject(event.currentTarget);
+    const button = $("#agentRunBtn");
+    try {
+      if (button) {
+        button.disabled = true;
+        button.textContent = "执行中...";
+      }
+      const data = await api("/api/agent/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      renderAgentRun(data);
+      await loadAgentTasks();
+      toast("Agent 执行完成，等待人工确认");
+    } catch (error) {
+      toast(error.message, true);
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = "启动 Agent";
+      }
+    }
+  });
+  $("#agentApproveBtn")?.addEventListener("click", async (event) => {
+    const runId = event.currentTarget.dataset.runId;
+    if (!runId) return;
+    const data = await api(`/api/agent/runs/${runId}/approve`, { method: "POST" });
+    renderAgentRun(data);
+    await loadAgentTasks();
+    toast("已确认 Agent 产物");
+  });
+  $("#internalUserForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const payload = formToObject(event.currentTarget);
+    payload.user_type = "internal";
+    try {
+      await api("/api/auth/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      event.currentTarget.reset();
+      await loadOrganization();
+      toast("内部账号已创建");
+    } catch (error) {
+      toast(error.message, true);
+    }
+  });
+  $("#clientAccountForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const payload = formToObject(event.currentTarget);
+    try {
+      await api("/api/auth/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      event.currentTarget.reset();
+      await loadOrganization();
+      toast("客户已创建");
+    } catch (error) {
+      toast(error.message, true);
+    }
+  });
+  $("#clientUserForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const payload = formToObject(event.currentTarget);
+    const clientId = payload.client_id;
+    delete payload.client_id;
+    if (!clientId) {
+      toast("请先选择客户", true);
+      return;
+    }
+    try {
+      await api(`/api/auth/clients/${clientId}/users`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      event.currentTarget.reset();
+      await loadOrganization();
+      toast("甲方账号已创建");
+    } catch (error) {
+      toast(error.message, true);
+    }
+  });
+  $("#projectAccessForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const payload = formToObject(form);
+    payload.permissions = [];
+    if (form.elements.permission_view?.checked) payload.permissions.push("view");
+    if (form.elements.permission_comment?.checked) payload.permissions.push("comment");
+    delete payload.permission_view;
+    delete payload.permission_comment;
+    if (!payload.permissions.length) payload.permissions = ["view"];
+    try {
+      await api("/api/auth/project-access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      await loadOrganization();
+      toast("项目授权已保存");
+    } catch (error) {
+      toast(error.message, true);
+    }
+  });
   $("#generateSocialReportBtn").addEventListener("click", async () => {
     const payload = formToObject($("#socialReportForm"));
     const data = await api("/api/symbolic-os/social-reports", {
@@ -2655,7 +3211,12 @@ function bindEvents() {
       const token = $("#clientShareTokenInput").value.trim();
       const creatorId = decisionBtn.dataset.creatorId;
       const comment = $(`[data-client-comment="${creatorId}"]`)?.value || "";
-      const data = await api(`/api/client/share/${token}/feedback`, {
+      const proposalId = state.activeClientShare?.proposal?.proposal_id;
+      const feedbackUrl =
+        state.currentIdentity?.user?.user_type === "client" && proposalId
+          ? `/api/client/portal/proposals/${proposalId}/feedback`
+          : `/api/client/share/${token}/feedback`;
+      const data = await api(feedbackUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2676,7 +3237,12 @@ function bindEvents() {
     if (overallBtn) {
       const token = $("#clientShareTokenInput").value.trim();
       const comment = $("#clientOverallComment").value;
-      const data = await api(`/api/client/share/${token}/feedback`, {
+      const proposalId = state.activeClientShare?.proposal?.proposal_id;
+      const feedbackUrl =
+        state.currentIdentity?.user?.user_type === "client" && proposalId
+          ? `/api/client/portal/proposals/${proposalId}/feedback`
+          : `/api/client/share/${token}/feedback`;
+      const data = await api(feedbackUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target_type: "proposal", comment }),
