@@ -35,7 +35,7 @@ from src.auth.service import (
     users_exist,
 )
 from src.auth.storage import init_auth_db, load_all_clients, load_all_project_access, load_all_users, load_client_users_for_client
-from src.agent.runtime import approve_agent_run, commit_agent_memory_suggestion, execute_agent_run, get_agent_run, get_agent_task, list_agent_tasks, run_agent_chat, start_agent_chat
+from src.agent.runtime import approve_agent_plan, approve_agent_run, cancel_agent_run, commit_agent_memory_suggestion, execute_agent_run, get_agent_run, get_agent_task, list_agent_tasks, resume_agent_clarification, run_agent_chat, start_agent_chat
 from src.agent.storage import init_agent_db
 from src.connectors.excel_connector import load_table_file
 from src.connectors.link_connector import parse_links
@@ -558,6 +558,7 @@ async def agent_chat(payload: dict[str, Any]) -> dict[str, Any]:
             project_name=str(payload.get("project_name") or ""),
             top_n=int(payload.get("top_n") or 8),
             created_by=identity.user.user_id,
+            require_plan_approval=bool(payload.get("require_plan_approval")),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -580,10 +581,11 @@ async def agent_chat_start(payload: dict[str, Any], background_tasks: Background
             project_name=str(payload.get("project_name") or ""),
             top_n=top_n,
             created_by=identity.user.user_id,
+            require_plan_approval=bool(payload.get("require_plan_approval")),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    background_tasks.add_task(execute_agent_run, db_path, started["run"]["run_id"], top_n)
+    background_tasks.add_task(execute_agent_run, db_path, started["run"]["run_id"], top_n, bool(payload.get("require_plan_approval")))
     return started
 
 
@@ -614,6 +616,39 @@ async def agent_run_approve(run_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@app.post("/api/agent/runs/{run_id}/approve-plan")
+async def agent_run_approve_plan(run_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    require_internal("write")
+    try:
+        return approve_agent_plan(DB_PATH, run_id, top_n=int(payload.get("top_n") or 8))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/agent/runs/{run_id}/cancel")
+async def agent_run_cancel(run_id: str) -> dict[str, Any]:
+    require_internal("write")
+    try:
+        return cancel_agent_run(DB_PATH, run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/agent/runs/{run_id}/clarification")
+async def agent_run_clarification(run_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    identity = require_internal("project_run")
+    try:
+        return resume_agent_clarification(
+            DB_PATH,
+            run_id,
+            supplement=str(payload.get("supplement") or ""),
+            top_n=int(payload.get("top_n") or 8),
+            created_by=identity.user.user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/api/agent/artifacts/{artifact_id}/knowledge")
 async def agent_artifact_to_knowledge(artifact_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     identity = require_internal("write")
@@ -623,6 +658,7 @@ async def agent_artifact_to_knowledge(artifact_id: str, payload: dict[str, Any])
             artifact_id,
             suggestion_index=int(payload.get("suggestion_index") or 0),
             created_by=identity.user.user_id,
+            override=payload.get("override") or {},
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -1045,6 +1045,31 @@ button {
   padding: 12px;
 }
 
+.agent-run-controls,
+.agent-artifact-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.agent-artifact-head {
+  justify-content: space-between;
+}
+
+.agent-artifact-head .secondary {
+  padding: 7px 9px;
+}
+
+.agent-clarification-form {
+  background: #fffdf4;
+  border: 2px dashed #17120d;
+  border-radius: 6px;
+  margin-bottom: 14px;
+  padding: 12px;
+}
+
 .agent-artifact-metrics {
   display: flex;
   flex-wrap: wrap;
@@ -1155,6 +1180,25 @@ button {
 
 .agent-memory-item button {
   margin-top: 10px;
+}
+
+.agent-memory-item textarea,
+.agent-memory-item input {
+  margin-top: 8px;
+}
+
+.agent-memory-item textarea {
+  min-height: 78px;
+}
+
+.agent-memory-item .memory-edit-title {
+  min-height: 44px;
+  font-family: var(--display-font);
+  font-size: 16px;
+}
+
+.artifact-modal-panel {
+  max-width: min(980px, 92vw);
 }
 
 .knowledge-hero {

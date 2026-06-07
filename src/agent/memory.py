@@ -74,6 +74,7 @@ def commit_memory_suggestion(
     artifact_id: str,
     suggestion_index: int = 0,
     created_by: str = "",
+    override: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     artifact = load_artifact(db_path, artifact_id)
     if artifact is None:
@@ -83,7 +84,7 @@ def commit_memory_suggestion(
     suggestions = artifact.payload.get("suggestions") or []
     if suggestion_index < 0 or suggestion_index >= len(suggestions):
         raise ValueError("memory suggestion not found")
-    suggestion = suggestions[suggestion_index]
+    suggestion = {**suggestions[suggestion_index], **(override or {})}
     committed = artifact.payload.get("committed") or {}
     key = str(suggestion_index)
     if committed.get(key):

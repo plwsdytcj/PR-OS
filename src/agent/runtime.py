@@ -90,9 +90,10 @@ def run_agent_chat(
     project_name: str = "",
     top_n: int = 8,
     created_by: str = "",
+    require_plan_approval: bool = False,
 ) -> dict[str, Any]:
     task, run = prepare_agent_run(db_path, message, task_id=task_id, client_name=client_name, project_name=project_name, created_by=created_by)
-    execute_agent_run(db_path, run.run_id, top_n=top_n)
+    execute_agent_run(db_path, run.run_id, top_n=top_n, require_plan_approval=require_plan_approval)
     return get_agent_run(db_path, run.run_id) or {"run": run.to_dict(), "task": task.to_dict(), "events": [], "artifacts": []}
 
 
@@ -104,9 +105,10 @@ def start_agent_chat(
     project_name: str = "",
     top_n: int = 8,
     created_by: str = "",
+    require_plan_approval: bool = False,
 ) -> dict[str, Any]:
     task, run = prepare_agent_run(db_path, message, task_id=task_id, client_name=client_name, project_name=project_name, created_by=created_by)
-    return {"task": task.to_dict(), "run": run.to_dict(), "top_n": top_n}
+    return {"task": task.to_dict(), "run": run.to_dict(), "top_n": top_n, "require_plan_approval": require_plan_approval}
 
 
 def prepare_agent_run(
@@ -134,7 +136,7 @@ def prepare_agent_run(
     return task, run
 
 
-def execute_agent_run(db_path: Path, run_id: str, top_n: int = 8) -> None:
+def execute_agent_run(db_path: Path, run_id: str, top_n: int = 8, require_plan_approval: bool = False) -> None:
     run = load_run(db_path, run_id)
     if run is None:
         raise ValueError("run not found")
@@ -142,6 +144,7 @@ def execute_agent_run(db_path: Path, run_id: str, top_n: int = 8) -> None:
     if task is None:
         raise ValueError("agent task not found")
     message = run.user_message or task.brief
+    original_status = run.status
     sequence = len(load_events_for_run(db_path, run_id)) + 1
 
     def event(event_type: str, status: str, title: str, summary: str = "", tool_name: str = "", payload: dict[str, Any] | None = None, artifact_id: str = "") -> AgentEvent:
@@ -211,49 +214,71 @@ def execute_agent_run(db_path: Path, run_id: str, top_n: int = 8) -> None:
         upsert_run(db_path, run)
         upsert_task(db_path, task)
 
-        plan = build_agent_plan(message, client_name=task.client_name, project_name=task.project_name, top_n=top_n)
-        plan_artifact = artifact(
-            "plan",
-            "Agent 执行计划",
-            "已生成执行计划。" if plan["status"] == "ready" else "已生成执行计划，但需要先补充关键信息。",
-            plan,
-        )
-        event(
-            "planner",
-            "completed" if plan["status"] == "ready" else "waiting",
-            "生成执行计划",
-            plan_artifact.summary,
-            tool_name="planner",
-            payload={"status": plan["status"], "missing_fields": plan.get("missing_fields", [])},
-            artifact_id=plan_artifact.artifact_id,
-        )
-
-        if plan["status"] == "needs_clarification":
-            clarification = clarification_payload(plan)
-            clarification_artifact = artifact(
-                "clarification",
-                "Agent 追问",
-                "当前 brief 缺少关键字段，Agent 暂停执行并等待补充。",
-                clarification,
+        if original_status == "waiting_plan_approval":
+            event("planner", "completed", "计划已确认", "内部用户已确认计划，继续执行工具链。", tool_name="planner")
+        else:
+            plan = build_agent_plan(message, client_name=task.client_name, project_name=task.project_name, top_n=top_n)
+            plan_artifact = artifact(
+                "plan",
+                "Agent 执行计划",
+                "已生成执行计划。" if plan["status"] == "ready" else "已生成执行计划，但需要先补充关键信息。",
+                plan,
             )
             event(
-                "clarification",
-                "waiting",
-                "等待补充信息",
-                "请补充预算、平台、产品或目标人群后重新启动 Agent。",
-                tool_name="clarification",
-                payload=clarification,
-                artifact_id=clarification_artifact.artifact_id,
+                "planner",
+                "completed" if plan["status"] == "ready" else "waiting",
+                "生成执行计划",
+                plan_artifact.summary,
+                tool_name="planner",
+                payload={"status": plan["status"], "missing_fields": plan.get("missing_fields", [])},
+                artifact_id=plan_artifact.artifact_id,
             )
-            run.status = "waiting_clarification"
-            run.final_answer = "需要补充信息：" + "；".join(clarification.get("questions") or [])
-            run.updated_at = now_iso()
-            task.status = "waiting_clarification"
-            task.current_run_id = run.run_id
-            task.updated_at = now_iso()
-            upsert_run(db_path, run)
-            upsert_task(db_path, task)
-            return
+
+            if plan["status"] == "needs_clarification":
+                clarification = clarification_payload(plan)
+                clarification_artifact = artifact(
+                    "clarification",
+                    "Agent 追问",
+                    "当前 brief 缺少关键字段，Agent 暂停执行并等待补充。",
+                    clarification,
+                )
+                event(
+                    "clarification",
+                    "waiting",
+                    "等待补充信息",
+                    "请补充预算、平台、产品或目标人群后重新启动 Agent。",
+                    tool_name="clarification",
+                    payload=clarification,
+                    artifact_id=clarification_artifact.artifact_id,
+                )
+                run.status = "waiting_clarification"
+                run.final_answer = "需要补充信息：" + "；".join(clarification.get("questions") or [])
+                run.updated_at = now_iso()
+                task.status = "waiting_clarification"
+                task.current_run_id = run.run_id
+                task.updated_at = now_iso()
+                upsert_run(db_path, run)
+                upsert_task(db_path, task)
+                return
+
+            if require_plan_approval:
+                event(
+                    "planner",
+                    "waiting",
+                    "等待计划确认",
+                    "已生成执行计划，等待内部用户确认后再调用工具。",
+                    tool_name="planner",
+                    artifact_id=plan_artifact.artifact_id,
+                )
+                run.status = "waiting_plan_approval"
+                run.final_answer = "执行计划已生成，请确认后继续运行。"
+                run.updated_at = now_iso()
+                task.status = "waiting_plan_approval"
+                task.current_run_id = run.run_id
+                task.updated_at = now_iso()
+                upsert_run(db_path, run)
+                upsert_task(db_path, task)
+                return
 
         event("message", "completed", "理解项目需求", "已接收需求，准备检索组织记忆并调用 PR OS 工具。", payload={"message": message})
 
@@ -390,8 +415,8 @@ def execute_agent_run(db_path: Path, run_id: str, top_n: int = 8) -> None:
         raise
 
 
-def commit_agent_memory_suggestion(db_path: Path, artifact_id: str, suggestion_index: int = 0, created_by: str = "") -> dict[str, Any]:
-    result = commit_memory_suggestion(db_path, artifact_id, suggestion_index=suggestion_index, created_by=created_by)
+def commit_agent_memory_suggestion(db_path: Path, artifact_id: str, suggestion_index: int = 0, created_by: str = "", override: dict[str, Any] | None = None) -> dict[str, Any]:
+    result = commit_memory_suggestion(db_path, artifact_id, suggestion_index=suggestion_index, created_by=created_by, override=override)
     artifact = load_artifact(db_path, artifact_id)
     if artifact:
         run = load_run(db_path, artifact.run_id)
@@ -416,6 +441,81 @@ def commit_agent_memory_suggestion(db_path: Path, artifact_id: str, suggestion_i
             run.updated_at = now_iso()
             upsert_run(db_path, run)
     return result
+
+
+def approve_agent_plan(db_path: Path, run_id: str, top_n: int = 8) -> dict[str, Any]:
+    run = load_run(db_path, run_id)
+    if run is None:
+        raise ValueError("run not found")
+    if run.status != "waiting_plan_approval":
+        raise ValueError("run is not waiting for plan approval")
+    execute_agent_run(db_path, run_id, top_n=top_n, require_plan_approval=False)
+    return get_agent_run(db_path, run_id) or {"run": run.to_dict()}
+
+
+def cancel_agent_run(db_path: Path, run_id: str) -> dict[str, Any]:
+    run = load_run(db_path, run_id)
+    if run is None:
+        raise ValueError("run not found")
+    task = load_task(db_path, run.task_id)
+    if run.status in {"approved", "cancelled"}:
+        return get_agent_run(db_path, run_id) or {"run": run.to_dict()}
+    run.status = "cancelled"
+    run.final_answer = "本次 Agent run 已取消。"
+    run.updated_at = now_iso()
+    upsert_run(db_path, run)
+    if task:
+        task.status = "cancelled"
+        task.updated_at = now_iso()
+        upsert_task(db_path, task)
+    next_sequence = len(load_events_for_run(db_path, run_id)) + 1
+    upsert_event(
+        db_path,
+        AgentEvent(
+            event_id=event_id_for(run_id, next_sequence, "Run 已取消"),
+            run_id=run_id,
+            task_id=run.task_id,
+            sequence=next_sequence,
+            event_type="control",
+            status="cancelled",
+            title="Run 已取消",
+            summary="内部用户取消了本次 Agent 执行。",
+        ),
+    )
+    return get_agent_run(db_path, run_id) or {"run": run.to_dict()}
+
+
+def resume_agent_clarification(db_path: Path, run_id: str, supplement: str, top_n: int = 8, created_by: str = "") -> dict[str, Any]:
+    run = load_run(db_path, run_id)
+    if run is None:
+        raise ValueError("run not found")
+    if run.status != "waiting_clarification":
+        raise ValueError("run is not waiting for clarification")
+    task = load_task(db_path, run.task_id)
+    if task is None:
+        raise ValueError("agent task not found")
+    supplement = supplement.strip()
+    if not supplement:
+        raise ValueError("supplement is required")
+    message = f"{task.brief}\n补充信息：{supplement}"
+    task.brief = message
+    task.updated_at = now_iso()
+    upsert_task(db_path, task)
+    next_sequence = len(load_events_for_run(db_path, run_id)) + 1
+    upsert_event(
+        db_path,
+        AgentEvent(
+            event_id=event_id_for(run_id, next_sequence, "已补充信息"),
+            run_id=run_id,
+            task_id=task.task_id,
+            sequence=next_sequence,
+            event_type="clarification",
+            status="completed",
+            title="已补充信息",
+            summary=supplement,
+        ),
+    )
+    return run_agent_chat(db_path, message=message, task_id=task.task_id, client_name=task.client_name, project_name=task.project_name, top_n=top_n, created_by=created_by)
 
 
 def approve_agent_run(db_path: Path, run_id: str) -> dict[str, Any]:

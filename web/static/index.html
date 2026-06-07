@@ -202,6 +202,10 @@
                     <input name="top_n" type="number" value="8" min="3" max="30" />
                     <button id="agentRunBtn" class="primary" type="submit">启动 Agent</button>
                   </div>
+                  <label class="checkline">
+                    <input name="require_plan_approval" type="checkbox" />
+                    先确认执行计划，再调用工具
+                  </label>
                 </form>
               </div>
 
@@ -211,8 +215,20 @@
                     <h2>执行过程</h2>
                     <p id="agentRunMeta">等待 Agent 执行。</p>
                   </div>
-                  <button id="agentApproveBtn" class="secondary hidden" type="button">确认本次产物</button>
+                  <div class="agent-run-controls">
+                    <button id="agentApprovePlanBtn" class="secondary hidden" type="button">确认计划并执行</button>
+                    <button id="agentCancelRunBtn" class="secondary hidden" type="button">取消 Run</button>
+                    <button id="agentCopyBriefBtn" class="secondary hidden" type="button">复制 Brief</button>
+                    <button id="agentApproveBtn" class="secondary hidden" type="button">确认本次产物</button>
+                  </div>
                 </div>
+                <form id="agentClarificationForm" class="form agent-clarification-form hidden">
+                  <textarea name="supplement" placeholder="补充预算、平台、产品等信息后继续执行同一个任务"></textarea>
+                  <div class="field-row">
+                    <input name="top_n" type="number" value="8" min="3" max="30" />
+                    <button class="primary" type="submit">补充后继续执行</button>
+                  </div>
+                </form>
                 <div id="agentEventStream" class="agent-event-stream"></div>
               </div>
             </div>
@@ -1277,6 +1293,19 @@
           </div>
         </section>
       </main>
+    </div>
+    <div id="artifactModal" class="modal hidden">
+      <div class="modal-backdrop" data-close-artifact-modal="true"></div>
+      <section class="modal-panel artifact-modal-panel">
+        <div class="panel-header">
+          <div>
+            <h2 id="artifactModalTitle">产物详情</h2>
+            <p id="artifactModalMeta">加载中</p>
+          </div>
+          <button id="closeArtifactModalBtn" class="icon-btn" type="button" title="关闭">×</button>
+        </div>
+        <pre id="artifactModalBody" class="json-view"></pre>
+      </section>
     </div>
     <div id="creatorModal" class="modal hidden">
       <div class="modal-backdrop" data-close-modal="true"></div>

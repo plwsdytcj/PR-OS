@@ -174,6 +174,7 @@ Phase 7B Streaming Agent Execution
 Phase 7C Knowledge RAG
 Phase 7D Agent Planner / Tool Trace / Clarification
 Phase 7E Memory Feedback Loop
+Phase 7F Agent Experience Hardening
 ```
 
 ---
@@ -525,9 +526,96 @@ Agent 先生成执行计划：
 
 ---
 
-## 11. 技术架构
+## 11. Phase 7F：Agent Experience Hardening
 
-### 11.1 当前技术选择
+状态：**已完成**
+
+### 11.1 目标
+
+把 Agent 从“能力可用”升级成“内部团队真的好操作”。
+
+7A-7E 已经证明 Agent 可以规划、执行、查知识、生成产物和回流记忆。7F 解决的是使用过程中的控制感：
+
+- 用户能先确认计划；
+- 用户能取消 run；
+- 用户能在追问后继续同一个任务；
+- 用户能打开完整产物详情；
+- 用户能编辑记忆建议后再入库。
+
+### 11.2 核心模块
+
+#### 11.2.1 Plan Approval
+
+用户可以勾选“先确认执行计划，再调用工具”。
+
+系统先生成 plan artifact，然后停在：
+
+```text
+waiting_plan_approval
+```
+
+用户点击确认后，Agent 才继续调用工具链。
+
+#### 11.2.2 Run Controls
+
+执行面板支持：
+
+- 确认计划并执行；
+- 取消 Run；
+- 复制 Brief；
+- 确认本次产物。
+
+#### 11.2.3 Clarification Resume
+
+当 Agent 进入 `waiting_clarification` 时，页面直接显示补充输入框。
+
+用户补充预算、平台、产品等信息后，系统会继续同一个 task，而不是要求用户重新组织完整 brief。
+
+#### 11.2.4 Artifact Detail
+
+每个 artifact 卡片都有详情按钮，可以查看完整 payload：
+
+- plan；
+- clarification；
+- knowledge；
+- project_run；
+- proposal；
+- tool_trace；
+- memory_suggestions。
+
+#### 11.2.5 Editable Memory Review
+
+记忆回流建议入库前可以编辑：
+
+- 标题；
+- 正文；
+- 标签。
+
+编辑后再写入知识库。
+
+### 11.3 已实现能力
+
+- `require_plan_approval` 参数；
+- `POST /api/agent/runs/{run_id}/approve-plan`；
+- `POST /api/agent/runs/{run_id}/cancel`；
+- `POST /api/agent/runs/{run_id}/clarification`；
+- artifact detail modal；
+- memory suggestion editable writeback；
+- Phase 7F smoke 测试。
+
+### 11.4 7F 不做
+
+- 暂不做中途暂停/恢复；
+- 暂不做拖拽编辑执行计划；
+- 暂不做多人同时协作一个 run；
+- 暂不做 SSE/WebSocket；
+- 暂不做完整审计日志。
+
+---
+
+## 12. 技术架构
+
+### 12.1 当前技术选择
 
 当前 Phase 7 采用轻量、可替换的本地优先架构：
 
@@ -542,7 +630,7 @@ Knowledge RAG module
 Object storage adapter
 ```
 
-### 11.2 为什么暂不直接上 LangGraph
+### 12.2 为什么暂不直接上 LangGraph
 
 当前阶段不需要过早引入复杂工作流框架。
 
@@ -554,7 +642,7 @@ Object storage adapter
 - 本地可控更重要；
 - 未来仍可把 planner/runtime 替换为 LangGraph 或 OpenAI Agents SDK。
 
-### 11.3 未来可替换点
+### 12.3 未来可替换点
 
 未来可以替换：
 
@@ -567,9 +655,9 @@ Object storage adapter
 
 ---
 
-## 12. 数据模型
+## 13. 数据模型
 
-### 12.1 Agent
+### 13.1 Agent
 
 核心对象：
 
@@ -578,14 +666,14 @@ Object storage adapter
 - `agent_events`；
 - `agent_artifacts`。
 
-### 12.2 Knowledge
+### 13.2 Knowledge
 
 核心对象：
 
 - `knowledge_documents`；
 - `knowledge_chunks`。
 
-### 12.3 7D 新增建议
+### 13.3 7D 新增建议
 
 建议新增：
 
@@ -597,9 +685,9 @@ Object storage adapter
 
 ---
 
-## 13. 页面结构
+## 14. 页面结构
 
-### 13.1 已有页面
+### 14.1 已有页面
 
 - `AI Agent`：Agent 任务、事件流、产物；
 - `知识库`：知识写入、搜索、文档列表；
@@ -607,7 +695,7 @@ Object storage adapter
 - `Campaign OS`：项目作战室；
 - `组织管理`：用户和客户权限。
 
-### 13.2 7D 页面增强
+### 14.2 7D / 7F 页面增强
 
 `AI Agent` 页面需要新增：
 
@@ -619,7 +707,7 @@ Object storage adapter
 
 ---
 
-## 14. 成功标准
+## 15. 成功标准
 
 Phase 7 整体成功标准：
 
@@ -633,7 +721,7 @@ Phase 7 整体成功标准：
 
 ---
 
-## 15. 当前状态
+## 16. 当前状态
 
 截至 2026-06-07：
 
@@ -642,29 +730,30 @@ Phase 7 整体成功标准：
 - Phase 7C：已实现；
 - Phase 7D：已实现；
 - Phase 7E：已实现。
+- Phase 7F：已实现。
 
 当前最新代码提交以 `git log -1 --oneline` 为准。
 
 ---
 
-## 16. 下一步建议
+## 17. 下一步建议
 
-下一步优先做 Phase 8 或 Phase 7F，而不是继续定义 7D/7E：
+下一步优先做 Phase 8，或者继续做 Phase 7G 的深度体验增强：
 
 ```text
-Phase 7F Agent Experience Hardening / Phase 8 Productionization
+Phase 8 Productionization / Phase 7G Advanced Agent Control
 ```
 
 原因：
 
-- 现在已经有 Agent、streaming、知识库、计划、追问、工具 trace 和记忆回流；
+- 现在已经有 Agent、streaming、知识库、计划、追问、工具 trace、记忆回流和基础操作控制；
 - 下一步更应该增强体验稳定性、真实团队使用、权限审计、SSE/WebSocket、PostgreSQL/pgvector 和部署；
 - 也可以把 plan approval、工具步骤编辑、自动复盘入库审核流继续做深。
 
 候选方向：
 
 ```text
-1. Phase 7F：Agent 体验增强，计划确认、步骤编辑、中途暂停、artifact detail。
+1. Phase 7G：Agent 高级控制，步骤编辑、中途暂停/恢复、多人协作观察。
 2. Phase 8：生产化，PostgreSQL/pgvector、云对象存储、企业 SSO、审计日志、部署。
 3. Phase 9：甲方协作 Agent，把甲方也接入对话式方案确认。
 ```

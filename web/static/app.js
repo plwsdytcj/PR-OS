@@ -9,6 +9,7 @@ const state = {
   agentTasks: [],
   activeAgentRun: null,
   activeAgentArtifacts: [],
+  activeArtifactDetail: null,
   agentPollTimer: null,
   knowledgeDocuments: [],
   knowledgeStats: null,
@@ -781,6 +782,26 @@ function renderAgentRun(data) {
     approveBtn.classList.toggle("hidden", !run.run_id || !["waiting_approval", "completed"].includes(run.status));
     approveBtn.dataset.runId = run.run_id || "";
   }
+  const approvePlanBtn = $("#agentApprovePlanBtn");
+  if (approvePlanBtn) {
+    approvePlanBtn.classList.toggle("hidden", run.status !== "waiting_plan_approval");
+    approvePlanBtn.dataset.runId = run.run_id || "";
+  }
+  const cancelBtn = $("#agentCancelRunBtn");
+  if (cancelBtn) {
+    cancelBtn.classList.toggle("hidden", !run.run_id || ["approved", "cancelled", "failed"].includes(run.status));
+    cancelBtn.dataset.runId = run.run_id || "";
+  }
+  const copyBtn = $("#agentCopyBriefBtn");
+  if (copyBtn) {
+    copyBtn.classList.toggle("hidden", !task.brief);
+    copyBtn.dataset.brief = task.brief || "";
+  }
+  const clarificationForm = $("#agentClarificationForm");
+  if (clarificationForm) {
+    clarificationForm.classList.toggle("hidden", run.status !== "waiting_clarification");
+    clarificationForm.dataset.runId = run.run_id || "";
+  }
   const stream = $("#agentEventStream");
   if (stream) {
     stream.innerHTML = events.length
@@ -893,7 +914,9 @@ function renderAgentArtifact(artifact) {
               <article class="agent-memory-item ${committed ? "committed" : ""}">
                 <div class="card-kicker">${escapeHTML(item.source_type || "case")}</div>
                 <strong>${escapeHTML(item.title || "记忆建议")}</strong>
-                <p>${escapeHTML(item.content || "").slice(0, 180)}</p>
+                <textarea class="memory-edit-title" data-artifact-id="${escapeHTML(artifact.artifact_id)}" data-suggestion-index="${index}">${escapeHTML(item.title || "")}</textarea>
+                <textarea class="memory-edit-content" data-artifact-id="${escapeHTML(artifact.artifact_id)}" data-suggestion-index="${index}">${escapeHTML(item.content || "")}</textarea>
+                <input class="memory-edit-tags" data-artifact-id="${escapeHTML(artifact.artifact_id)}" data-suggestion-index="${index}" value="${escapeHTML((item.tags || []).join("，"))}" placeholder="标签，逗号分隔" />
                 <div class="tag-list">${(item.tags || []).map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`).join("")}</div>
                 ${
                   committed
@@ -910,11 +933,29 @@ function renderAgentArtifact(artifact) {
   return `
     <article class="agent-artifact-card">
       <div class="card-kicker">${escapeHTML(artifact.artifact_type)}</div>
-      <strong>${escapeHTML(artifact.title)}</strong>
+      <div class="agent-artifact-head">
+        <strong>${escapeHTML(artifact.title)}</strong>
+        <button class="secondary open-artifact-detail-btn" data-artifact-id="${escapeHTML(artifact.artifact_id)}" type="button">详情</button>
+      </div>
       <p>${escapeHTML(artifact.summary || "")}</p>
       ${detail}
     </article>
   `;
+}
+
+function openArtifactModal(artifactId) {
+  const artifact = state.activeAgentArtifacts.find((item) => item.artifact_id === artifactId);
+  if (!artifact) return;
+  state.activeArtifactDetail = artifact;
+  $("#artifactModalTitle").textContent = artifact.title || artifact.artifact_type;
+  $("#artifactModalMeta").textContent = `${artifact.artifact_type} · ${artifact.artifact_id}`;
+  $("#artifactModalBody").textContent = JSON.stringify(artifact.payload || {}, null, 2);
+  $("#artifactModal").classList.remove("hidden");
+}
+
+function closeArtifactModal() {
+  $("#artifactModal")?.classList.add("hidden");
+  state.activeArtifactDetail = null;
 }
 
 function renderKnowledge() {
@@ -2801,6 +2842,49 @@ function bindEvents() {
     await loadAgentTasks();
     toast("已确认 Agent 产物");
   });
+  $("#agentApprovePlanBtn")?.addEventListener("click", async (event) => {
+    const runId = event.currentTarget.dataset.runId;
+    if (!runId) return;
+    const topN = Number($("#agentChatForm")?.elements?.top_n?.value || 8);
+    const data = await api(`/api/agent/runs/${runId}/approve-plan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ top_n: topN }),
+    });
+    renderAgentRun(data);
+    await loadAgentTasks();
+    toast("计划已确认，Agent 已继续执行");
+  });
+  $("#agentCancelRunBtn")?.addEventListener("click", async (event) => {
+    const runId = event.currentTarget.dataset.runId;
+    if (!runId) return;
+    const data = await api(`/api/agent/runs/${runId}/cancel`, { method: "POST" });
+    renderAgentRun(data);
+    await loadAgentTasks();
+    toast("Run 已取消");
+  });
+  $("#agentCopyBriefBtn")?.addEventListener("click", (event) => {
+    const brief = event.currentTarget.dataset.brief || "";
+    const form = $("#agentChatForm");
+    if (form?.elements?.message) form.elements.message.value = brief;
+    toast("Brief 已复制到输入框");
+  });
+  $("#agentClarificationForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const runId = form.dataset.runId;
+    if (!runId) return;
+    const payload = formToObject(form);
+    const data = await api(`/api/agent/runs/${runId}/clarification`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ supplement: payload.supplement, top_n: Number(payload.top_n || 8) }),
+    });
+    form.reset();
+    renderAgentRun(data);
+    await loadAgentTasks();
+    toast("已补充信息并继续执行");
+  });
   $("#internalUserForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const payload = formToObject(event.currentTarget);
@@ -2924,6 +3008,10 @@ function bindEvents() {
   $("#creatorSearch").addEventListener("input", renderCreators);
   $("#downloadProposalBtn").addEventListener("click", downloadProposal);
   $("#closeCreatorModalBtn").addEventListener("click", closeCreatorModal);
+  $("#closeArtifactModalBtn")?.addEventListener("click", closeArtifactModal);
+  $("#artifactModal")?.addEventListener("click", (event) => {
+    if (event.target.dataset.closeArtifactModal) closeArtifactModal();
+  });
   $("#creatorModal").addEventListener("click", (event) => {
     if (event.target.dataset.closeModal) closeCreatorModal();
   });
@@ -2982,11 +3070,19 @@ function bindEvents() {
   document.addEventListener("click", async (event) => {
     const button = event.target.closest(".commit-memory-btn");
     if (!button) return;
+    const artifactId = button.dataset.artifactId;
+    const suggestionIndex = Number(button.dataset.suggestionIndex || 0);
+    const title = $(`.memory-edit-title[data-artifact-id="${artifactId}"][data-suggestion-index="${suggestionIndex}"]`)?.value || "";
+    const content = $(`.memory-edit-content[data-artifact-id="${artifactId}"][data-suggestion-index="${suggestionIndex}"]`)?.value || "";
+    const tags = $(`.memory-edit-tags[data-artifact-id="${artifactId}"][data-suggestion-index="${suggestionIndex}"]`)?.value || "";
     try {
-      await api(`/api/agent/artifacts/${button.dataset.artifactId}/knowledge`, {
+      await api(`/api/agent/artifacts/${artifactId}/knowledge`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ suggestion_index: Number(button.dataset.suggestionIndex || 0) }),
+        body: JSON.stringify({
+          suggestion_index: suggestionIndex,
+          override: { title, content, tags },
+        }),
       });
       if (state.activeAgentRun?.run?.run_id) {
         const data = await api(`/api/agent/runs/${state.activeAgentRun.run.run_id}`);
@@ -2997,6 +3093,12 @@ function bindEvents() {
     } catch (error) {
       toast(error.message, true);
     }
+  });
+
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest(".open-artifact-detail-btn");
+    if (!button) return;
+    openArtifactModal(button.dataset.artifactId);
   });
 
   document.addEventListener("click", (event) => {

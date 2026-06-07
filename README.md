@@ -19,6 +19,7 @@ PR AI OS is a local-first MVP for media agencies managing KOL resources, brand b
 - Phase 7C: Knowledge RAG layer with document/chunk storage, local embedding fallback, knowledge search APIs, frontend knowledge console, and Agent RAG integration.
 - Phase 7D: Agent planner, missing-field clarification, and detailed tool trace artifacts.
 - Phase 7E: Agent memory feedback loop with human-confirmed artifact-to-knowledge writeback.
+- Phase 7F: Agent experience hardening with plan approval, run controls, clarification resume, artifact detail, and editable memory review.
 - Phase 7 PRD: see `Phase7_Agent_OS_PRD.md` for the Agent OS roadmap from 7A to 7E.
 - Production foundations: workspace-level data isolation, optional access key, centralized data-source status/testing, and pluggable storage/auth adapters.
 
@@ -255,6 +256,24 @@ Core memory API:
 
 - `POST /api/agent/artifacts/{artifact_id}/knowledge`
 
+## Phase 7F Agent Experience Hardening
+
+The Agent Workspace now has operator controls for real internal use:
+
+- Optional plan approval before tool execution.
+- `waiting_plan_approval` state with a confirm-and-run action.
+- Run cancellation.
+- Clarification resume from the same task when required fields are missing.
+- Copy current brief back into the input box.
+- Artifact detail modal for full payload inspection.
+- Editable memory writeback review before knowledge-base commit.
+
+Core 7F APIs:
+
+- `POST /api/agent/runs/{run_id}/approve-plan`
+- `POST /api/agent/runs/{run_id}/cancel`
+- `POST /api/agent/runs/{run_id}/clarification`
+
 ## PostgreSQL / pgvector Migration
 
 The app remains local-first SQLite by default, but the repo includes a PostgreSQL/pgvector migration path:
@@ -291,6 +310,9 @@ python3 scripts/migrate_sqlite_to_postgres.py --sqlite data/processed/phase1_web
 - `GET /api/agent/runs/{run_id}`
 - `GET /api/agent/runs/{run_id}/events`
 - `POST /api/agent/runs/{run_id}/approve`
+- `POST /api/agent/runs/{run_id}/approve-plan`
+- `POST /api/agent/runs/{run_id}/cancel`
+- `POST /api/agent/runs/{run_id}/clarification`
 - `POST /api/agent/artifacts/{artifact_id}/knowledge`
 - `GET /api/knowledge`
 - `POST /api/knowledge`
@@ -346,6 +368,7 @@ python3 scripts/smoke_phase7a_agent.py
 python3 scripts/smoke_phase7b_agent_streaming.py
 python3 scripts/smoke_phase7c_knowledge_rag.py
 python3 scripts/smoke_phase7d_7e_agent_planner_memory.py
+python3 scripts/smoke_phase7f_agent_experience.py
 python3 scripts/smoke_agent_model_provider.py
 python3 scripts/smoke_data_sources.py
 python3 scripts/smoke_storage_adapter.py
