@@ -68,11 +68,6 @@
             <input id="tenantInput" value="default" />
             <button id="tenantApplyBtn" class="secondary" type="button">切换</button>
           </div>
-          <label for="accessKeyInput">Access key</label>
-          <div class="tenant-row">
-            <input id="accessKeyInput" type="password" placeholder="可选" />
-            <button id="accessKeyApplyBtn" class="secondary" type="button">保存</button>
-          </div>
           <span id="tenantStatus">default</span>
         </div>
         <div class="sidebar-footer">
@@ -1412,26 +1407,21 @@
         <button id="accessGateCloseBtn" class="access-gate-close" type="button" aria-label="关闭登录窗口">×</button>
         <span class="card-kicker">Identity required</span>
         <h2>登录 PR AI OS</h2>
-        <p>内部团队和甲方客户使用账号登录。首次本地启用时可创建 admin。</p>
+        <p>请使用内部成员或甲方账号登录。</p>
         <form id="loginForm" class="form">
           <input name="email" type="email" placeholder="邮箱" autocomplete="username" required />
           <input name="password" type="password" placeholder="密码" autocomplete="current-password" required />
           <button class="primary" type="submit">登录</button>
         </form>
         <details class="auth-details">
-          <summary>首次创建 admin / Access Key</summary>
+          <summary>首次创建 admin</summary>
           <form id="bootstrapAdminForm" class="form">
             <input name="email" type="email" placeholder="admin 邮箱" autocomplete="username" />
             <input name="name" placeholder="姓名" />
             <input name="password" type="password" placeholder="至少 8 位密码" autocomplete="new-password" />
             <button class="secondary" type="submit">创建 admin</button>
           </form>
-          <input id="gateAccessKeyInput" type="password" placeholder="Access Key" />
         </details>
-        <div class="decision-actions">
-          <button id="gateAccessKeyBtn" class="secondary" type="button">用 Access Key 进入</button>
-          <button id="gateAccessClearBtn" class="secondary" type="button">清空</button>
-        </div>
       </section>
     </div>
     <script src="/static/app.js"></script>

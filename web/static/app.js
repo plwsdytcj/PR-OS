@@ -140,7 +140,7 @@ function showAccessGate(message = "") {
   if (!gate) return;
   $("#serverStatus").textContent = "需要登录";
   gate.classList.remove("hidden");
-  $("#gateAccessKeyInput").value = state.accessKey || "";
+  if ($("#gateAccessKeyInput")) $("#gateAccessKeyInput").value = state.accessKey || "";
   const title = gate.querySelector("p");
   if (title && message) title.textContent = message === "login required" ? "请用内部或甲方账号登录后继续使用。" : message;
 }
@@ -2911,13 +2911,13 @@ function bindEvents() {
   $("#tenantInput").addEventListener("keydown", (event) => {
     if (event.key === "Enter") $("#tenantApplyBtn").click();
   });
-  $("#accessKeyApplyBtn").addEventListener("click", async () => {
+  $("#accessKeyApplyBtn")?.addEventListener("click", async () => {
     state.accessKey = $("#accessKeyInput").value.trim();
     localStorage.setItem("pr_ai_os_access_key", state.accessKey);
     await reloadAll();
-    toast(state.accessKey ? "Access key 已保存" : "Access key 已清空");
+    toast(state.accessKey ? "访问凭证已保存" : "访问凭证已清空");
   });
-  $("#accessKeyInput").addEventListener("keydown", (event) => {
+  $("#accessKeyInput")?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") $("#accessKeyApplyBtn").click();
   });
   $("#accessGateCloseBtn")?.addEventListener("click", hideAccessGate);
@@ -2952,26 +2952,26 @@ function bindEvents() {
     await reloadAll();
     toast("Admin 已创建并登录");
   });
-  $("#gateAccessKeyBtn").addEventListener("click", async () => {
+  $("#gateAccessKeyBtn")?.addEventListener("click", async () => {
     state.accessKey = $("#gateAccessKeyInput").value.trim();
     localStorage.setItem("pr_ai_os_access_key", state.accessKey);
     renderTenantStatus();
     hideAccessGate();
     try {
       await reloadAll();
-      toast("Access Key 已验证");
+      toast("已进入工作台");
     } catch (error) {
       showAccessGate();
       toast(error.message, true);
     }
   });
-  $("#gateAccessClearBtn").addEventListener("click", () => {
+  $("#gateAccessClearBtn")?.addEventListener("click", () => {
     state.accessKey = "";
     localStorage.removeItem("pr_ai_os_access_key");
     renderTenantStatus();
     showAccessGate();
   });
-  $("#gateAccessKeyInput").addEventListener("keydown", (event) => {
+  $("#gateAccessKeyInput")?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") $("#gateAccessKeyBtn").click();
   });
   document.addEventListener("click", async (event) => {
@@ -4130,8 +4130,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       await loadCreatorBrief(briefMatch[1]);
     }
   } catch (error) {
-    $("#serverStatus").textContent = error.message === "需要 Access Key" ? "需要 Access Key" : "连接失败";
-    if (error.message === "需要 Access Key") showAccessGate();
+    $("#serverStatus").textContent = error.message === "需要 Access Key" ? "需要登录" : "连接失败";
+    if (error.message === "需要 Access Key") showAccessGate("请登录后继续使用。");
     toast(error.message, true);
   }
 });
