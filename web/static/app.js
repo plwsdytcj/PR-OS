@@ -2826,6 +2826,13 @@ function bindEvents() {
   $("#accessKeyInput").addEventListener("keydown", (event) => {
     if (event.key === "Enter") $("#accessKeyApplyBtn").click();
   });
+  $("#accessGateCloseBtn")?.addEventListener("click", hideAccessGate);
+  $("#accessGate")?.addEventListener("click", (event) => {
+    if (event.target?.id === "accessGate") hideAccessGate();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") hideAccessGate();
+  });
   $("#loginForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const payload = formToObject(event.currentTarget);

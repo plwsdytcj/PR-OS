@@ -3371,7 +3371,34 @@ tbody tr:hover td {
   gap: 12px;
   max-width: 460px;
   padding: 22px;
+  position: relative;
   width: min(100%, 460px);
+}
+
+.access-gate-close {
+  align-items: center;
+  background: #ffd23f;
+  border: 3px solid #17120d;
+  border-radius: 0;
+  box-shadow: 4px 4px 0 #17120d;
+  color: #17120d;
+  cursor: pointer;
+  display: inline-flex;
+  font-family: var(--display-font);
+  font-size: 24px;
+  height: 40px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  width: 40px;
+}
+
+.access-gate-close:hover {
+  background: #ffef99;
+  transform: translate(-1px, -1px);
 }
 
 .access-gate-panel h2 {
