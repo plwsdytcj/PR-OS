@@ -58,6 +58,26 @@ Object files are handled by the object storage adapter:
 
 For cloud object storage, set `OBJECT_STORE_BUCKET`, `OBJECT_STORE_ENDPOINT_URL`, `OBJECT_STORE_REGION`, `OBJECT_STORE_ACCESS_KEY_ID`, and `OBJECT_STORE_SECRET_ACCESS_KEY`.
 
+## PostgreSQL Backup To Object Storage
+
+For the Docker deployment, keep PostgreSQL as the local primary database and write backups to a separate object-store prefix:
+
+```text
+backups/postgres/
+```
+
+Manual backup:
+
+```bash
+cd /opt/pr-ai-os
+docker compose -f docker-compose.pr-ai-os.yml exec -T postgres \
+  pg_dump -U pr_ai_os -d pr_ai_os \
+  | docker compose -f docker-compose.pr-ai-os.yml exec -T app \
+      python scripts/upload_backup_to_object_store.py --prefix backups/postgres
+```
+
+This keeps business data in the local PostgreSQL volume while storing recoverable dumps in R2 / OSS / S3.
+
 If local port `5432` is already occupied:
 
 ```bash
