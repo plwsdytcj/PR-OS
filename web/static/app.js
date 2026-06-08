@@ -30,6 +30,7 @@ const state = {
   duplicateCandidates: [],
   qualityIssues: [],
   activeCreator: null,
+  activeCreatorImageSuggestion: null,
   collabProposals: [],
   activeProposal: null,
   activeClientShare: null,
@@ -2684,6 +2685,7 @@ async function openCreatorModal(creatorId) {
 function closeCreatorModal() {
   $("#creatorModal").classList.add("hidden");
   state.activeCreator = null;
+  state.activeCreatorImageSuggestion = null;
 }
 
 function renderCreatorModal(creator) {
@@ -2696,14 +2698,26 @@ function renderCreatorModal(creator) {
   fields.platform.value = creator.platform || "未知";
   fields.platform_user_id.value = creator.platform_user_id || "";
   fields.homepage_url.value = creator.homepage_url || "";
+  fields.avatar_url.value = creator.avatar_url || "";
   fields.follower_count.value = creator.follower_count || "";
   fields.listed_price.value = creator.listed_price || "";
+  fields.total_likes.value = creator.total_likes || "";
+  fields.engagement_rate.value = creator.engagement_rate || "";
+  fields.avg_likes.value = creator.avg_likes || "";
+  fields.avg_comments.value = creator.avg_comments || "";
+  fields.avg_shares.value = creator.avg_shares || "";
   fields.region.value = creator.region || "";
   fields.contact.value = creator.contact || "";
   fields.cooperation_brands.value = (creator.cooperation_brands || []).join("，");
   fields.cooperation_formats.value = (creator.cooperation_formats || []).join("，");
+  fields.industry_fit_tags.value = (creator.industry_fit_tags || []).join("，");
+  fields.content_capability_tags.value = (creator.content_capability_tags || []).join("，");
+  fields.suitable_goals.value = (creator.suitable_goals || []).join("，");
+  fields.risk_tags.value = (creator.risk_tags || []).join("，");
   fields.bio.value = creator.bio || "";
   fields.manual_notes.value = creator.manual_notes || "";
+  renderCreatorMediaAssets(creator);
+  renderCreatorImageAnalysis(null);
   $("#creatorDataSources").innerHTML = (creator.data_sources || [])
     .map((source) => `<span class="tag">${escapeHTML(source)}</span>`)
     .join("") || '<span class="meta">暂无来源</span>';
@@ -2720,6 +2734,76 @@ function renderCreatorModal(creator) {
     : '<span class="meta">暂无标签</span>';
 }
 
+function renderCreatorMediaAssets(creator) {
+  const node = $("#creatorMediaAssets");
+  if (!node) return;
+  const assets = (creator.media_assets || []).slice(-6).reverse();
+  node.innerHTML = assets.length
+    ? assets
+        .map((asset) => {
+          const label = asset.image_type || "image";
+          const key = asset.key || asset.url || "uploaded image";
+          const href = asset.url || "";
+          return `
+            <article class="media-asset-item">
+              <span class="tag">${escapeHTML(label)}</span>
+              <div>
+                <strong>${escapeHTML(key.split("/").pop() || key)}</strong>
+                <div class="meta">${escapeHTML(asset.provider || "")} · ${fmtNumber(asset.size)} bytes · ${escapeHTML(asset.uploaded_at || "")}</div>
+              </div>
+              ${href ? `<a class="text-btn" href="${escapeHTML(href)}" target="_blank" rel="noreferrer">打开</a>` : ""}
+            </article>
+          `;
+        })
+        .join("")
+    : '<span class="meta">暂无图片资产</span>';
+}
+
+function renderCreatorImageAnalysis(result) {
+  const box = $("#creatorImageAnalysis");
+  const applyBtn = $("#creatorImageApplyBtn");
+  if (!box || !applyBtn) return;
+  if (!result) {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    applyBtn.classList.add("hidden");
+    state.activeCreatorImageSuggestion = null;
+    return;
+  }
+  const analysis = result.analysis || {};
+  const patch = result.suggested_patch || {};
+  state.activeCreatorImageSuggestion = patch;
+  const fieldRows = Object.entries(patch)
+    .map(([key, value]) => `<li><strong>${escapeHTML(key)}</strong><span>${escapeHTML(Array.isArray(value) ? value.join("，") : value)}</span></li>`)
+    .join("");
+  const warnings = (analysis.warnings || []).map((item) => `<span class="tag risk">${escapeHTML(item)}</span>`).join("");
+  const evidence = (analysis.evidence || []).map((item) => `<li>${escapeHTML(item)}</li>`).join("");
+  box.classList.remove("hidden");
+  box.innerHTML = `
+    <div class="analysis-head">
+      <span class="tag">${escapeHTML(analysis.image_type || "unknown")}</span>
+      <span class="tag">${escapeHTML(analysis.confidence || "low")}</span>
+      <span class="tag">${escapeHTML(analysis.provider || "vision")}</span>
+    </div>
+    ${fieldRows ? `<ul class="analysis-fields">${fieldRows}</ul>` : '<div class="meta">没有识别到可直接填入的字段。</div>'}
+    ${evidence ? `<div class="analysis-block"><strong>识别依据</strong><ul>${evidence}</ul></div>` : ""}
+    ${warnings ? `<div class="tag-list">${warnings}</div>` : ""}
+  `;
+  applyBtn.classList.toggle("hidden", !Object.keys(patch).length);
+}
+
+function applyCreatorImageSuggestion() {
+  const patch = state.activeCreatorImageSuggestion || {};
+  const form = $("#creatorEditForm");
+  if (!form || !Object.keys(patch).length) return;
+  Object.entries(patch).forEach(([key, value]) => {
+    const field = form.elements[key];
+    if (!field) return;
+    field.value = Array.isArray(value) ? value.join("，") : value;
+  });
+  toast("已填入识别结果，确认后点击保存");
+}
+
 function creatorFormPayload(form) {
   const fields = form.elements;
   return {
@@ -2727,12 +2811,22 @@ function creatorFormPayload(form) {
     platform: fields.platform.value,
     platform_user_id: fields.platform_user_id.value,
     homepage_url: fields.homepage_url.value,
+    avatar_url: fields.avatar_url.value,
     follower_count: Number(fields.follower_count.value || 0),
     listed_price: Number(fields.listed_price.value || 0),
+    total_likes: Number(fields.total_likes.value || 0),
+    engagement_rate: Number(fields.engagement_rate.value || 0),
+    avg_likes: Number(fields.avg_likes.value || 0),
+    avg_comments: Number(fields.avg_comments.value || 0),
+    avg_shares: Number(fields.avg_shares.value || 0),
     region: fields.region.value,
     contact: fields.contact.value,
     cooperation_brands: fields.cooperation_brands.value,
     cooperation_formats: fields.cooperation_formats.value,
+    industry_fit_tags: fields.industry_fit_tags.value,
+    content_capability_tags: fields.content_capability_tags.value,
+    suitable_goals: fields.suitable_goals.value,
+    risk_tags: fields.risk_tags.value,
     bio: fields.bio.value,
     manual_notes: fields.manual_notes.value,
   };
@@ -3431,6 +3525,37 @@ function bindEvents() {
     await reloadAll();
     toast("达人已保存并重新画像");
   });
+
+  $("#creatorImageAnalyzeBtn")?.addEventListener("click", async () => {
+    const form = $("#creatorEditForm");
+    const creatorId = form?.elements.creator_id.value;
+    const fileInput = $("#creatorImageInput");
+    const file = fileInput?.files?.[0];
+    if (!creatorId || !file) {
+      toast("请先选择一张图片", true);
+      return;
+    }
+    const body = new FormData();
+    body.append("file", file);
+    $("#creatorImageAnalyzeBtn").disabled = true;
+    $("#creatorImageAnalyzeBtn").textContent = "识别中...";
+    try {
+      const data = await api(`/api/creators/${creatorId}/media/analyze`, {
+        method: "POST",
+        body,
+      });
+      state.activeCreator = data.creator;
+      renderCreatorMediaAssets(data.creator);
+      renderCreatorImageAnalysis(data);
+      await loadCreators();
+      toast("图片已保存并完成识别");
+    } finally {
+      $("#creatorImageAnalyzeBtn").disabled = false;
+      $("#creatorImageAnalyzeBtn").textContent = "识别图片";
+    }
+  });
+
+  $("#creatorImageApplyBtn")?.addEventListener("click", applyCreatorImageSuggestion);
 
   $("#manualForm").addEventListener("submit", async (event) => {
     event.preventDefault();

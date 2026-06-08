@@ -48,6 +48,7 @@ class CreatorProfile:
     listed_price: int = 0
     price_source: str = ""
     contact: str = ""
+    media_assets: list[dict[str, Any]] = field(default_factory=list)
     cooperation_brands: list[str] = field(default_factory=list)
     cooperation_formats: list[str] = field(default_factory=list)
     delivery_rating: float = 0.0

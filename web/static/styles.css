@@ -3023,6 +3023,84 @@ tbody tr:hover td {
   min-height: 640px;
 }
 
+.creator-media-builder {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 2px solid #17120d;
+  border-radius: 4px;
+  background: #fffaf0;
+  box-shadow: 4px 4px 0 #17120d;
+}
+
+.image-analysis-output {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 2px solid #17120d;
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+.analysis-head,
+.media-asset-list,
+.media-asset-item {
+  display: flex;
+  gap: 8px;
+}
+
+.analysis-head {
+  flex-wrap: wrap;
+}
+
+.analysis-fields,
+.analysis-block ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.analysis-fields li {
+  margin-bottom: 6px;
+}
+
+.analysis-fields strong {
+  margin-right: 8px;
+}
+
+.analysis-fields span {
+  color: var(--muted);
+}
+
+.analysis-block strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.media-asset-list {
+  flex-direction: column;
+}
+
+.media-asset-item {
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px;
+  border: 2px solid #17120d;
+  border-radius: 4px;
+  background: var(--panel);
+}
+
+.media-asset-item > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.media-asset-item strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .campaign-room {
   margin-top: 18px;
 }

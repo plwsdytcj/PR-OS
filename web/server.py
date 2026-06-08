@@ -102,6 +102,7 @@ from src.creator_commercial.storage import (
 from src.intelligence.brief_parser import parse_brief
 from src.intelligence.data_quality import find_duplicate_candidates, governance_summary, quality_issues, strong_dedupe_profiles
 from src.intelligence.matching import rank_creators
+from src.intelligence.creator_multimodal import analyze_creator_image
 from src.intelligence.profiling import enrich_profiles
 from src.knowledge.service import create_knowledge_document, knowledge_document_detail, knowledge_stats, list_knowledge_documents, search_knowledge_base
 from src.knowledge.storage import init_knowledge_db
@@ -983,6 +984,27 @@ def _store_uploaded_object(content: bytes, filename: str, category: str = "impor
     return stored.to_dict()
 
 
+def _append_creator_media_asset(profile: CreatorProfile, stored: dict[str, Any], image_type: str = "unknown") -> CreatorProfile:
+    data = asdict(profile)
+    asset = {
+        "provider": stored.get("provider", ""),
+        "bucket": stored.get("bucket", ""),
+        "key": stored.get("key", ""),
+        "url": stored.get("url", ""),
+        "content_type": stored.get("content_type", ""),
+        "size": stored.get("size", 0),
+        "image_type": image_type,
+        "uploaded_at": _now(),
+    }
+    media_assets = [item for item in data.get("media_assets", []) if isinstance(item, dict)]
+    media_assets.append(asset)
+    data["media_assets"] = media_assets[-20:]
+    data["data_sources"] = sorted(set(data.get("data_sources", []) + ["image_upload"]))
+    if image_type == "avatar" and stored.get("url") and not data.get("avatar_url"):
+        data["avatar_url"] = str(stored.get("url"))
+    return CreatorProfile(**data)
+
+
 @app.get("/api/settings/data-sources")
 def data_sources_status() -> dict[str, Any]:
     glm = GlmClient()
@@ -1114,6 +1136,40 @@ def creator_detail(creator_id: str) -> dict[str, Any]:
     return {"creator": profile_payload(profile)}
 
 
+@app.post("/api/creators/{creator_id}/media/analyze")
+async def analyze_creator_media(creator_id: str, file: UploadFile = File(...)) -> dict[str, Any]:
+    profile = load_profile(DB_PATH, creator_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="creator not found")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="empty upload")
+    content_type = file.content_type or guess_content_type(file.filename or "upload")
+    if not content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="only image uploads are supported")
+    stored = _store_uploaded_object(content, file.filename or "creator-image", category="creator-media")
+    analysis = analyze_creator_image(
+        content,
+        content_type,
+        filename=file.filename or "",
+        context={
+            "creator_id": profile.creator_id,
+            "name": profile.name,
+            "platform": profile.platform,
+            "homepage_url": profile.homepage_url,
+            "bio": profile.bio,
+        },
+    )
+    updated = _append_creator_media_asset(profile, stored, image_type=analysis.get("image_type", "unknown"))
+    save_profile(DB_PATH, updated)
+    return {
+        "creator": profile_payload(updated),
+        "stored_object": stored,
+        "analysis": analysis,
+        "suggested_patch": analysis.get("extracted_fields", {}),
+    }
+
+
 @app.patch("/api/creators/{creator_id}")
 async def update_creator(creator_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     profile = load_profile(DB_PATH, creator_id)
@@ -1124,23 +1180,44 @@ async def update_creator(creator_id: str, payload: dict[str, Any]) -> dict[str, 
         "platform",
         "platform_user_id",
         "homepage_url",
+        "avatar_url",
         "bio",
         "region",
         "follower_count",
+        "following_count",
+        "total_likes",
+        "recent_posts_count",
+        "avg_likes",
+        "avg_comments",
+        "avg_shares",
+        "avg_collections",
+        "engagement_rate",
         "listed_price",
+        "price_source",
         "contact",
         "cooperation_brands",
         "cooperation_formats",
+        "delivery_rating",
+        "communication_rating",
+        "negotiation_space",
         "manual_notes",
+        "industry_fit_tags",
+        "content_capability_tags",
+        "suitable_goals",
+        "suitable_stages",
+        "budget_fit_tags",
+        "risk_tags",
     }
     data = asdict(profile)
     for field in editable_fields:
         if field not in payload:
             continue
         value = payload[field]
-        if field in {"follower_count", "listed_price"}:
+        if field in {"follower_count", "following_count", "total_likes", "recent_posts_count", "avg_likes", "avg_comments", "avg_shares", "avg_collections", "listed_price"}:
             data[field] = int(value or 0)
-        elif field in {"cooperation_brands", "cooperation_formats"}:
+        elif field in {"engagement_rate", "delivery_rating", "communication_rating"}:
+            data[field] = float(value or 0)
+        elif field in {"cooperation_brands", "cooperation_formats", "industry_fit_tags", "content_capability_tags", "suitable_goals", "suitable_stages", "budget_fit_tags", "risk_tags"}:
             if isinstance(value, list):
                 data[field] = [str(item).strip() for item in value if str(item).strip()]
             else:

@@ -1352,9 +1352,19 @@
             <input name="platform_user_id" placeholder="平台 ID" />
             <input name="homepage_url" placeholder="主页链接" />
           </div>
+          <input name="avatar_url" placeholder="头像 / 封面图片 URL" />
           <div class="field-row">
             <input name="follower_count" type="number" min="0" placeholder="粉丝数" />
             <input name="listed_price" type="number" min="0" placeholder="报价" />
+          </div>
+          <div class="field-row">
+            <input name="total_likes" type="number" min="0" placeholder="总获赞 / 收藏" />
+            <input name="engagement_rate" type="number" min="0" step="0.0001" placeholder="互动率，如 0.035" />
+          </div>
+          <div class="field-row">
+            <input name="avg_likes" type="number" min="0" placeholder="平均点赞" />
+            <input name="avg_comments" type="number" min="0" placeholder="平均评论" />
+            <input name="avg_shares" type="number" min="0" placeholder="平均分享" />
           </div>
           <div class="field-row">
             <input name="region" placeholder="地区" />
@@ -1362,8 +1372,28 @@
           </div>
           <input name="cooperation_brands" placeholder="合作品牌，逗号分隔" />
           <input name="cooperation_formats" placeholder="合作形式 / 标签，逗号分隔" />
+          <input name="industry_fit_tags" placeholder="行业标签，逗号分隔" />
+          <input name="content_capability_tags" placeholder="内容能力标签，逗号分隔" />
+          <input name="suitable_goals" placeholder="适合目标，逗号分隔" />
+          <input name="risk_tags" placeholder="风险标签，逗号分隔" />
           <textarea name="bio" placeholder="简介 / 内容方向"></textarea>
           <textarea name="manual_notes" placeholder="媒介备注 / 履约反馈 / 风险"></textarea>
+          <div class="creator-media-builder">
+            <div>
+              <h3 class="detail-heading">图片 / 截图识别</h3>
+              <p class="meta">上传达人主页截图、报价单、案例截图或头像。系统会先识别字段，确认后再保存。</p>
+            </div>
+            <div class="field-row">
+              <input id="creatorImageInput" name="creator_image" type="file" accept="image/*" />
+              <button id="creatorImageAnalyzeBtn" class="secondary" type="button">识别图片</button>
+            </div>
+            <div id="creatorImageAnalysis" class="image-analysis-output hidden"></div>
+            <button id="creatorImageApplyBtn" class="secondary hidden" type="button">填入识别结果</button>
+          </div>
+          <div>
+            <h3 class="detail-heading">图片资产</h3>
+            <div id="creatorMediaAssets" class="media-asset-list"></div>
+          </div>
           <div>
             <h3 class="detail-heading">数据来源</h3>
             <div id="creatorDataSources" class="tag-list"></div>
