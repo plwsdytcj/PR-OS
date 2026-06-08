@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.auth.schemas import CLIENT_ROLES, INTERNAL_ROLES
+from src.auth.schemas import CLIENT_ROLES, INTERNAL_ROLES, AuthUser, Identity
 from src.auth.service import (
     can_access_proposal,
     create_client_account,
@@ -301,6 +301,8 @@ def current_identity() -> Any:
 def require_identity() -> Any:
     identity = current_identity()
     if identity is None:
+        if not _auth_mode_active(_db_path_ctx.get()):
+            return _open_mode_identity()
         raise HTTPException(status_code=401, detail="login required")
     return identity
 
@@ -317,6 +319,21 @@ def require_admin() -> Any:
     if identity.user.user_type != "internal" or identity.user.role != "admin":
         raise HTTPException(status_code=403, detail="admin required")
     return identity
+
+
+def _open_mode_identity() -> Identity:
+    return Identity(
+        user=AuthUser(
+            user_id="open_demo_admin",
+            email="open-demo@pr-ai-os.local",
+            name="Open Demo",
+            user_type="internal",
+            role="admin",
+            identity_provider="open",
+            external_user_id="open_demo_admin",
+        ),
+        provider="open",
+    )
 
 
 def _session_cookie_kwargs() -> dict[str, Any]:
