@@ -21,6 +21,9 @@ PR AI OS is a local-first MVP for media agencies managing KOL resources, brand b
 - Phase 7E: Agent memory feedback loop with human-confirmed artifact-to-knowledge writeback.
 - Phase 7F: Agent experience hardening with plan approval, run controls, clarification resume, artifact detail, and editable memory review.
 - Phase 7G: Agent reasoning graph view linking brief, intent, knowledge evidence, KOL tags, risks, proposal, tool trace, and memory writeback.
+- Phase 7H: Manus-like Agent thread chat with message history, linked runs, artifacts, and graph state.
+- Phase 7I-A: replaceable Agent Runtime Adapter boundary.
+- Phase 7I-B: OpenAI Agents SDK POC runtime with PR OS tool calling and native runtime fallback.
 - Phase 7 PRD: see `Phase7_Agent_OS_PRD.md` for the Agent OS roadmap from 7A to 7E.
 - Production foundations: workspace-level data isolation, optional access key, centralized data-source status/testing, and pluggable storage/auth adapters.
 
@@ -68,6 +71,9 @@ AGENT_RUNTIME=custom
 AGENT_RUNTIME_ADAPTER=
 AGENT_SDK_MODEL=
 AGENT_SDK_API_KEY=
+AGENT_SDK_BASE_URL=
+AGENT_SDK_MAX_TURNS=8
+AGENT_SDK_TRACING=false
 OPENAI_DEFAULT_MODEL=
 
 PR_AI_OS_ACCESS_KEY=
@@ -93,7 +99,9 @@ Behavior:
 
 - If `GLM_API_KEY` is missing, symbolic analysis uses local rule fallback.
 - `AGENT_PROVIDER=glm` makes the Agent Workspace use GLM for final reasoning summaries; `AGENT_API_KEY`, `AGENT_MODEL`, and `AGENT_BASE_URL` can override the `GLM_*` values.
-- `AGENT_RUNTIME=custom` uses the native PR OS runtime. Set `AGENT_RUNTIME=openai_agents` to select the OpenAI Agents SDK adapter boundary; Phase 7I-A detects SDK availability and delegates execution to the native runtime until SDK tool parity is validated.
+- `AGENT_RUNTIME=custom` uses the native PR OS runtime. Set `AGENT_RUNTIME=openai_agents` to select the OpenAI Agents SDK adapter. Phase 7I-B runs a real SDK POC path when `openai-agents` and a compatible API key are configured; SDK failures automatically fall back to the native runtime.
+- `AGENT_SDK_API_KEY`, `AGENT_SDK_MODEL`, and `AGENT_SDK_BASE_URL` configure the SDK runtime. For GLM/OpenAI-compatible providers, set `AGENT_SDK_BASE_URL` to the API root, for example `https://open.bigmodel.cn/api/paas/v4`; if omitted, the app also derives it from `AGENT_BASE_URL` or `GLM_BASE_URL`.
+- `AGENT_SDK_TRACING=false` disables OpenAI trace export by default, which avoids noisy logs when running the SDK against GLM or another OpenAI-compatible provider.
 - If `ONEAPI_API_KEY` is missing, OneAPI status is shown as not configured; Mock API and Excel remain usable.
 - If MiroFish CLI is not installed, Campaign stress tests use the OS fallback Simulation Layer.
 - If `PR_AI_OS_ACCESS_KEY` is set, private API calls require `X-Access-Key`; public client/creator links remain accessible.
@@ -219,7 +227,7 @@ The `AI Agent` page is the first Manus-like PR Agent OS layer:
 - Stop at a human approval point before client delivery/authorization.
 - Use the Agent model adapter for final reasoning summaries. The current default is GLM via `AGENT_PROVIDER=glm`, with deterministic fallback if no model key is configured.
 
-This version deliberately keeps the runtime local and replaceable. Phase 7I-A adds an Agent Runtime Adapter boundary so later phases can plug in OpenAI Agents SDK, Qwen/DeepSeek adapters, pgvector RAG, streaming, and more complex workflow engines without changing the business tool layer.
+This version deliberately keeps the runtime local and replaceable. Phase 7I-A adds an Agent Runtime Adapter boundary, and Phase 7I-B adds a real OpenAI Agents SDK POC path so later phases can plug in OpenAI-compatible GLM, Qwen/DeepSeek adapters, pgvector RAG, streaming, and more complex workflow engines without changing the business tool layer.
 
 ## Phase 7H Thread Chat Agent
 
@@ -235,7 +243,7 @@ The Agent Workspace now has a Manus-like thread layer:
 The Agent execution path now goes through a replaceable adapter:
 
 - `custom`: native PR OS runtime. This is the default and production path.
-- `openai_agents`: OpenAI Agents SDK adapter boundary. It reports SDK package/key availability and delegates execution to `custom` until PR OS tool parity is validated.
+- `openai_agents`: OpenAI Agents SDK adapter. If the SDK package and a compatible key are configured, it runs the SDK POC path. If not configured, or if SDK execution fails, it delegates execution to `custom`.
 
 The runtime status is available through:
 
@@ -243,7 +251,26 @@ The runtime status is available through:
 - `GET /api/status` under `agent_runtime`
 - `GET /api/settings/data-sources` as `agent_runtime`
 
-This gives a safe migration path: PR OS tools, DB, memory, artifacts, client portal, and reasoning graph stay stable while orchestration can later move to Agents SDK or another runtime.
+This gives a safe migration path: PR OS tools, DB, memory, artifacts, client portal, and reasoning graph stay stable while orchestration can move to Agents SDK or another runtime.
+
+## Phase 7I-B OpenAI Agents SDK POC
+
+The SDK runtime is intentionally narrow and measurable:
+
+- `openai_agents` uses OpenAI Agents SDK `Agent`, `Runner`, and `function_tool`.
+- The SDK can call PR OS tools for brief parsing, organization memory search, and KOL/project matching.
+- PR OS still owns proposal generation, memory suggestions, artifact persistence, and the reasoning graph.
+- The run writes a `sdk_run` artifact and SDK-tagged `tool_trace` entries.
+- If the SDK package/key is missing or the provider fails, the adapter records a fallback event and completes the run with the native `custom` runtime.
+
+For GLM or another OpenAI-compatible provider:
+
+```bash
+AGENT_RUNTIME=openai_agents
+AGENT_SDK_API_KEY=...
+AGENT_SDK_MODEL=glm-4-flash
+AGENT_SDK_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+```
 
 ## Phase 7B Streaming Agent Execution
 
@@ -425,6 +452,7 @@ python3 scripts/smoke_phase7f_agent_experience.py
 python3 scripts/smoke_phase7g_agent_reasoning_graph.py
 python3 scripts/smoke_phase7h_agent_threads.py
 python3 scripts/smoke_phase7i_runtime_adapter.py
+python3 scripts/smoke_phase7i_b_agent_sdk.py
 python3 scripts/smoke_agent_model_provider.py
 python3 scripts/smoke_data_sources.py
 python3 scripts/smoke_storage_adapter.py

@@ -19,6 +19,9 @@ def main() -> None:
         "AGENT_RUNTIME_ADAPTER",
         "AGENT_SDK_MODEL",
         "AGENT_SDK_API_KEY",
+        "AGENT_SDK_BASE_URL",
+        "AGENT_SDK_MAX_TURNS",
+        "AGENT_SDK_TRACING",
         "OPENAI_DEFAULT_MODEL",
         "PR_AI_OS_ACCESS_KEY",
         "PR_AI_OS_AUTH_ENABLED",
@@ -53,6 +56,7 @@ def main() -> None:
         "smoke_phase7g_agent_reasoning_graph.py",
         "smoke_phase7h_agent_threads.py",
         "smoke_phase7i_runtime_adapter.py",
+        "smoke_phase7i_b_agent_sdk.py",
         "smoke_agent_model_provider.py",
     ]:
         assert text in readme
@@ -73,8 +77,10 @@ def main() -> None:
         "Phase 7G",
         "Phase 7H",
         "Phase 7I-A",
+        "Phase 7I-B",
         "AGENT_PROVIDER",
         "AGENT_RUNTIME",
+        "AGENT_SDK_BASE_URL",
     ]:
         assert text in readme
         assert text in deploy
