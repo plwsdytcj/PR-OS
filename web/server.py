@@ -497,17 +497,23 @@ def _quality_report(profiles: list[CreatorProfile], sheet_counts: dict[str, int]
 
 @app.get("/", response_class=HTMLResponse)
 def landing() -> FileResponse:
-    return FileResponse(STATIC_DIR / "landing.html")
+    response = FileResponse(STATIC_DIR / "landing.html")
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    return response
 
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page() -> FileResponse:
-    return FileResponse(STATIC_DIR / "login.html")
+    response = FileResponse(STATIC_DIR / "login.html")
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    return response
 
 
 @app.get("/app", response_class=HTMLResponse)
 def index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+    response = FileResponse(STATIC_DIR / "index.html")
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    return response
 
 
 @app.get("/favicon.ico")
