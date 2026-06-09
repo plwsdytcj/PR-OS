@@ -11,26 +11,37 @@ from src.agent.reasoning_graph import build_reasoning_graph
 from src.agent.schemas import (
     AgentArtifact,
     AgentEvent,
+    AgentMessage,
     AgentRun,
     AgentTask,
+    AgentThread,
+    assistant_message_id_for,
     artifact_id_for,
     event_id_for,
+    message_id_for,
     now_iso,
     run_id_for,
     task_id_for,
+    thread_id_for,
 )
 from src.agent.storage import (
+    load_all_threads,
     load_all_tasks,
     load_artifact,
     load_artifacts_for_task,
     load_events_for_run,
+    load_messages_for_thread,
     load_run,
     load_runs_for_task,
     load_task,
+    load_thread,
+    load_thread_by_task_id,
     upsert_artifact,
     upsert_event,
+    upsert_message,
     upsert_run,
     upsert_task,
+    upsert_thread,
 )
 from src.agent.tools import create_proposal_tool, run_project_tool, search_knowledge_tool
 from src.intelligence.brief_parser import parse_brief
@@ -81,6 +92,105 @@ def get_agent_run(db_path: Path, run_id: str) -> dict[str, Any] | None:
         "events": [event.to_dict() for event in load_events_for_run(db_path, run_id)],
         "artifacts": [artifact.to_dict() for artifact in load_artifacts_for_task(db_path, run.task_id)],
     }
+
+
+def create_agent_thread(
+    db_path: Path,
+    message: str,
+    client_name: str = "",
+    project_name: str = "",
+    created_by: str = "",
+) -> dict[str, Any]:
+    task = create_agent_task(db_path, message=message, client_name=client_name, project_name=project_name, created_by=created_by)
+    thread = AgentThread(
+        thread_id=thread_id_for(task.client_name, task.project_name, message or task.title),
+        task_id=task.task_id,
+        title=task.title,
+        client_name=task.client_name,
+        project_name=task.project_name,
+        summary=_thread_summary(message),
+        created_by=created_by,
+        metadata={"source": "agent_thread_chat"},
+    )
+    upsert_thread(db_path, thread)
+    if message.strip():
+        upsert_message(
+            db_path,
+            AgentMessage(
+                message_id=message_id_for(thread.thread_id, "user", message),
+                thread_id=thread.thread_id,
+                role="user",
+                content=message.strip(),
+                created_by=created_by,
+            ),
+        )
+    return get_agent_thread(db_path, thread.thread_id) or {"thread": thread.to_dict(), "messages": [], "task": task.to_dict(), "runs": [], "artifacts": []}
+
+
+def list_agent_threads(db_path: Path) -> list[dict[str, Any]]:
+    threads = load_all_threads(db_path)
+    if threads:
+        return [_thread_payload(db_path, thread) for thread in threads]
+    # Backfill older task-only runs into read-only thread-shaped payloads for UI continuity.
+    return [_legacy_thread_payload(db_path, task) for task in load_all_tasks(db_path)]
+
+
+def get_agent_thread(db_path: Path, thread_id: str) -> dict[str, Any] | None:
+    thread = load_thread(db_path, thread_id)
+    if thread is None:
+        task = load_task(db_path, thread_id)
+        return _legacy_thread_payload(db_path, task) if task else None
+    return _thread_payload(db_path, thread)
+
+
+def start_agent_thread_message(
+    db_path: Path,
+    thread_id: str,
+    message: str,
+    top_n: int = 8,
+    created_by: str = "",
+    require_plan_approval: bool = False,
+) -> dict[str, Any]:
+    thread = load_thread(db_path, thread_id)
+    if thread is None:
+        raise ValueError("agent thread not found")
+    message = message.strip()
+    if not message:
+        raise ValueError("message is required")
+    upsert_message(
+        db_path,
+        AgentMessage(
+            message_id=message_id_for(thread.thread_id, "user", message),
+            thread_id=thread.thread_id,
+            role="user",
+            content=message,
+            created_by=created_by,
+        ),
+    )
+    composed = _compose_thread_prompt(db_path, thread, message)
+    started = start_agent_chat(
+        db_path,
+        message=composed,
+        task_id=thread.task_id,
+        client_name=thread.client_name,
+        project_name=thread.project_name,
+        top_n=top_n,
+        created_by=created_by,
+        require_plan_approval=require_plan_approval,
+    )
+    run_id = started["run"]["run_id"]
+    thread.current_run_id = run_id
+    thread.status = started["run"].get("status") or "running"
+    thread.summary = _thread_summary(composed)
+    thread.updated_at = now_iso()
+    upsert_thread(db_path, thread)
+    messages = load_messages_for_thread(db_path, thread.thread_id)
+    if messages:
+        latest = messages[-1]
+        latest.run_id = run_id
+        latest.status = "running"
+        upsert_message(db_path, latest)
+    return get_agent_thread(db_path, thread.thread_id) | {"run": started["run"], "top_n": top_n, "require_plan_approval": require_plan_approval}
 
 
 def run_agent_chat(
@@ -261,6 +371,7 @@ def execute_agent_run(db_path: Path, run_id: str, top_n: int = 8, require_plan_a
                 task.updated_at = now_iso()
                 upsert_run(db_path, run)
                 upsert_task(db_path, task)
+                _sync_thread_after_run(db_path, task, run)
                 return
 
             if require_plan_approval:
@@ -280,6 +391,7 @@ def execute_agent_run(db_path: Path, run_id: str, top_n: int = 8, require_plan_a
                 task.updated_at = now_iso()
                 upsert_run(db_path, run)
                 upsert_task(db_path, task)
+                _sync_thread_after_run(db_path, task, run)
                 return
 
         event("message", "completed", "理解项目需求", "已接收需求，准备检索组织记忆并调用 PR OS 工具。", payload={"message": message})
@@ -421,6 +533,7 @@ def execute_agent_run(db_path: Path, run_id: str, top_n: int = 8, require_plan_a
         task.updated_at = now_iso()
         upsert_run(db_path, run)
         upsert_task(db_path, task)
+        _sync_thread_after_run(db_path, task, run, model_result=model_result)
     except Exception as exc:
         event("error", "failed", "Agent 执行失败", str(exc))
         run.status = "failed"
@@ -431,6 +544,7 @@ def execute_agent_run(db_path: Path, run_id: str, top_n: int = 8, require_plan_a
         task.updated_at = now_iso()
         upsert_run(db_path, run)
         upsert_task(db_path, task)
+        _sync_thread_after_run(db_path, task, run)
         raise
 
 
@@ -574,6 +688,96 @@ def _task_payload(db_path: Path, task: AgentTask) -> dict[str, Any]:
         "runs": [run.to_dict() for run in runs],
         "artifacts": [artifact.to_dict() for artifact in artifacts],
     }
+
+
+def _thread_payload(db_path: Path, thread: AgentThread) -> dict[str, Any]:
+    task = load_task(db_path, thread.task_id)
+    runs = load_runs_for_task(db_path, thread.task_id)
+    artifacts = load_artifacts_for_task(db_path, thread.task_id)
+    messages = load_messages_for_thread(db_path, thread.thread_id)
+    return {
+        "thread": thread.to_dict(),
+        "task": task.to_dict() if task else None,
+        "messages": [message.to_dict() for message in messages],
+        "runs": [run.to_dict() for run in runs],
+        "artifacts": [artifact.to_dict() for artifact in artifacts],
+    }
+
+
+def _legacy_thread_payload(db_path: Path, task: AgentTask) -> dict[str, Any]:
+    payload = _task_payload(db_path, task)
+    payload["thread"] = {
+        "thread_id": task.task_id,
+        "task_id": task.task_id,
+        "title": task.title,
+        "status": task.status,
+        "client_name": task.client_name,
+        "project_name": task.project_name,
+        "summary": _thread_summary(task.brief),
+        "created_by": task.created_by,
+        "created_at": task.created_at,
+        "updated_at": task.updated_at,
+        "current_run_id": task.current_run_id,
+        "metadata": {"legacy_task": True},
+    }
+    payload["messages"] = [
+        {
+            "message_id": f"{task.task_id}:brief",
+            "thread_id": task.task_id,
+            "role": "user",
+            "content": task.brief,
+            "run_id": task.current_run_id,
+            "status": task.status,
+            "created_by": task.created_by,
+            "created_at": task.created_at,
+            "metadata": {"legacy_task": True},
+        }
+    ] if task.brief else []
+    return payload
+
+
+def _sync_thread_after_run(db_path: Path, task: AgentTask, run: AgentRun, model_result: dict[str, Any] | None = None) -> None:
+    thread = load_thread_by_task_id(db_path, task.task_id)
+    if thread is None:
+        return
+    thread.status = run.status
+    thread.current_run_id = run.run_id
+    thread.summary = _thread_summary(task.brief)
+    thread.updated_at = now_iso()
+    upsert_thread(db_path, thread)
+    content = run.final_answer or "Agent run 已更新。"
+    if model_result and model_result.get("next_actions"):
+        content += "\n\n下一步：" + "；".join(str(item) for item in model_result.get("next_actions") or [])
+    upsert_message(
+        db_path,
+        AgentMessage(
+            message_id=assistant_message_id_for(thread.thread_id, run.run_id),
+            thread_id=thread.thread_id,
+            role="assistant",
+            content=content,
+            run_id=run.run_id,
+            status=run.status,
+            created_by=run.created_by,
+            metadata={"model_status": (model_result or {}).get("model_status", "")},
+        ),
+    )
+
+
+def _compose_thread_prompt(db_path: Path, thread: AgentThread, latest_message: str) -> str:
+    messages = load_messages_for_thread(db_path, thread.thread_id)[-8:]
+    history = "\n".join(f"{item.role}: {item.content}" for item in messages if item.content)
+    if not history:
+        return latest_message
+    return (
+        f"这是同一个 PR Agent Thread 的多轮上下文。客户：{thread.client_name}。项目：{thread.project_name}。\n"
+        f"历史消息：\n{history}\n\n"
+        f"请基于上述上下文处理最新需求：{latest_message}"
+    )
+
+
+def _thread_summary(text: str, limit: int = 96) -> str:
+    text = " ".join((text or "").split())
+    return text[:limit] + ("..." if len(text) > limit else "")
 
 
 def _latest_plan_payload(db_path: Path, task_id: str) -> dict[str, Any]:

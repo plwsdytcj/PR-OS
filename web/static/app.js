@@ -7,6 +7,8 @@ const state = {
   authClients: [],
   projectAccess: [],
   agentTasks: [],
+  agentThreads: [],
+  activeAgentThread: null,
   activeAgentRun: null,
   activeAgentArtifacts: [],
   activeArtifactDetail: null,
@@ -310,8 +312,9 @@ async function loadOrganization() {
 
 async function loadAgentTasks() {
   if (state.currentIdentity?.user?.user_type === "client") return;
-  const data = await api("/api/agent/tasks");
-  state.agentTasks = data.items || [];
+  const data = await api("/api/agent/threads");
+  state.agentThreads = data.items || [];
+  state.agentTasks = state.agentThreads;
   renderAgentTasks();
 }
 
@@ -764,24 +767,27 @@ function renderProjectAccessTable() {
 function renderAgentTasks() {
   const list = $("#agentTaskList");
   if (!list) return;
-  list.innerHTML = state.agentTasks.length
-    ? state.agentTasks
-        .map(({ task, runs, artifacts }) => {
+  list.innerHTML = state.agentThreads.length
+    ? state.agentThreads
+        .map(({ thread, task, runs, artifacts, messages }) => {
           const latestRun = runs?.[0];
+          const active = state.activeAgentThread?.thread?.thread_id === thread.thread_id ? " active" : "";
           return `
-            <button class="agent-task-item" data-run-id="${escapeHTML(latestRun?.run_id || "")}" data-task-id="${escapeHTML(task.task_id)}" type="button">
-              <strong>${escapeHTML(task.title)}</strong>
-              <span>${escapeHTML(task.status)} · ${artifacts?.length || 0} 个产物</span>
+            <button class="agent-task-item${active}" data-thread-id="${escapeHTML(thread.thread_id)}" data-run-id="${escapeHTML(latestRun?.run_id || "")}" data-task-id="${escapeHTML(task?.task_id || thread.task_id)}" type="button">
+              <strong>${escapeHTML(thread.title || task?.title || "Agent Thread")}</strong>
+              <span>${escapeHTML(thread.status || task?.status || "active")} · ${messages?.length || 0} 条消息 · ${artifacts?.length || 0} 个产物</span>
             </button>
           `;
         })
         .join("")
-    : emptyState("暂无 Agent 任务", "输入一个 PR 需求后会生成任务、执行和产物。");
+    : emptyState("暂无 Agent 会话", "输入一个 PR 需求后会生成 Thread、消息、执行和产物。");
+  renderAgentMessages();
 }
 
 function renderAgentRun(data) {
   state.activeAgentRun = data;
   state.activeAgentArtifacts = data.artifacts || [];
+  if (data.thread) state.activeAgentThread = data;
   const run = data.run || {};
   const task = data.task || {};
   const events = data.events || [];
@@ -836,6 +842,36 @@ function renderAgentRun(data) {
   }
   renderAgentArtifacts();
   renderAgentReasoningGraph();
+  renderAgentMessages();
+}
+
+function renderAgentMessages() {
+  const list = $("#agentMessageList");
+  if (!list) return;
+  const thread = state.activeAgentThread?.thread;
+  const messages = state.activeAgentThread?.messages || [];
+  const meta = $("#agentThreadMeta");
+  if (meta) {
+    meta.textContent = thread
+      ? `${thread.title} · ${thread.status} · ${messages.length} 条消息`
+      : "新会话会自动创建 Thread；继续输入会基于同一个项目上下文重跑。";
+  }
+  list.innerHTML = messages.length
+    ? messages
+        .map(
+          (message) => `
+            <article class="agent-message ${escapeHTML(message.role)} ${escapeHTML(message.status || "completed")}">
+              <div class="agent-message-role">${escapeHTML(message.role === "user" ? "You" : "Agent")}</div>
+              <div>
+                <p>${escapeHTML(message.content || "")}</p>
+                ${message.run_id ? `<span>run ${escapeHTML(message.run_id)}</span>` : ""}
+              </div>
+            </article>
+          `
+        )
+        .join("")
+    : emptyState("暂无聊天消息", "输入甲方 brief 后，这里会保留多轮对话历史。");
+  list.scrollTop = list.scrollHeight;
 }
 
 function renderAgentArtifacts() {
@@ -1208,6 +1244,18 @@ function stopAgentPolling() {
   }
 }
 
+async function loadAgentThread(threadId) {
+  if (!threadId) return null;
+  const data = await api(`/api/agent/threads/${threadId}`);
+  state.activeAgentThread = data;
+  state.activeAgentArtifacts = data.artifacts || [];
+  renderAgentTasks();
+  renderAgentMessages();
+  renderAgentArtifacts();
+  renderAgentReasoningGraph();
+  return data;
+}
+
 function startAgentPolling(runId) {
   stopAgentPolling();
   if (!runId) return;
@@ -1218,6 +1266,8 @@ function startAgentPolling(runId) {
       const status = data.run?.status || "";
       if (!["running"].includes(status)) {
         stopAgentPolling();
+        const threadId = state.activeAgentThread?.thread?.thread_id;
+        if (threadId) await loadAgentThread(threadId);
         await loadAgentTasks();
       }
     } catch (error) {
@@ -3002,6 +3052,17 @@ function bindEvents() {
     }
     const agentTaskBtn = event.target.closest(".agent-task-item");
     if (agentTaskBtn) {
+      const threadId = agentTaskBtn.dataset.threadId;
+      if (threadId) {
+        const threadData = await loadAgentThread(threadId);
+        const runId = threadData?.thread?.current_run_id || agentTaskBtn.dataset.runId;
+        if (runId) {
+          const data = await api(`/api/agent/runs/${runId}`);
+          renderAgentRun(data);
+          if (data.run?.status === "running") startAgentPolling(runId);
+        }
+        return;
+      }
       const runId = agentTaskBtn.dataset.runId;
       if (runId) {
         const data = await api(`/api/agent/runs/${runId}`);
@@ -3017,6 +3078,15 @@ function bindEvents() {
   $("#refreshDataSourcesBtn").addEventListener("click", () => loadDataSources().then(() => toast("数据源状态已刷新")));
   $("#refreshOrganizationBtn")?.addEventListener("click", () => loadOrganization().then(() => toast("组织数据已刷新")));
   $("#refreshAgentTasksBtn")?.addEventListener("click", () => loadAgentTasks().then(() => toast("Agent 任务已刷新")));
+  $("#agentNewThreadBtn")?.addEventListener("click", () => {
+    stopAgentPolling();
+    state.activeAgentThread = null;
+    state.activeAgentRun = null;
+    state.activeAgentArtifacts = [];
+    renderAgentTasks();
+    renderAgentRun({ events: [], artifacts: [], run: {}, task: {} });
+    toast("已准备新 Agent 会话");
+  });
   $("#refreshKnowledgeBtn")?.addEventListener("click", () => loadKnowledge().then(() => toast("知识库已刷新")));
   $("#knowledgeForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -3065,11 +3135,28 @@ function bindEvents() {
         button.disabled = true;
         button.textContent = "执行中...";
       }
-      const data = await api("/api/agent/chat/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      let data;
+      if (state.activeAgentThread?.thread?.thread_id && !state.activeAgentThread.thread.metadata?.legacy_task) {
+        data = await api(`/api/agent/threads/${state.activeAgentThread.thread.thread_id}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        state.activeAgentThread = data;
+      } else {
+        const thread = await api("/api/agent/threads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        state.activeAgentThread = thread;
+        renderAgentMessages();
+        data = await api("/api/agent/chat/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, task_id: thread.task?.task_id || thread.thread?.task_id || "" }),
+        });
+      }
       renderAgentRun(data);
       startAgentPolling(data.run?.run_id);
       await loadAgentTasks();

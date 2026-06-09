@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from src.agent.schemas import AgentArtifact, AgentEvent, AgentRun, AgentTask
+from src.agent.schemas import AgentArtifact, AgentEvent, AgentMessage, AgentRun, AgentTask, AgentThread
 from src.storage.postgres_payload import fetch_payload, fetch_payloads, postgres_enabled, upsert_payload
 
 
@@ -12,6 +12,29 @@ def init_agent_db(path: Path) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_threads (
+                thread_id TEXT PRIMARY KEY,
+                task_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_messages (
+                message_id TEXT PRIMARY KEY,
+                thread_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                run_id TEXT NOT NULL DEFAULT '',
+                payload TEXT NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS agent_tasks (
@@ -57,6 +80,85 @@ def init_agent_db(path: Path) -> None:
             )
             """
         )
+
+
+def upsert_thread(path: Path, thread: AgentThread) -> None:
+    if postgres_enabled():
+        upsert_payload(path, "agent_threads", "thread_id", thread.thread_id, thread.to_json(), {"task_id": thread.task_id, "status": thread.status})
+        return
+    init_agent_db(path)
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            """
+            INSERT INTO agent_threads (thread_id, task_id, status, payload, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(thread_id) DO UPDATE SET
+                task_id = excluded.task_id,
+                status = excluded.status,
+                payload = excluded.payload,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (thread.thread_id, thread.task_id, thread.status, thread.to_json()),
+        )
+
+
+def load_thread(path: Path, thread_id: str) -> AgentThread | None:
+    if postgres_enabled():
+        payload = fetch_payload(path, "agent_threads", "thread_id", thread_id)
+        return AgentThread.from_json(payload) if payload else None
+    init_agent_db(path)
+    with sqlite3.connect(path) as conn:
+        row = conn.execute("SELECT payload FROM agent_threads WHERE thread_id = ?", (thread_id,)).fetchone()
+    return AgentThread.from_json(row[0]) if row else None
+
+
+def load_thread_by_task_id(path: Path, task_id: str) -> AgentThread | None:
+    if postgres_enabled():
+        rows = fetch_payloads(path, "agent_threads", where="task_id = %s", params=(task_id,), order_by="updated_at DESC")
+        return AgentThread.from_json(rows[0]) if rows else None
+    init_agent_db(path)
+    with sqlite3.connect(path) as conn:
+        row = conn.execute("SELECT payload FROM agent_threads WHERE task_id = ? ORDER BY updated_at DESC", (task_id,)).fetchone()
+    return AgentThread.from_json(row[0]) if row else None
+
+
+def load_all_threads(path: Path) -> list[AgentThread]:
+    if postgres_enabled():
+        return [AgentThread.from_json(payload) for payload in fetch_payloads(path, "agent_threads")]
+    init_agent_db(path)
+    with sqlite3.connect(path) as conn:
+        rows = conn.execute("SELECT payload FROM agent_threads ORDER BY updated_at DESC").fetchall()
+    return [AgentThread.from_json(row[0]) for row in rows]
+
+
+def upsert_message(path: Path, message: AgentMessage) -> None:
+    if postgres_enabled():
+        upsert_payload(path, "agent_messages", "message_id", message.message_id, message.to_json(), {"thread_id": message.thread_id, "role": message.role, "run_id": message.run_id})
+        return
+    init_agent_db(path)
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            """
+            INSERT INTO agent_messages (message_id, thread_id, role, run_id, payload, updated_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(message_id) DO UPDATE SET
+                thread_id = excluded.thread_id,
+                role = excluded.role,
+                run_id = excluded.run_id,
+                payload = excluded.payload,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (message.message_id, message.thread_id, message.role, message.run_id, message.to_json()),
+        )
+
+
+def load_messages_for_thread(path: Path, thread_id: str) -> list[AgentMessage]:
+    if postgres_enabled():
+        return [AgentMessage.from_json(payload) for payload in fetch_payloads(path, "agent_messages", where="thread_id = %s", params=(thread_id,), order_by="updated_at ASC")]
+    init_agent_db(path)
+    with sqlite3.connect(path) as conn:
+        rows = conn.execute("SELECT payload FROM agent_messages WHERE thread_id = ? ORDER BY updated_at ASC", (thread_id,)).fetchall()
+    return [AgentMessage.from_json(row[0]) for row in rows]
 
 
 def upsert_task(path: Path, task: AgentTask) -> None:

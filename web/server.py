@@ -35,7 +35,7 @@ from src.auth.service import (
     users_exist,
 )
 from src.auth.storage import init_auth_db, load_all_clients, load_all_project_access, load_all_users, load_client_users_for_client
-from src.agent.runtime import approve_agent_plan, approve_agent_run, cancel_agent_run, commit_agent_memory_suggestion, execute_agent_run, get_agent_run, get_agent_task, list_agent_tasks, resume_agent_clarification, run_agent_chat, start_agent_chat
+from src.agent.runtime import approve_agent_plan, approve_agent_run, cancel_agent_run, commit_agent_memory_suggestion, create_agent_thread, execute_agent_run, get_agent_run, get_agent_task, get_agent_thread, list_agent_tasks, list_agent_threads, resume_agent_clarification, run_agent_chat, start_agent_chat, start_agent_thread_message
 from src.agent.storage import init_agent_db
 from src.connectors.excel_connector import load_table_file
 from src.connectors.link_connector import parse_links
@@ -566,6 +566,59 @@ def status() -> dict[str, Any]:
 def agent_tasks() -> dict[str, Any]:
     require_internal("read")
     return {"items": list_agent_tasks(DB_PATH)}
+
+
+@app.get("/api/agent/threads")
+def agent_threads() -> dict[str, Any]:
+    require_internal("read")
+    return {"items": list_agent_threads(DB_PATH)}
+
+
+@app.post("/api/agent/threads")
+async def agent_thread_create(payload: dict[str, Any]) -> dict[str, Any]:
+    identity = require_internal("project_run")
+    message = str(payload.get("message") or payload.get("brief") or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
+    return create_agent_thread(
+        DB_PATH,
+        message=message,
+        client_name=str(payload.get("client_name") or ""),
+        project_name=str(payload.get("project_name") or ""),
+        created_by=identity.user.user_id,
+    )
+
+
+@app.get("/api/agent/threads/{thread_id}")
+def agent_thread_detail(thread_id: str) -> dict[str, Any]:
+    require_internal("read")
+    thread = get_agent_thread(DB_PATH, thread_id)
+    if thread is None:
+        raise HTTPException(status_code=404, detail="agent thread not found")
+    return thread
+
+
+@app.post("/api/agent/threads/{thread_id}/messages")
+async def agent_thread_message(thread_id: str, payload: dict[str, Any], background_tasks: BackgroundTasks) -> dict[str, Any]:
+    identity = require_internal("project_run")
+    message = str(payload.get("message") or payload.get("brief") or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
+    top_n = int(payload.get("top_n") or 8)
+    db_path = _db_path_ctx.get()
+    try:
+        started = start_agent_thread_message(
+            db_path,
+            thread_id,
+            message=message,
+            top_n=top_n,
+            created_by=identity.user.user_id,
+            require_plan_approval=bool(payload.get("require_plan_approval")),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    background_tasks.add_task(execute_agent_run, db_path, started["run"]["run_id"], top_n, bool(payload.get("require_plan_approval")))
+    return started
 
 
 @app.get("/api/agent/tasks/{task_id}")

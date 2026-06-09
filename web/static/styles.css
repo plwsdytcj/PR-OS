@@ -962,6 +962,12 @@ button {
   width: 100%;
 }
 
+.agent-task-item.active {
+  background: #f7d84c;
+  box-shadow: 4px 4px 0 #17120d;
+  transform: translate(-1px, -1px);
+}
+
 .agent-task-item strong,
 .agent-artifact-card strong {
   display: block;
@@ -973,6 +979,78 @@ button {
 .agent-task-item span {
   color: var(--muted);
   font-size: 13px;
+}
+
+.agent-message-list {
+  background: #17120d;
+  border: 3px solid #17120d;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 2px rgba(255, 253, 246, 0.12);
+  display: grid;
+  gap: 12px;
+  max-height: 420px;
+  min-height: 220px;
+  overflow: auto;
+  padding: 14px;
+}
+
+.agent-message {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 58px minmax(0, 1fr);
+  max-width: 92%;
+}
+
+.agent-message.user {
+  justify-self: end;
+}
+
+.agent-message.assistant {
+  justify-self: start;
+}
+
+.agent-message-role {
+  align-items: center;
+  background: #f7d84c;
+  border: 2px solid #fffdf6;
+  border-radius: 999px;
+  color: #17120d;
+  display: flex;
+  font-family: var(--display-font);
+  font-size: 12px;
+  height: 32px;
+  justify-content: center;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.agent-message > div:last-child {
+  background: #fffdf6;
+  border: 2px solid #fffdf6;
+  border-radius: 6px;
+  color: #17120d;
+  padding: 10px 12px;
+}
+
+.agent-message.user > div:last-child {
+  background: #b9ffea;
+  border-color: #b9ffea;
+}
+
+.agent-message p {
+  color: inherit;
+  font-size: 14px;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.agent-message span {
+  color: rgba(23, 18, 13, 0.58);
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  margin-top: 8px;
 }
 
 .agent-event {

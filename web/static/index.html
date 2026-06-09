@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/favicon.ico" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260609-3" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260609-4" />
   </head>
   <body>
     <div class="app-shell">
@@ -162,23 +162,23 @@
         <section id="agentWorkspace" class="view">
           <div class="agent-console">
             <div>
-              <div class="eyebrow">Phase 7A / agent runtime</div>
-              <h2>PR 项目经理 Agent</h2>
-              <p>输入一个 PR 任务，Agent 会检索组织记忆、调用 PR OS 工具、生成执行日志和交付产物。</p>
+              <div class="eyebrow">Phase 7H / thread chat</div>
+              <h2>Vibe PR Agent</h2>
+              <p>像和 PR 项目经理聊天一样输入 brief、追加修改、查看工具调用、推理图谱和客户方案。</p>
             </div>
             <div class="agent-console-mark">
-              <span>Task</span>
+              <span>Thread</span>
               <strong>→</strong>
-              <span>Tools</span>
+              <span>Chat</span>
               <strong>→</strong>
-              <span>Artifacts</span>
+              <span>OS</span>
             </div>
           </div>
 
           <div class="agent-layout">
             <aside class="agent-sidebar panel">
               <div class="panel-header">
-                <h2>任务队列</h2>
+                <h2>会话队列</h2>
                 <button id="refreshAgentTasksBtn" class="secondary" type="button">刷新</button>
               </div>
               <div id="agentTaskList" class="agent-task-list"></div>
@@ -186,7 +186,14 @@
 
             <div class="agent-main">
               <div class="panel">
-                <h2>对话式任务输入</h2>
+                <div class="panel-header">
+                  <div>
+                    <h2>Agent Chat</h2>
+                    <p id="agentThreadMeta">新会话会自动创建 Thread；继续输入会基于同一个项目上下文重跑。</p>
+                  </div>
+                  <button id="agentNewThreadBtn" class="secondary" type="button">新会话</button>
+                </div>
+                <div id="agentMessageList" class="agent-message-list"></div>
                 <form id="agentChatForm" class="form">
                   <div class="field-row">
                     <input name="client_name" value="Demo 新能源品牌" placeholder="客户 / 品牌名称" required />
@@ -1424,6 +1431,6 @@
         </details>
       </section>
     </div>
-    <script src="/static/app.js?v=20260609-3"></script>
+    <script src="/static/app.js?v=20260609-4"></script>
   </body>
 </html>

@@ -76,6 +76,27 @@ CREATE TABLE IF NOT EXISTS agent_tasks (
     PRIMARY KEY (tenant_id, task_id)
 );
 
+CREATE TABLE IF NOT EXISTS agent_threads (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    thread_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, thread_id)
+);
+
+CREATE TABLE IF NOT EXISTS agent_messages (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    message_id TEXT NOT NULL,
+    thread_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    run_id TEXT NOT NULL DEFAULT '',
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, message_id)
+);
+
 CREATE TABLE IF NOT EXISTS agent_runs (
     tenant_id TEXT NOT NULL DEFAULT 'default',
     run_id TEXT NOT NULL,
