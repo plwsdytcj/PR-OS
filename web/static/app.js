@@ -239,12 +239,14 @@ function renderAuthUser() {
   document.body.classList.toggle("internal-session", user?.user_type === "internal");
   if (!user) {
     document.body.classList.remove("client-session", "internal-session");
+    if (state.authRequired) $("#serverStatus").textContent = "需要登录";
     box.innerHTML = `
       <span>未登录</span>
       <button id="authOpenLoginBtn" class="secondary" type="button">登录</button>
     `;
     return;
   }
+  $("#serverStatus").textContent = "已连接";
   box.innerHTML = `
     <span>${escapeHTML(user.name || user.email)} · ${escapeHTML(user.role)}</span>
     <button id="authLogoutBtn" class="secondary" type="button">退出</button>
