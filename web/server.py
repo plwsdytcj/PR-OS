@@ -500,6 +500,11 @@ def landing() -> FileResponse:
     return FileResponse(STATIC_DIR / "landing.html")
 
 
+@app.get("/login", response_class=HTMLResponse)
+def login_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "login.html")
+
+
 @app.get("/app", response_class=HTMLResponse)
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
