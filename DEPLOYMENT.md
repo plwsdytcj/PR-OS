@@ -47,6 +47,8 @@ Authentication is also adapter-shaped:
 - Phase 7E adds human-confirmed Agent memory writeback into the knowledge base.
 - Phase 7F adds plan approval, run cancellation, clarification resume, artifact detail, and editable memory review controls.
 - Phase 7G adds an Agent reasoning graph artifact and visual canvas linking brief, knowledge, KOL tags, risks, proposal, trace, and memory.
+- Phase 7H adds Agent Thread Chat: multi-turn PR project conversations with message history, linked runs, artifacts, and graph state.
+- Phase 7I-A adds Agent Runtime Adapter selection. `AGENT_RUNTIME=custom` uses the native PR OS runtime; `AGENT_RUNTIME=openai_agents` selects the OpenAI Agents SDK adapter boundary and delegates execution to native runtime until SDK tool parity is validated.
 - Future providers such as Authing, Feishu SSO, OIDC, and SAML should plug into the identity provider layer instead of rewriting business permissions.
 
 Object files are handled by the object storage adapter:
@@ -138,6 +140,9 @@ python3 scripts/migrate_sqlite_to_postgres.py \
 - `GLM_BASE_URL`: defaults to BigModel chat completions endpoint.
 - `AGENT_PROVIDER`: defaults to `glm`.
 - `AGENT_API_KEY`, `AGENT_MODEL`, `AGENT_BASE_URL`: optional Agent model override; empty values fall back to `GLM_*`.
+- `AGENT_RUNTIME`: defaults to `custom`; set `openai_agents` to test the OpenAI Agents SDK adapter boundary.
+- `AGENT_RUNTIME_ADAPTER`: optional alias for `AGENT_RUNTIME`.
+- `AGENT_SDK_MODEL`, `AGENT_SDK_API_KEY`, `OPENAI_DEFAULT_MODEL`: optional future SDK runtime settings.
 - `ONEAPI_API_KEY`: optional KOL data API key.
 - `ONEAPI_BASE_URL`: defaults to `https://api.getoneapi.com`.
 
@@ -153,6 +158,8 @@ python3 scripts/smoke_phase7c_knowledge_rag.py
 python3 scripts/smoke_phase7d_7e_agent_planner_memory.py
 python3 scripts/smoke_phase7f_agent_experience.py
 python3 scripts/smoke_phase7g_agent_reasoning_graph.py
+python3 scripts/smoke_phase7h_agent_threads.py
+python3 scripts/smoke_phase7i_runtime_adapter.py
 python3 scripts/smoke_agent_model_provider.py
 python3 scripts/smoke_data_sources.py
 python3 scripts/smoke_tenant_api.py

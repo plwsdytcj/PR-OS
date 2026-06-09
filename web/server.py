@@ -35,7 +35,8 @@ from src.auth.service import (
     users_exist,
 )
 from src.auth.storage import init_auth_db, load_all_clients, load_all_project_access, load_all_users, load_client_users_for_client
-from src.agent.runtime import approve_agent_plan, approve_agent_run, cancel_agent_run, commit_agent_memory_suggestion, create_agent_thread, execute_agent_run, get_agent_run, get_agent_task, get_agent_thread, list_agent_tasks, list_agent_threads, resume_agent_clarification, run_agent_chat, start_agent_chat, start_agent_thread_message
+from src.agent.runtime import approve_agent_run, cancel_agent_run, commit_agent_memory_suggestion, create_agent_thread, get_agent_run, get_agent_task, get_agent_thread, list_agent_tasks, list_agent_threads
+from src.agent.runtime_adapter import get_runtime_adapter, runtime_status as agent_runtime_status
 from src.agent.storage import init_agent_db
 from src.connectors.excel_connector import load_table_file
 from src.connectors.link_connector import parse_links
@@ -542,6 +543,7 @@ def status() -> dict[str, Any]:
         "auth_required": _public_status_auth_required(_db_path_ctx.get()) or bool(ACCESS_KEY),
         "auth_mode": "local" if _auth_mode_active(_db_path_ctx.get()) else ("access_key" if ACCESS_KEY else "open"),
         "current_user": current_identity().user.to_dict() if current_identity() else None,
+        "agent_runtime": agent_runtime_status(),
         "connectors": ["excel_csv", "manual", "link", "mock_api", "oneapi"],
         "phase_1_5": ["creator_symbolic_profile", "brand_symbolic_profile", "symbolic_matching", "narrative_path", "stress_test"],
         "phase_2": ["proposal_sharing", "client_feedback", "versioning", "brand_preference_profile", "client_portal"],
@@ -572,6 +574,12 @@ def agent_tasks() -> dict[str, Any]:
 def agent_threads() -> dict[str, Any]:
     require_internal("read")
     return {"items": list_agent_threads(DB_PATH)}
+
+
+@app.get("/api/agent/runtime")
+def agent_runtime() -> dict[str, Any]:
+    require_internal("read")
+    return agent_runtime_status()
 
 
 @app.post("/api/agent/threads")
@@ -607,7 +615,8 @@ async def agent_thread_message(thread_id: str, payload: dict[str, Any], backgrou
     top_n = int(payload.get("top_n") or 8)
     db_path = _db_path_ctx.get()
     try:
-        started = start_agent_thread_message(
+        adapter = get_runtime_adapter()
+        started = adapter.start_thread_message(
             db_path,
             thread_id,
             message=message,
@@ -617,7 +626,7 @@ async def agent_thread_message(thread_id: str, payload: dict[str, Any], backgrou
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    background_tasks.add_task(execute_agent_run, db_path, started["run"]["run_id"], top_n, bool(payload.get("require_plan_approval")))
+    background_tasks.add_task(adapter.execute_run, db_path, started["run"]["run_id"], top_n, bool(payload.get("require_plan_approval")))
     return started
 
 
@@ -637,7 +646,7 @@ async def agent_chat(payload: dict[str, Any]) -> dict[str, Any]:
     if not message:
         raise HTTPException(status_code=400, detail="message is required")
     try:
-        return run_agent_chat(
+        return get_runtime_adapter().run_chat(
             DB_PATH,
             message=message,
             task_id=str(payload.get("task_id") or ""),
@@ -660,7 +669,8 @@ async def agent_chat_start(payload: dict[str, Any], background_tasks: Background
     top_n = int(payload.get("top_n") or 8)
     db_path = _db_path_ctx.get()
     try:
-        started = start_agent_chat(
+        adapter = get_runtime_adapter()
+        started = adapter.start_chat(
             db_path,
             message=message,
             task_id=str(payload.get("task_id") or ""),
@@ -672,7 +682,7 @@ async def agent_chat_start(payload: dict[str, Any], background_tasks: Background
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    background_tasks.add_task(execute_agent_run, db_path, started["run"]["run_id"], top_n, bool(payload.get("require_plan_approval")))
+    background_tasks.add_task(adapter.execute_run, db_path, started["run"]["run_id"], top_n, bool(payload.get("require_plan_approval")))
     return started
 
 
@@ -707,7 +717,7 @@ async def agent_run_approve(run_id: str) -> dict[str, Any]:
 async def agent_run_approve_plan(run_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     require_internal("write")
     try:
-        return approve_agent_plan(DB_PATH, run_id, top_n=int(payload.get("top_n") or 8))
+        return get_runtime_adapter().approve_plan(DB_PATH, run_id, top_n=int(payload.get("top_n") or 8))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -725,7 +735,7 @@ async def agent_run_cancel(run_id: str) -> dict[str, Any]:
 async def agent_run_clarification(run_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     identity = require_internal("project_run")
     try:
-        return resume_agent_clarification(
+        return get_runtime_adapter().resume_clarification(
             DB_PATH,
             run_id,
             supplement=str(payload.get("supplement") or ""),
@@ -1076,6 +1086,7 @@ def data_sources_status() -> dict[str, Any]:
     oneapi_key = os.getenv("ONEAPI_API_KEY", "")
     oneapi_base = os.getenv("ONEAPI_BASE_URL", "https://api.getoneapi.com")
     storage_status = storage_runtime_status(DB_PATH)
+    agent_status = agent_runtime_status()
     return {
         "items": [
             {
@@ -1118,6 +1129,17 @@ def data_sources_status() -> dict[str, Any]:
                 "env": {"GLM_API_KEY": _masked(glm.api_key), "GLM_MODEL": glm.model, "GLM_BASE_URL": glm.base_url},
             },
             {
+                "id": "agent_runtime",
+                "label": "Agent Runtime Adapter",
+                "type": "agent",
+                "configured": True,
+                "available": agent_status["active"]["available"],
+                "status": agent_status["active"]["mode"],
+                "detail": agent_status["active"]["message"],
+                "env": agent_status["env"],
+                "runtimes": agent_status["available_runtimes"],
+            },
+            {
                 "id": "mirofish",
                 "label": "MiroFish CLI",
                 "type": "simulation",
@@ -1154,6 +1176,9 @@ async def test_data_source(payload: dict[str, Any]) -> dict[str, Any]:
         connector = MockApiConnector()
         profile = connector.fetch_creator(str(payload.get("platform") or "小红书"), str(payload.get("identifier") or "demo_001"))
         return {"source_id": source_id, "ok": True, "message": "Mock API 可用。", "sample": profile_payload(profile)}
+    if source_id == "agent_runtime":
+        status = agent_runtime_status()
+        return {"source_id": source_id, "ok": True, "message": status["active"]["message"], "runtime": status}
     if source_id == "oneapi":
         api_key = str(payload.get("api_key") or os.getenv("ONEAPI_API_KEY", ""))
         base_url = str(payload.get("base_url") or os.getenv("ONEAPI_BASE_URL", "https://api.getoneapi.com"))

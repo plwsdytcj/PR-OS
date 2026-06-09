@@ -64,6 +64,11 @@ AGENT_PROVIDER=glm
 AGENT_API_KEY=
 AGENT_MODEL=
 AGENT_BASE_URL=
+AGENT_RUNTIME=custom
+AGENT_RUNTIME_ADAPTER=
+AGENT_SDK_MODEL=
+AGENT_SDK_API_KEY=
+OPENAI_DEFAULT_MODEL=
 
 PR_AI_OS_ACCESS_KEY=
 PR_AI_OS_AUTH_ENABLED=false
@@ -88,6 +93,7 @@ Behavior:
 
 - If `GLM_API_KEY` is missing, symbolic analysis uses local rule fallback.
 - `AGENT_PROVIDER=glm` makes the Agent Workspace use GLM for final reasoning summaries; `AGENT_API_KEY`, `AGENT_MODEL`, and `AGENT_BASE_URL` can override the `GLM_*` values.
+- `AGENT_RUNTIME=custom` uses the native PR OS runtime. Set `AGENT_RUNTIME=openai_agents` to select the OpenAI Agents SDK adapter boundary; Phase 7I-A detects SDK availability and delegates execution to the native runtime until SDK tool parity is validated.
 - If `ONEAPI_API_KEY` is missing, OneAPI status is shown as not configured; Mock API and Excel remain usable.
 - If MiroFish CLI is not installed, Campaign stress tests use the OS fallback Simulation Layer.
 - If `PR_AI_OS_ACCESS_KEY` is set, private API calls require `X-Access-Key`; public client/creator links remain accessible.
@@ -213,7 +219,31 @@ The `AI Agent` page is the first Manus-like PR Agent OS layer:
 - Stop at a human approval point before client delivery/authorization.
 - Use the Agent model adapter for final reasoning summaries. The current default is GLM via `AGENT_PROVIDER=glm`, with deterministic fallback if no model key is configured.
 
-This version deliberately keeps the runtime local and replaceable. Later phases can plug in OpenAI Agents SDK, Qwen/DeepSeek adapters, pgvector RAG, streaming, and more complex workflow engines without changing the business tool layer.
+This version deliberately keeps the runtime local and replaceable. Phase 7I-A adds an Agent Runtime Adapter boundary so later phases can plug in OpenAI Agents SDK, Qwen/DeepSeek adapters, pgvector RAG, streaming, and more complex workflow engines without changing the business tool layer.
+
+## Phase 7H Thread Chat Agent
+
+The Agent Workspace now has a Manus-like thread layer:
+
+- `GET /api/agent/threads` lists PR Agent conversations.
+- `POST /api/agent/threads` creates a conversation from an initial brief.
+- `POST /api/agent/threads/{thread_id}/messages` appends a user message and starts a new run in the same project context.
+- Messages, runs, artifacts, and reasoning graphs remain linked to the same PR project thread.
+
+## Phase 7I-A Agent Runtime Adapter
+
+The Agent execution path now goes through a replaceable adapter:
+
+- `custom`: native PR OS runtime. This is the default and production path.
+- `openai_agents`: OpenAI Agents SDK adapter boundary. It reports SDK package/key availability and delegates execution to `custom` until PR OS tool parity is validated.
+
+The runtime status is available through:
+
+- `GET /api/agent/runtime`
+- `GET /api/status` under `agent_runtime`
+- `GET /api/settings/data-sources` as `agent_runtime`
+
+This gives a safe migration path: PR OS tools, DB, memory, artifacts, client portal, and reasoning graph stay stable while orchestration can later move to Agents SDK or another runtime.
 
 ## Phase 7B Streaming Agent Execution
 
@@ -323,6 +353,11 @@ python3 scripts/migrate_sqlite_to_postgres.py --sqlite data/processed/phase1_web
 - `GET /api/auth/me`
 - `GET /api/agent/tasks`
 - `GET /api/agent/tasks/{task_id}`
+- `GET /api/agent/runtime`
+- `GET /api/agent/threads`
+- `POST /api/agent/threads`
+- `GET /api/agent/threads/{thread_id}`
+- `POST /api/agent/threads/{thread_id}/messages`
 - `POST /api/agent/chat`
 - `POST /api/agent/chat/start`
 - `GET /api/agent/runs/{run_id}`
@@ -388,6 +423,8 @@ python3 scripts/smoke_phase7c_knowledge_rag.py
 python3 scripts/smoke_phase7d_7e_agent_planner_memory.py
 python3 scripts/smoke_phase7f_agent_experience.py
 python3 scripts/smoke_phase7g_agent_reasoning_graph.py
+python3 scripts/smoke_phase7h_agent_threads.py
+python3 scripts/smoke_phase7i_runtime_adapter.py
 python3 scripts/smoke_agent_model_provider.py
 python3 scripts/smoke_data_sources.py
 python3 scripts/smoke_storage_adapter.py
