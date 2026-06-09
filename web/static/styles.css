@@ -3023,6 +3023,26 @@ tbody tr:hover td {
   min-height: 640px;
 }
 
+body.client-session .nav,
+body.client-session .topbar,
+body.client-session .workspace-switcher label,
+body.client-session .tenant-row,
+body.client-session #tenantStatus {
+  display: none;
+}
+
+body.client-session .sidebar {
+  justify-content: space-between;
+}
+
+body.client-session .main {
+  padding-top: 28px;
+}
+
+body.client-session #clientPortal {
+  display: block;
+}
+
 .creator-media-builder {
   display: grid;
   gap: 12px;

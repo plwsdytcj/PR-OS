@@ -180,6 +180,9 @@ function escapeHTML(value) {
 }
 
 function setView(viewId) {
+  if (state.currentIdentity?.user?.user_type === "client" && viewId !== "clientPortal") {
+    viewId = "clientPortal";
+  }
   $$(".view").forEach((node) => node.classList.toggle("active", node.id === viewId));
   $$(".nav-item").forEach((node) => node.classList.toggle("active", node.dataset.view === viewId));
   const activeNav = $(`.nav-item[data-view="${viewId}"]`);
@@ -232,7 +235,10 @@ function renderAuthUser() {
   const box = $("#authUserBox");
   if (!box) return;
   const user = state.currentIdentity?.user;
+  document.body.classList.toggle("client-session", user?.user_type === "client");
+  document.body.classList.toggle("internal-session", user?.user_type === "internal");
   if (!user) {
+    document.body.classList.remove("client-session", "internal-session");
     box.innerHTML = `
       <span>未登录</span>
       <button id="authOpenLoginBtn" class="secondary" type="button">登录</button>
