@@ -11,7 +11,9 @@ from fastapi.testclient import TestClient
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.agent.runtime_adapter import CUSTOM_RUNTIME, OPENAI_AGENTS_RUNTIME, get_runtime_adapter, runtime_status
+from src.agent import sdk_runtime
+from src.agent.runtime_adapter import CUSTOM_RUNTIME, OPENAI_AGENTS_RUNTIME, get_runtime_adapter, requested_runtime_name, runtime_status
+from src.agent.tools import run_project_tool, search_knowledge_tool
 from web.server import app
 
 
@@ -23,9 +25,17 @@ def main() -> None:
     old_runtime = os.environ.get("AGENT_RUNTIME")
     old_adapter = os.environ.get("AGENT_RUNTIME_ADAPTER")
     old_provider = os.environ.get("AGENT_PROVIDER")
+    old_sdk_key = os.environ.get("AGENT_SDK_API_KEY")
+    old_runner = sdk_runtime._run_sdk_agent
     try:
         os.environ["AGENT_PROVIDER"] = "fallback"
+        os.environ["AGENT_SDK_API_KEY"] = "test-sdk-key"
         os.environ.pop("AGENT_RUNTIME_ADAPTER", None)
+        os.environ.pop("AGENT_RUNTIME", None)
+        assert requested_runtime_name() == OPENAI_AGENTS_RUNTIME
+        default_status = runtime_status()
+        assert default_status["active_runtime"] == OPENAI_AGENTS_RUNTIME
+
         os.environ["AGENT_RUNTIME"] = CUSTOM_RUNTIME
         assert get_runtime_adapter().name == CUSTOM_RUNTIME
         custom_status = runtime_status()
@@ -38,6 +48,24 @@ def main() -> None:
         sdk_status = runtime_status()
         assert sdk_status["active_runtime"] == OPENAI_AGENTS_RUNTIME
         assert sdk_status["active"]["fallback_runtime"] == CUSTOM_RUNTIME
+
+        def fake_sdk_agent(db_path: Path, message: str, client_name: str, project_name: str, brief: str, top_n: int) -> sdk_runtime.SdkExecutionResult:
+            knowledge = search_knowledge_tool(db_path, query=brief, top_k=3)
+            project = run_project_tool(db_path, client_name=client_name, project_name=project_name, brief=brief, top_n=top_n)
+            return sdk_runtime.SdkExecutionResult(
+                final_output="SDK adapter smoke completed.",
+                model="test-sdk-model",
+                provider="mock_openai_agents",
+                tool_traces=[
+                    sdk_runtime._trace_item("sdk_parse_brief", "mock", "ready", {"status": "ready"}),
+                    sdk_runtime._trace_item("search_knowledge", "mock", f"找到 {knowledge['count']} 条可参考记录。", {"count": knowledge["count"]}),
+                    sdk_runtime._trace_item("run_project", "mock", f"推荐 {project['summary']['matches']} 位 KOL。", project["summary"]),
+                ],
+                knowledge=knowledge,
+                project=project,
+            )
+
+        sdk_runtime._run_sdk_agent = fake_sdk_agent
 
         client = TestClient(app)
         bootstrap = client.post(
@@ -95,6 +123,11 @@ def main() -> None:
             os.environ.pop("AGENT_PROVIDER", None)
         else:
             os.environ["AGENT_PROVIDER"] = old_provider
+        if old_sdk_key is None:
+            os.environ.pop("AGENT_SDK_API_KEY", None)
+        else:
+            os.environ["AGENT_SDK_API_KEY"] = old_sdk_key
+        sdk_runtime._run_sdk_agent = old_runner
 
 
 if __name__ == "__main__":

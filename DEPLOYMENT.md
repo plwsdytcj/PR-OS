@@ -48,9 +48,9 @@ Authentication is also adapter-shaped:
 - Phase 7F adds plan approval, run cancellation, clarification resume, artifact detail, and editable memory review controls.
 - Phase 7G adds an Agent reasoning graph artifact and visual canvas linking brief, knowledge, KOL tags, risks, proposal, trace, and memory.
 - Phase 7H adds Agent Thread Chat: multi-turn PR project conversations with message history, linked runs, artifacts, and graph state.
-- Phase 7I-A adds Agent Runtime Adapter selection. `AGENT_RUNTIME=custom` uses the native PR OS runtime; `AGENT_RUNTIME=openai_agents` selects the OpenAI Agents SDK adapter.
+- Phase 7I-A adds Agent Runtime Adapter selection. `AGENT_RUNTIME=openai_agents` is the production primary runtime; `AGENT_RUNTIME=custom` forces the native fallback runtime.
 - Phase 7I-B adds a real OpenAI Agents SDK POC runtime. When `openai-agents` and a compatible key are configured, SDK calls PR OS tools for brief parsing, memory search, and KOL/project matching; failures fall back to the native runtime.
-- Phase 7I-C adds per-run runtime override and Custom vs Agents SDK A/B comparison without changing the production default.
+- Phase 7I-C adds per-run runtime override and Custom vs Agents SDK A/B comparison.
 - Future providers such as Authing, Feishu SSO, OIDC, and SAML should plug into the identity provider layer instead of rewriting business permissions.
 
 Object files are handled by the object storage adapter:
@@ -142,7 +142,7 @@ python3 scripts/migrate_sqlite_to_postgres.py \
 - `GLM_BASE_URL`: defaults to BigModel chat completions endpoint.
 - `AGENT_PROVIDER`: defaults to `glm`.
 - `AGENT_API_KEY`, `AGENT_MODEL`, `AGENT_BASE_URL`: optional Agent model override; empty values fall back to `GLM_*`.
-- `AGENT_RUNTIME`: defaults to `custom`; set `openai_agents` to test the OpenAI Agents SDK runtime.
+- `AGENT_RUNTIME`: defaults to `openai_agents`; set `custom` only to force the native runtime.
 - `AGENT_RUNTIME_ADAPTER`: optional alias for `AGENT_RUNTIME`.
 - `AGENT_SDK_MODEL`, `AGENT_SDK_API_KEY`, `AGENT_SDK_BASE_URL`, `AGENT_SDK_MAX_TURNS`, `AGENT_SDK_TRACING`, `OPENAI_DEFAULT_MODEL`: optional SDK runtime settings. For GLM/OpenAI-compatible endpoints, use the API root in `AGENT_SDK_BASE_URL`, for example `https://open.bigmodel.cn/api/paas/v4`. Tracing is disabled by default unless `AGENT_SDK_TRACING=true`.
 - `ONEAPI_API_KEY`: optional KOL data API key.

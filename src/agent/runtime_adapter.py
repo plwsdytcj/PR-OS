@@ -16,6 +16,7 @@ from src.agent.storage import load_events_for_run, load_run, upsert_event
 
 CUSTOM_RUNTIME = "custom"
 OPENAI_AGENTS_RUNTIME = "openai_agents"
+DEFAULT_RUNTIME = OPENAI_AGENTS_RUNTIME
 SUPPORTED_RUNTIMES = {CUSTOM_RUNTIME, OPENAI_AGENTS_RUNTIME}
 
 
@@ -197,7 +198,7 @@ class OpenAIAgentsRuntimeAdapter(CustomRuntimeAdapter):
         package_available = _sdk_package_importable()
         configured = bool(_sdk_api_key())
         if package_available and configured:
-            message = "OpenAI Agents SDK package/config detected; Phase 7I-B will execute the SDK POC path and fall back to native runtime on failure."
+            message = "OpenAI Agents SDK package/config detected; SDK is the primary runtime and will fall back to native PR OS runtime on failure."
             mode = "sdk_ready"
         elif package_available:
             message = "OpenAI Agents SDK package detected, but no compatible API key is configured; native PR OS runtime will execute."
@@ -256,11 +257,11 @@ class OpenAIAgentsRuntimeAdapter(CustomRuntimeAdapter):
 
 def requested_runtime_name() -> str:
     load_dotenv()
-    name = (os.getenv("AGENT_RUNTIME") or os.getenv("AGENT_RUNTIME_ADAPTER") or CUSTOM_RUNTIME).strip().lower()
+    name = (os.getenv("AGENT_RUNTIME") or os.getenv("AGENT_RUNTIME_ADAPTER") or DEFAULT_RUNTIME).strip().lower()
     if name in {"openai", "openai-agents", "agents_sdk", "agent_sdk"}:
         return OPENAI_AGENTS_RUNTIME
     if name not in SUPPORTED_RUNTIMES:
-        return CUSTOM_RUNTIME
+        return DEFAULT_RUNTIME
     return name
 
 

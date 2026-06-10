@@ -68,7 +68,7 @@ AGENT_PROVIDER=glm
 AGENT_API_KEY=
 AGENT_MODEL=
 AGENT_BASE_URL=
-AGENT_RUNTIME=custom
+AGENT_RUNTIME=openai_agents
 AGENT_RUNTIME_ADAPTER=
 AGENT_SDK_MODEL=
 AGENT_SDK_API_KEY=
@@ -100,7 +100,7 @@ Behavior:
 
 - If `GLM_API_KEY` is missing, symbolic analysis uses local rule fallback.
 - `AGENT_PROVIDER=glm` makes the Agent Workspace use GLM for final reasoning summaries; `AGENT_API_KEY`, `AGENT_MODEL`, and `AGENT_BASE_URL` can override the `GLM_*` values.
-- `AGENT_RUNTIME=custom` uses the native PR OS runtime. Set `AGENT_RUNTIME=openai_agents` to select the OpenAI Agents SDK adapter. Phase 7I-B runs a real SDK POC path when `openai-agents` and a compatible API key are configured; SDK failures automatically fall back to the native runtime.
+- `AGENT_RUNTIME=openai_agents` is the production primary runtime. It uses OpenAI Agents SDK when `openai-agents` and a compatible API key are configured; missing SDK config or SDK failures automatically fall back to the native `custom` runtime. Set `AGENT_RUNTIME=custom` only when you want to force the native fallback path.
 - `AGENT_SDK_API_KEY`, `AGENT_SDK_MODEL`, and `AGENT_SDK_BASE_URL` configure the SDK runtime. For GLM/OpenAI-compatible providers, set `AGENT_SDK_BASE_URL` to the API root, for example `https://open.bigmodel.cn/api/paas/v4`; if omitted, the app also derives it from `AGENT_BASE_URL` or `GLM_BASE_URL`.
 - `AGENT_SDK_TRACING=false` disables OpenAI trace export by default, which avoids noisy logs when running the SDK against GLM or another OpenAI-compatible provider.
 - If `ONEAPI_API_KEY` is missing, OneAPI status is shown as not configured; Mock API and Excel remain usable.
@@ -243,8 +243,8 @@ The Agent Workspace now has a Manus-like thread layer:
 
 The Agent execution path now goes through a replaceable adapter:
 
-- `custom`: native PR OS runtime. This is the default and production path.
-- `openai_agents`: OpenAI Agents SDK adapter. If the SDK package and a compatible key are configured, it runs the SDK POC path. If not configured, or if SDK execution fails, it delegates execution to `custom`.
+- `openai_agents`: production primary runtime through OpenAI Agents SDK. If the SDK package and a compatible key are configured, it runs the SDK path. If not configured, or if SDK execution fails, it delegates execution to `custom`.
+- `custom`: native PR OS runtime. This is the deterministic fallback and manual override path.
 
 The runtime status is available through:
 
@@ -282,7 +282,7 @@ The Agent Workspace can now test runtimes without changing production defaults:
 - `POST /api/agent/chat/compare-runtimes` runs the same brief through `custom` and `openai_agents`.
 - The comparison response includes candidate count, tool count, graph node count, SDK status, both run IDs, and a `runtime_comparison` artifact.
 
-This keeps `AGENT_RUNTIME=custom` as the safe production default while allowing real SDK A/B trials on selected briefs.
+This keeps `custom` available as the safe fallback while making `openai_agents` the production primary runtime.
 
 ## Phase 7B Streaming Agent Execution
 
