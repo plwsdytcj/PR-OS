@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextvars
+import asyncio
 import json
 import os
 import re
@@ -15,7 +16,7 @@ from typing import Any, Optional
 import pandas as pd
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,7 +36,18 @@ from src.auth.service import (
     users_exist,
 )
 from src.auth.storage import init_auth_db, load_all_clients, load_all_project_access, load_all_users, load_client_users_for_client
-from src.agent.runtime import approve_agent_run, cancel_agent_run, commit_agent_memory_suggestion, create_agent_thread, get_agent_run, get_agent_task, get_agent_thread, list_agent_tasks, list_agent_threads
+from src.agent.runtime import (
+    approve_agent_run,
+    cancel_agent_run,
+    commit_agent_memory_suggestion,
+    create_agent_thread,
+    get_agent_run,
+    get_agent_task,
+    get_agent_thread,
+    list_agent_tasks,
+    list_agent_threads,
+    update_agent_step_control,
+)
 from src.agent.runtime_adapter import CUSTOM_RUNTIME, OPENAI_AGENTS_RUNTIME, get_runtime_adapter, requested_runtime_name, runtime_status as agent_runtime_status
 from src.agent.schemas import AgentArtifact, artifact_id_for
 from src.agent.storage import upsert_artifact
@@ -810,6 +822,56 @@ def agent_run_events(run_id: str) -> dict[str, Any]:
     if run is None:
         raise HTTPException(status_code=404, detail="agent run not found")
     return {"items": run.get("events", []), "artifacts": run.get("artifacts", [])}
+
+
+@app.get("/api/agent/runs/{run_id}/stream")
+async def agent_run_stream(run_id: str) -> StreamingResponse:
+    require_internal("read")
+    db_path = _db_path_ctx.get()
+    if get_agent_run(db_path, run_id) is None:
+        raise HTTPException(status_code=404, detail="agent run not found")
+
+    async def event_stream():
+        last_signature = ""
+        while True:
+            payload = get_agent_run(db_path, run_id)
+            if payload is None:
+                yield 'event: agent_error\ndata: {"detail":"agent run not found"}\n\n'
+                break
+            run = payload.get("run") or {}
+            signature = json.dumps(
+                {
+                    "status": run.get("status"),
+                    "events": len(payload.get("events") or []),
+                    "steps": [(item.get("step_id"), item.get("status"), item.get("updated_at")) for item in payload.get("steps") or []],
+                    "artifacts": len(payload.get("artifacts") or []),
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            if signature != last_signature:
+                last_signature = signature
+                yield f"event: agent_run\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            if run.get("status") not in {"running"}:
+                break
+            await asyncio.sleep(1)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.post("/api/agent/steps/{step_id}/{action}")
+async def agent_step_control(step_id: str, action: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    identity = require_internal("write")
+    try:
+        return update_agent_step_control(
+            _db_path_ctx.get(),
+            step_id,
+            action,
+            input_payload=payload or {},
+            created_by=identity.user.user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/agent/runs/{run_id}/approve")

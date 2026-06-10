@@ -118,6 +118,19 @@ CREATE TABLE IF NOT EXISTS agent_events (
     PRIMARY KEY (tenant_id, event_id)
 );
 
+CREATE TABLE IF NOT EXISTS agent_steps (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    step_id TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    tool_name TEXT NOT NULL,
+    status TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, step_id)
+);
+
 CREATE TABLE IF NOT EXISTS agent_artifacts (
     tenant_id TEXT NOT NULL DEFAULT 'default',
     artifact_id TEXT NOT NULL,

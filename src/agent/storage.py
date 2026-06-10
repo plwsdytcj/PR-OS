@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from src.agent.schemas import AgentArtifact, AgentEvent, AgentMessage, AgentRun, AgentTask, AgentThread
+from src.agent.schemas import AgentArtifact, AgentEvent, AgentMessage, AgentRun, AgentStep, AgentTask, AgentThread
 from src.storage.postgres_payload import fetch_payload, fetch_payloads, postgres_enabled, upsert_payload
 
 
@@ -63,6 +63,20 @@ def init_agent_db(path: Path) -> None:
                 run_id TEXT NOT NULL,
                 task_id TEXT NOT NULL,
                 sequence INTEGER NOT NULL,
+                payload TEXT NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_steps (
+                step_id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                sequence INTEGER NOT NULL,
+                tool_name TEXT NOT NULL,
+                status TEXT NOT NULL,
                 payload TEXT NOT NULL,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
@@ -266,6 +280,55 @@ def load_events_for_run(path: Path, run_id: str) -> list[AgentEvent]:
     with sqlite3.connect(path) as conn:
         rows = conn.execute("SELECT payload FROM agent_events WHERE run_id = ? ORDER BY sequence ASC", (run_id,)).fetchall()
     return [AgentEvent.from_json(row[0]) for row in rows]
+
+
+def upsert_step(path: Path, step: AgentStep) -> None:
+    if postgres_enabled():
+        upsert_payload(
+            path,
+            "agent_steps",
+            "step_id",
+            step.step_id,
+            step.to_json(),
+            {"run_id": step.run_id, "task_id": step.task_id, "sequence": step.sequence, "tool_name": step.tool_name, "status": step.status},
+        )
+        return
+    init_agent_db(path)
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            """
+            INSERT INTO agent_steps (step_id, run_id, task_id, sequence, tool_name, status, payload, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(step_id) DO UPDATE SET
+                run_id = excluded.run_id,
+                task_id = excluded.task_id,
+                sequence = excluded.sequence,
+                tool_name = excluded.tool_name,
+                status = excluded.status,
+                payload = excluded.payload,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (step.step_id, step.run_id, step.task_id, step.sequence, step.tool_name, step.status, step.to_json()),
+        )
+
+
+def load_step(path: Path, step_id: str) -> AgentStep | None:
+    if postgres_enabled():
+        payload = fetch_payload(path, "agent_steps", "step_id", step_id)
+        return AgentStep.from_json(payload) if payload else None
+    init_agent_db(path)
+    with sqlite3.connect(path) as conn:
+        row = conn.execute("SELECT payload FROM agent_steps WHERE step_id = ?", (step_id,)).fetchone()
+    return AgentStep.from_json(row[0]) if row else None
+
+
+def load_steps_for_run(path: Path, run_id: str) -> list[AgentStep]:
+    if postgres_enabled():
+        return [AgentStep.from_json(payload) for payload in fetch_payloads(path, "agent_steps", where="run_id = %s", params=(run_id,), order_by="sequence ASC")]
+    init_agent_db(path)
+    with sqlite3.connect(path) as conn:
+        rows = conn.execute("SELECT payload FROM agent_steps WHERE run_id = ? ORDER BY sequence ASC", (run_id,)).fetchall()
+    return [AgentStep.from_json(row[0]) for row in rows]
 
 
 def upsert_artifact(path: Path, artifact: AgentArtifact) -> None:

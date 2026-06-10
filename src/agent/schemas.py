@@ -36,6 +36,10 @@ def event_id_for(run_id: str, index: int, title: str) -> str:
     return stable_id(run_id, str(index), title, prefix="agent_event")
 
 
+def step_id_for(run_id: str, index: int, tool_name: str) -> str:
+    return stable_id(run_id, str(index), tool_name, prefix="agent_step")
+
+
 def artifact_id_for(task_id: str, artifact_type: str, title: str) -> str:
     return stable_id(task_id, artifact_type, title, now_iso(), prefix="agent_artifact")
 
@@ -156,6 +160,37 @@ class AgentEvent:
 
     @classmethod
     def from_json(cls, value: str) -> "AgentEvent":
+        return cls(**json.loads(value))
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class AgentStep:
+    step_id: str
+    run_id: str
+    task_id: str
+    sequence: int
+    tool_name: str
+    title: str
+    status: str = "pending"
+    agent_role: str = "PR Manager Agent"
+    input_summary: str = ""
+    output_summary: str = ""
+    input_payload: dict[str, Any] = field(default_factory=dict)
+    output_payload: dict[str, Any] = field(default_factory=dict)
+    artifact_id: str = ""
+    error: str = ""
+    editable: bool = True
+    created_at: str = field(default_factory=now_iso)
+    updated_at: str = field(default_factory=now_iso)
+
+    def to_json(self) -> str:
+        return json.dumps(asdict(self), ensure_ascii=False)
+
+    @classmethod
+    def from_json(cls, value: str) -> "AgentStep":
         return cls(**json.loads(value))
 
     def to_dict(self) -> dict[str, Any]:

@@ -58,6 +58,7 @@ def main() -> None:
         "smoke_phase7i_runtime_adapter.py",
         "smoke_phase7i_b_agent_sdk.py",
         "smoke_phase7i_c_runtime_ab.py",
+        "smoke_phase7j_manus_workspace.py",
         "smoke_agent_model_provider.py",
     ]:
         assert text in readme
@@ -80,6 +81,7 @@ def main() -> None:
         "Phase 7I-A",
         "Phase 7I-B",
         "Phase 7I-C",
+        "Phase 7J",
         "AGENT_PROVIDER",
         "AGENT_RUNTIME",
         "AGENT_SDK_BASE_URL",

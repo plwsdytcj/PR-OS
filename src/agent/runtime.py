@@ -13,6 +13,7 @@ from src.agent.schemas import (
     AgentEvent,
     AgentMessage,
     AgentRun,
+    AgentStep,
     AgentTask,
     AgentThread,
     assistant_message_id_for,
@@ -33,6 +34,8 @@ from src.agent.storage import (
     load_messages_for_thread,
     load_run,
     load_runs_for_task,
+    load_step,
+    load_steps_for_run,
     load_task,
     load_thread,
     load_thread_by_task_id,
@@ -40,6 +43,7 @@ from src.agent.storage import (
     upsert_event,
     upsert_message,
     upsert_run,
+    upsert_step,
     upsert_task,
     upsert_thread,
 )
@@ -90,6 +94,7 @@ def get_agent_run(db_path: Path, run_id: str) -> dict[str, Any] | None:
         "run": run.to_dict(),
         "task": task.to_dict() if task else None,
         "events": [event.to_dict() for event in load_events_for_run(db_path, run_id)],
+        "steps": [step.to_dict() for step in load_steps_for_run(db_path, run_id)],
         "artifacts": [artifact.to_dict() for artifact in load_artifacts_for_task(db_path, run.task_id)],
     }
 
@@ -616,6 +621,93 @@ def cancel_agent_run(db_path: Path, run_id: str) -> dict[str, Any]:
         ),
     )
     return get_agent_run(db_path, run_id) or {"run": run.to_dict()}
+
+
+def update_agent_step_control(
+    db_path: Path,
+    step_id: str,
+    action: str,
+    input_payload: dict[str, Any] | None = None,
+    created_by: str = "",
+) -> dict[str, Any]:
+    step = load_step(db_path, step_id)
+    if step is None:
+        raise ValueError("step not found")
+    run = load_run(db_path, step.run_id)
+    if run is None:
+        raise ValueError("run not found")
+    task = load_task(db_path, run.task_id)
+    if task is None:
+        raise ValueError("agent task not found")
+    action = action.strip().lower()
+    payload = input_payload or {}
+    if action == "skip":
+        step.status = "skipped"
+        step.output_summary = "人工跳过该步骤。"
+        step.updated_at = now_iso()
+        upsert_step(db_path, step)
+        _step_control_event(db_path, run, step, "跳过 Step", "内部用户跳过了该工具步骤。", created_by)
+        return get_agent_run(db_path, run.run_id) or {"run": run.to_dict()}
+    if action == "edit":
+        step.input_payload = payload or step.input_payload
+        step.input_summary = str(payload.get("input_summary") or step.input_summary)
+        step.status = "edited"
+        step.updated_at = now_iso()
+        upsert_step(db_path, step)
+        _step_control_event(db_path, run, step, "编辑 Step 输入", "内部用户编辑了该工具步骤输入。", created_by)
+        return get_agent_run(db_path, run.run_id) or {"run": run.to_dict()}
+    if action != "retry":
+        raise ValueError("unsupported step action")
+
+    step.status = "running"
+    step.error = ""
+    step.updated_at = now_iso()
+    upsert_step(db_path, step)
+    _step_control_event(db_path, run, step, "重试 Step", "内部用户触发该工具步骤重试。", created_by)
+    try:
+        if step.tool_name in {"search_knowledge", "sdk_search_knowledge"}:
+            result = search_knowledge_tool(db_path, query=str(payload.get("query") or task.brief), top_k=int(payload.get("top_k") or 6))
+            step.output_payload = {"count": result["count"], "items": result.get("items", [])[:5]}
+            step.output_summary = f"重试完成，找到 {result['count']} 条可参考记录。"
+        elif step.tool_name in {"run_project", "sdk_match_kol_and_build_project"}:
+            result = run_project_tool(db_path, client_name=task.client_name, project_name=task.project_name, brief=str(payload.get("brief") or task.brief), top_n=int(payload.get("top_n") or 8))
+            step.output_payload = result.get("summary") or {}
+            step.output_summary = f"重试完成，推荐 {result['summary']['matches']} 位候选 KOL。"
+        elif step.tool_name == "create_proposal":
+            result = create_proposal_tool(db_path, client_name=task.client_name, project_name=task.project_name, brief=str(payload.get("brief") or task.brief), top_n=int(payload.get("top_n") or 8), created_by=created_by or run.created_by or "agent")
+            step.output_payload = result.get("summary") or {}
+            step.output_summary = f"重试完成，生成方案 {result['summary']['proposal_id']}。"
+        else:
+            step.output_summary = "该步骤已标记重试，但没有专用重试执行器。"
+            step.output_payload = {"manual_retry": True}
+        step.status = "completed"
+    except Exception as exc:
+        step.status = "failed"
+        step.error = str(exc)
+        step.output_summary = f"重试失败：{type(exc).__name__}"
+    step.updated_at = now_iso()
+    upsert_step(db_path, step)
+    _step_control_event(db_path, run, step, "Step 重试完成", step.output_summary, created_by)
+    return get_agent_run(db_path, run.run_id) or {"run": run.to_dict()}
+
+
+def _step_control_event(db_path: Path, run: AgentRun, step: AgentStep, title: str, summary: str, created_by: str = "") -> None:
+    next_sequence = len(load_events_for_run(db_path, run.run_id)) + 1
+    upsert_event(
+        db_path,
+        AgentEvent(
+            event_id=event_id_for(run.run_id, next_sequence, title),
+            run_id=run.run_id,
+            task_id=run.task_id,
+            sequence=next_sequence,
+            event_type="step_control",
+            status=step.status,
+            title=title,
+            summary=summary,
+            tool_name=step.tool_name,
+            payload={"step_id": step.step_id, "created_by": created_by},
+        ),
+    )
 
 
 def resume_agent_clarification(db_path: Path, run_id: str, supplement: str, top_n: int = 8, created_by: str = "") -> dict[str, Any]:

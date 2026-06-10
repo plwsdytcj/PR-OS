@@ -51,6 +51,7 @@ Authentication is also adapter-shaped:
 - Phase 7I-A adds Agent Runtime Adapter selection. `AGENT_RUNTIME=openai_agents` is the production primary runtime; `AGENT_RUNTIME=custom` forces the native fallback runtime.
 - Phase 7I-B adds a real OpenAI Agents SDK POC runtime. When `openai-agents` and a compatible key are configured, SDK calls PR OS tools for brief parsing, memory search, and KOL/project matching; failures fall back to the native runtime.
 - Phase 7I-C adds per-run runtime override and Custom vs Agents SDK A/B comparison.
+- Phase 7J adds the Manus-like Agent task space: SSE run streaming, retry/edit/skip tool steps, multi-agent handoff artifacts, memory recall cards, and live reasoning-graph highlighting.
 - Future providers such as Authing, Feishu SSO, OIDC, and SAML should plug into the identity provider layer instead of rewriting business permissions.
 
 Object files are handled by the object storage adapter:
@@ -164,6 +165,7 @@ python3 scripts/smoke_phase7h_agent_threads.py
 python3 scripts/smoke_phase7i_runtime_adapter.py
 python3 scripts/smoke_phase7i_b_agent_sdk.py
 python3 scripts/smoke_phase7i_c_runtime_ab.py
+python3 scripts/smoke_phase7j_manus_workspace.py
 python3 scripts/smoke_agent_model_provider.py
 python3 scripts/smoke_data_sources.py
 python3 scripts/smoke_tenant_api.py

@@ -11,9 +11,12 @@ const state = {
   activeAgentThread: null,
   activeAgentRun: null,
   activeAgentArtifacts: [],
+  activeAgentSteps: [],
   activeArtifactDetail: null,
   activeAgentGraphNodeId: "",
+  activeAgentToolName: "",
   agentPollTimer: null,
+  agentEventSource: null,
   agentRuntime: null,
   agentRuntimeComparison: null,
   knowledgeDocuments: [],
@@ -847,12 +850,16 @@ function renderAgentRuntimeComparison() {
 function renderAgentRun(data) {
   state.activeAgentRun = data;
   state.activeAgentArtifacts = data.artifacts || [];
+  state.activeAgentSteps = data.steps || [];
   if (data.thread) state.activeAgentThread = data;
   const run = data.run || {};
   const task = data.task || {};
   const events = data.events || [];
+  const runningStep = state.activeAgentSteps.find((step) => step.status === "running");
+  const lastToolEvent = [...events].reverse().find((event) => event.tool_name);
+  state.activeAgentToolName = runningStep?.tool_name || lastToolEvent?.tool_name || "";
   const meta = $("#agentRunMeta");
-  if (meta) meta.textContent = task.title ? `${task.title} · ${run.status || "running"}` : "等待 Agent 执行。";
+  if (meta) meta.textContent = task.title ? `${task.title} · ${run.status || "running"} · ${state.activeAgentSteps.length} steps` : "等待 Agent 执行。";
   const approveBtn = $("#agentApproveBtn");
   if (approveBtn) {
     approveBtn.classList.toggle("hidden", !run.run_id || !["waiting_approval", "completed"].includes(run.status));
@@ -901,8 +908,53 @@ function renderAgentRun(data) {
       : emptyState("暂无执行事件", "启动 Agent 后会显示每一步工具调用。");
   }
   renderAgentArtifacts();
+  renderAgentSteps();
   renderAgentReasoningGraph();
   renderAgentMessages();
+}
+
+function renderAgentSteps() {
+  const list = $("#agentStepList");
+  if (!list) return;
+  const steps = state.activeAgentSteps || [];
+  if (!steps.length) {
+    list.innerHTML = emptyState("暂无工具步骤", "Agent 启动后会把工具调用拆成可重试、可跳过、可编辑的步骤。");
+    return;
+  }
+  list.innerHTML = steps
+    .map((step, index) => {
+      const canControl = Boolean(step.editable !== false);
+      return `
+        <article class="agent-step-card ${escapeHTML(step.status || "pending")}">
+          <div class="agent-step-rail">${String(index + 1).padStart(2, "0")}</div>
+          <div class="agent-step-body">
+            <div class="agent-step-head">
+              <div>
+                <span>${escapeHTML(step.agent_role || "PR Agent")}</span>
+                <strong>${escapeHTML(step.title || step.tool_name || "工具步骤")}</strong>
+              </div>
+              <em>${escapeHTML(step.status || "pending")}</em>
+            </div>
+            <p>${escapeHTML(step.output_summary || step.input_summary || "等待执行结果。")}</p>
+            ${step.error ? `<div class="agent-step-error">${escapeHTML(step.error)}</div>` : ""}
+            <div class="agent-step-meta">
+              <span>${escapeHTML(step.tool_name || "tool")}</span>
+              ${step.artifact_id ? `<span>artifact ${escapeHTML(step.artifact_id.slice(0, 10))}</span>` : ""}
+            </div>
+            ${
+              canControl
+                ? `<div class="agent-step-actions">
+                    <button class="secondary agent-step-action" data-step-id="${escapeHTML(step.step_id)}" data-action="retry" type="button">重试</button>
+                    <button class="secondary agent-step-action" data-step-id="${escapeHTML(step.step_id)}" data-action="edit" type="button">编辑输入</button>
+                    <button class="secondary agent-step-action danger" data-step-id="${escapeHTML(step.step_id)}" data-action="skip" type="button">跳过</button>
+                  </div>`
+                : ""
+            }
+          </div>
+        </article>
+      `;
+    })
+    .join("");
 }
 
 function renderAgentMessages() {
@@ -995,9 +1047,11 @@ function renderAgentGraphInto(selector, graph) {
   const nodeSvg = positioned
     .map((node) => {
       const selected = state.activeAgentGraphNodeId === node.id ? " selected" : "";
+      const serialized = `${node.id} ${node.type || ""} ${node.stage || ""} ${JSON.stringify(node.payload || {})}`.toLowerCase();
+      const live = state.activeAgentToolName && serialized.includes(String(state.activeAgentToolName).toLowerCase()) ? " live" : "";
       const score = node.score ? `<tspan x="${node.x}" dy="15">score ${escapeHTML(node.score)}</tspan>` : "";
       return `
-        <g class="graph-node agent-reasoning-node ${escapeHTML(node.type || "node")}${selected}" data-agent-node-id="${escapeHTML(node.id)}" tabindex="0" role="button" aria-label="${escapeHTML(node.label)}">
+        <g class="graph-node agent-reasoning-node ${escapeHTML(node.type || "node")}${selected}${live}" data-agent-node-id="${escapeHTML(node.id)}" tabindex="0" role="button" aria-label="${escapeHTML(node.label)}">
           <rect x="${node.x - 58}" y="${node.y - 30}" width="116" height="60" rx="6"></rect>
           <text x="${node.x}" y="${node.y - 4}" text-anchor="middle">${escapeHTML(shortLabel(node.label))}${score}</text>
         </g>
@@ -1105,6 +1159,36 @@ function renderAgentArtifact(artifact) {
       .map((item) => `<li>${escapeHTML(item.title)} <span>${escapeHTML(item.source)}</span></li>`)
       .join("");
     detail = `<ul class="agent-mini-list">${detail}</ul>`;
+  } else if (artifact.artifact_type === "memory_recall") {
+    const sources = payload.source_counts || {};
+    detail = `
+      <div class="agent-artifact-metrics">
+        <span>召回 ${fmtNumber(payload.count)}</span>
+        <span>来源 ${fmtNumber(Object.keys(sources).length)}</span>
+      </div>
+      <ul class="agent-mini-list">
+        ${(payload.items || [])
+          .slice(0, 5)
+          .map((item) => `<li>${escapeHTML(item.title || item.document_id || "memory")} <span>${escapeHTML(item.source_type || item.source || "knowledge")}</span></li>`)
+          .join("")}
+      </ul>
+    `;
+  } else if (artifact.artifact_type === "agent_handoffs") {
+    detail = `
+      <div class="agent-handoff-list">
+        ${(payload.agents || [])
+          .map(
+            (item) => `
+              <article>
+                <strong>${escapeHTML(item.role || item.name || "Agent")}</strong>
+                <p>${escapeHTML(item.responsibility || item.summary || "")}</p>
+                <span>${escapeHTML(item.status || "completed")}</span>
+              </article>
+            `
+          )
+          .join("")}
+      </div>
+    `;
   } else if (artifact.artifact_type === "tool_trace") {
     detail = `
       <div class="agent-trace-list">
@@ -1298,6 +1382,10 @@ function renderKnowledgeDetail(data) {
 }
 
 function stopAgentPolling() {
+  if (state.agentEventSource) {
+    state.agentEventSource.close();
+    state.agentEventSource = null;
+  }
   if (state.agentPollTimer) {
     clearInterval(state.agentPollTimer);
     state.agentPollTimer = null;
@@ -1318,6 +1406,38 @@ async function loadAgentThread(threadId) {
 
 function startAgentPolling(runId) {
   stopAgentPolling();
+  if (!runId) return;
+  if (window.EventSource) {
+    const tenant = encodeURIComponent(state.tenant || "default");
+    const source = new EventSource(`/api/agent/runs/${encodeURIComponent(runId)}/stream?tenant=${tenant}`);
+    state.agentEventSource = source;
+    source.addEventListener("agent_run", async (event) => {
+      const data = JSON.parse(event.data || "{}");
+      renderAgentRun(data);
+      const status = data.run?.status || "";
+      if (status && status !== "running") {
+        stopAgentPolling();
+        const threadId = state.activeAgentThread?.thread?.thread_id;
+        if (threadId) await loadAgentThread(threadId);
+        await loadAgentTasks();
+      }
+    });
+    source.addEventListener("agent_error", (event) => {
+      stopAgentPolling();
+      toast(JSON.parse(event.data || "{}").detail || "Agent stream error", true);
+    });
+    source.onerror = () => {
+      if (!state.agentEventSource) return;
+      source.close();
+      state.agentEventSource = null;
+      startAgentPollFallback(runId);
+    };
+    return;
+  }
+  startAgentPollFallback(runId);
+}
+
+function startAgentPollFallback(runId) {
   if (!runId) return;
   const tick = async () => {
     try {
@@ -3289,6 +3409,34 @@ function bindEvents() {
     renderAgentRun(data);
     await loadAgentTasks();
     toast("Run 已取消");
+  });
+  document.addEventListener("click", async (event) => {
+    const button = event.target.closest(".agent-step-action");
+    if (!button) return;
+    const stepId = button.dataset.stepId;
+    const action = button.dataset.action;
+    if (!stepId || !action) return;
+    const payload = {};
+    if (action === "edit") {
+      const input = window.prompt("编辑这一步的输入摘要", "");
+      if (input === null) return;
+      payload.input_summary = input;
+    }
+    try {
+      button.disabled = true;
+      const data = await api(`/api/agent/steps/${encodeURIComponent(stepId)}/${encodeURIComponent(action)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      renderAgentRun(data);
+      await loadAgentTasks();
+      toast(action === "retry" ? "Step 已重试" : action === "skip" ? "Step 已跳过" : "Step 输入已更新");
+    } catch (error) {
+      toast(error.message, true);
+    } finally {
+      button.disabled = false;
+    }
   });
   $("#agentCopyBriefBtn")?.addEventListener("click", (event) => {
     const brief = event.currentTarget.dataset.brief || "";

@@ -13,8 +13,8 @@ from src.agent.memory import build_memory_suggestions
 from src.agent.model_provider import fallback_final_answer
 from src.agent.planner import build_agent_plan, clarification_payload
 from src.agent.reasoning_graph import build_reasoning_graph
-from src.agent.schemas import AgentArtifact, AgentEvent, now_iso, artifact_id_for, event_id_for
-from src.agent.storage import load_events_for_run, load_run, load_task, upsert_artifact, upsert_event, upsert_run, upsert_task
+from src.agent.schemas import AgentArtifact, AgentEvent, AgentStep, now_iso, artifact_id_for, event_id_for, step_id_for
+from src.agent.storage import load_events_for_run, load_run, load_steps_for_run, load_task, upsert_artifact, upsert_event, upsert_run, upsert_step, upsert_task
 from src.agent.tools import create_proposal_tool, run_project_tool, search_knowledge_tool
 from src.agent import runtime as custom_runtime
 
@@ -77,6 +77,27 @@ def execute_agent_run_with_sdk(db_path: Path, run_id: str, top_n: int = 8, requi
             payload=payload,
         )
         upsert_artifact(db_path, item)
+        return item
+
+    def step(tool_name: str, title: str, status: str, agent_role: str, input_summary: str = "", output_summary: str = "", input_payload: dict[str, Any] | None = None, output_payload: dict[str, Any] | None = None, artifact_id: str = "", error: str = "") -> AgentStep:
+        index = len(load_steps_for_run(db_path, run.run_id)) + 1
+        item = AgentStep(
+            step_id=step_id_for(run.run_id, index, tool_name),
+            run_id=run.run_id,
+            task_id=task.task_id,
+            sequence=index,
+            tool_name=tool_name,
+            title=title,
+            status=status,
+            agent_role=agent_role,
+            input_summary=input_summary,
+            output_summary=output_summary,
+            input_payload=input_payload or {},
+            output_payload=output_payload or {},
+            artifact_id=artifact_id,
+            error=error,
+        )
+        upsert_step(db_path, item)
         return item
 
     try:
@@ -155,9 +176,27 @@ def execute_agent_run_with_sdk(db_path: Path, run_id: str, top_n: int = 8, requi
                 return
 
         event("message", "completed", "进入 Agents SDK", "已接收需求，准备由 OpenAI Agents SDK 编排 PR OS 工具。", payload={"message": message})
+        handoff_payload = _handoff_payload()
+        handoff_artifact = artifact("agent_handoffs", "多 Agent 协作路径", "Planner、KOL、Risk、Proposal、Memory 角色已进入协作队列。", handoff_payload)
+        for item in handoff_payload["agents"]:
+            event("agent_handoff", "completed", f"{item['name']} 接手", item["responsibility"], tool_name="handoff", payload=item, artifact_id=handoff_artifact.artifact_id)
         event("sdk_runtime", "running", "启动 OpenAI Agents SDK", "SDK 将调用 brief 解析、组织记忆检索和 KOL 项目匹配工具。", tool_name="openai_agents")
+        step("openai_agents", "启动 OpenAI Agents SDK", "running", "Planner Agent", input_summary=message[:160], input_payload={"runtime": "openai_agents", "top_n": top_n})
 
         sdk_result = _run_sdk_agent(db_path, message, task.client_name, task.project_name, task.brief, top_n)
+        for trace in sdk_result.tool_traces:
+            step(
+                str(trace.get("tool_name") or "sdk_tool"),
+                _step_title_for_tool(str(trace.get("tool_name") or "sdk_tool")),
+                str(trace.get("status") or "completed"),
+                _agent_role_for_tool(str(trace.get("tool_name") or "")),
+                input_summary=str(trace.get("input_summary") or ""),
+                output_summary=str(trace.get("output_summary") or ""),
+                input_payload=trace.get("input_payload") or {},
+                output_payload=trace.get("output_payload") or {},
+                artifact_id=str(trace.get("artifact_id") or ""),
+                error=str(trace.get("error") or ""),
+            )
         sdk_artifact = artifact(
             "sdk_run",
             "OpenAI Agents SDK Run",
@@ -179,10 +218,14 @@ def execute_agent_run_with_sdk(db_path: Path, run_id: str, top_n: int = 8, requi
             payload={"model": sdk_result.model, "provider": sdk_result.provider, "tool_count": len(sdk_result.tool_traces)},
             artifact_id=sdk_artifact.artifact_id,
         )
+        step("openai_agents", "完成 OpenAI Agents SDK 编排", "completed", "Planner Agent", output_summary=sdk_artifact.summary, output_payload={"model": sdk_result.model, "provider": sdk_result.provider, "tool_count": len(sdk_result.tool_traces)}, artifact_id=sdk_artifact.artifact_id)
 
         knowledge = sdk_result.knowledge or search_knowledge_tool(db_path, query=task.brief, top_k=6)
         knowledge_artifact = artifact("knowledge", "组织记忆检索", f"找到 {knowledge['count']} 条可参考记录。", knowledge)
+        memory_recall = _memory_recall_payload(knowledge)
+        memory_recall_artifact = artifact("memory_recall", "长程记忆召回", f"召回 {knowledge['count']} 条记忆，覆盖 {len(memory_recall['source_counts'])} 类来源。", memory_recall)
         event("tool_result", "completed", "完成组织记忆检索", knowledge_artifact.summary, tool_name="search_knowledge", payload={"count": knowledge["count"]}, artifact_id=knowledge_artifact.artifact_id)
+        event("memory_recall", "completed", "完成长程记忆召回", memory_recall_artifact.summary, tool_name="search_knowledge", payload=memory_recall["summary"], artifact_id=memory_recall_artifact.artifact_id)
 
         project = sdk_result.project or run_project_tool(db_path, client_name=task.client_name, project_name=task.project_name, brief=task.brief, top_n=top_n)
         project_summary = project["summary"]
@@ -225,6 +268,7 @@ def execute_agent_run_with_sdk(db_path: Path, run_id: str, top_n: int = 8, requi
             payload=proposal["summary"],
             artifact_id=proposal_artifact.artifact_id,
         )
+        step("create_proposal", "生成甲方协作方案", "completed", "Proposal Agent", input_summary=f"top_n={top_n}", output_summary=proposal_artifact.summary, output_payload=proposal["summary"], artifact_id=proposal_artifact.artifact_id)
 
         memory = build_memory_suggestions(task, knowledge, project, proposal)
         memory_artifact = artifact(
@@ -234,6 +278,7 @@ def execute_agent_run_with_sdk(db_path: Path, run_id: str, top_n: int = 8, requi
             memory,
         )
         event("tool_result", "completed", "完成记忆回流建议", memory_artifact.summary, tool_name="suggest_memory", payload={"count": len(memory.get("suggestions") or [])}, artifact_id=memory_artifact.artifact_id)
+        step("suggest_memory", "生成记忆回流建议", "completed", "Memory Agent", input_summary=f"task={task.task_id}", output_summary=memory_artifact.summary, output_payload={"count": len(memory.get("suggestions") or [])}, artifact_id=memory_artifact.artifact_id)
 
         tool_traces = sdk_result.tool_traces + [
             _trace_item("create_proposal", "PR OS post-SDK proposal generation", proposal_artifact.summary, {"candidate_count": proposal["summary"]["candidate_count"]}, proposal_artifact.artifact_id),
@@ -250,6 +295,7 @@ def execute_agent_run_with_sdk(db_path: Path, run_id: str, top_n: int = 8, requi
             reasoning_graph,
         )
         event("reasoning_graph", "completed", "生成 Agent 推理图谱", graph_artifact.summary, tool_name="build_reasoning_graph", payload=reasoning_graph["summary"], artifact_id=graph_artifact.artifact_id)
+        step("build_reasoning_graph", "生成 Agent 推理图谱", "completed", "Planner Agent", output_summary=graph_artifact.summary, output_payload=reasoning_graph["summary"], artifact_id=graph_artifact.artifact_id)
 
         fallback = fallback_final_answer(task, project_summary, proposal["summary"])
         final_answer = sdk_result.final_output.strip() or fallback["answer"]
@@ -355,6 +401,55 @@ def _trace_item(tool_name: str, input_summary: str, output_summary: str, payload
         "finished_at": now_iso(),
         "runtime": "openai_agents",
     }
+
+
+def _handoff_payload() -> dict[str, Any]:
+    agents = [
+        {"name": "Planner Agent", "responsibility": "拆解 brief、确认计划、协调工具顺序。", "stage": "plan"},
+        {"name": "KOL Strategist Agent", "responsibility": "召回达人、匹配标签、产出候选名单。", "stage": "kol_match"},
+        {"name": "Risk Agent", "responsibility": "识别报价、履约、舆情和内容风险。", "stage": "risk"},
+        {"name": "Proposal Agent", "responsibility": "把内部结果转成甲方可读方案。", "stage": "proposal"},
+        {"name": "Memory Agent", "responsibility": "沉淀客户偏好、案例和风险规则。", "stage": "memory"},
+    ]
+    return {"mode": "agents_sdk_handoff_trace", "agents": agents, "count": len(agents)}
+
+
+def _memory_recall_payload(knowledge: dict[str, Any]) -> dict[str, Any]:
+    items = knowledge.get("items") or []
+    source_counts: dict[str, int] = {}
+    for item in items:
+        source = str(item.get("source_type") or item.get("source") or "unknown")
+        source_counts[source] = source_counts.get(source, 0) + 1
+    return {
+        "summary": {"count": knowledge.get("count", len(items)), "source_counts": source_counts},
+        "source_counts": source_counts,
+        "items": items[:8],
+    }
+
+
+def _agent_role_for_tool(tool_name: str) -> str:
+    if "parse" in tool_name:
+        return "Planner Agent"
+    if "knowledge" in tool_name:
+        return "Memory Agent"
+    if "project" in tool_name or "kol" in tool_name:
+        return "KOL Strategist Agent"
+    if "proposal" in tool_name:
+        return "Proposal Agent"
+    if "risk" in tool_name:
+        return "Risk Agent"
+    return "PR Manager Agent"
+
+
+def _step_title_for_tool(tool_name: str) -> str:
+    mapping = {
+        "sdk_parse_brief": "解析 Brief",
+        "search_knowledge": "检索组织记忆",
+        "run_project": "匹配 KOL 与项目链路",
+        "create_proposal": "生成甲方方案",
+        "suggest_memory": "生成记忆建议",
+    }
+    return mapping.get(tool_name, tool_name.replace("_", " ").title())
 
 
 def _elapsed_ms(started: float) -> int:

@@ -21,10 +21,11 @@ PR AI OS is a local-first MVP for media agencies managing KOL resources, brand b
 - Phase 7E: Agent memory feedback loop with human-confirmed artifact-to-knowledge writeback.
 - Phase 7F: Agent experience hardening with plan approval, run controls, clarification resume, artifact detail, and editable memory review.
 - Phase 7G: Agent reasoning graph view linking brief, intent, knowledge evidence, KOL tags, risks, proposal, tool trace, and memory writeback.
-- Phase 7H: Manus-like Agent thread chat with message history, linked runs, artifacts, and graph state.
+- Phase 7H: Agent thread chat with message history, linked runs, artifacts, and graph state.
 - Phase 7I-A: replaceable Agent Runtime Adapter boundary.
 - Phase 7I-B: OpenAI Agents SDK POC runtime with PR OS tool calling and native runtime fallback.
 - Phase 7I-C: per-run runtime override and Custom vs Agents SDK A/B comparison.
+- Phase 7J: Manus-like Agent task space with SSE live updates, editable/retryable tool steps, multi-agent handoff artifacts, memory recall display, and live graph highlighting.
 - Phase 7 PRD: see `Phase7_Agent_OS_PRD.md` for the Agent OS roadmap from 7A to 7E.
 - Production foundations: workspace-level data isolation, optional access key, centralized data-source status/testing, and pluggable storage/auth adapters.
 
@@ -232,7 +233,7 @@ This version deliberately keeps the runtime local and replaceable. Phase 7I-A ad
 
 ## Phase 7H Thread Chat Agent
 
-The Agent Workspace now has a Manus-like thread layer:
+The Agent Workspace now has a thread layer:
 
 - `GET /api/agent/threads` lists PR Agent conversations.
 - `POST /api/agent/threads` creates a conversation from an initial brief.
@@ -283,6 +284,17 @@ The Agent Workspace can now test runtimes without changing production defaults:
 - The comparison response includes candidate count, tool count, graph node count, SDK status, both run IDs, and a `runtime_comparison` artifact.
 
 This keeps `custom` available as the safe fallback while making `openai_agents` the production primary runtime.
+
+## Phase 7J Manus-Like Task Space
+
+The Agent Workspace now exposes the execution path as a controllable task space:
+
+- `GET /api/agent/runs/{run_id}/stream` streams run snapshots over SSE for live event, artifact, step, and graph updates.
+- `POST /api/agent/steps/{step_id}/retry`, `/edit`, and `/skip` let internal users control individual tool steps.
+- SDK runs write `agent_handoffs`, `memory_recall`, `tool_trace`, and `reasoning_graph` artifacts so the UI can show roles, memory evidence, tools, and graph state together.
+- The frontend renders a live step strip, multi-agent handoff cards, memory recall cards, and graph node highlighting for the currently active tool.
+
+This is the first production-shaped Manus-style layer: the user sees the conversation, the task steps, the reasoning graph, and the generated deliverables in one workspace.
 
 ## Phase 7B Streaming Agent Execution
 
@@ -466,6 +478,7 @@ python3 scripts/smoke_phase7h_agent_threads.py
 python3 scripts/smoke_phase7i_runtime_adapter.py
 python3 scripts/smoke_phase7i_b_agent_sdk.py
 python3 scripts/smoke_phase7i_c_runtime_ab.py
+python3 scripts/smoke_phase7j_manus_workspace.py
 python3 scripts/smoke_agent_model_provider.py
 python3 scripts/smoke_data_sources.py
 python3 scripts/smoke_storage_adapter.py
