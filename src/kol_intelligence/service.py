@@ -295,6 +295,53 @@ def predict_kol_fit(db_path: Path, brief: str, top_n: int = 8) -> KolPrediction:
     return prediction
 
 
+def run_conversational_kol_graph(db_path: Path, payload: dict[str, Any]) -> dict[str, Any]:
+    brief = str(payload.get("message") or payload.get("brief") or "").strip()
+    if not brief:
+        raise ValueError("message is required")
+    top_n = int(payload.get("top_n") or 8)
+    client_name = str(payload.get("client_name") or "甲方").strip()
+    project_name = str(payload.get("project_name") or "KOL Graph Run").strip()
+    history = payload.get("history") if isinstance(payload.get("history"), list) else []
+    history_text = "\n".join(str(item.get("content") or "") for item in history[-4:] if isinstance(item, dict))
+    enriched_brief = "\n".join(item for item in [history_text, brief] if item).strip()
+
+    if not load_evidence_tags(db_path):
+        analyze_creator_evidence_tags(db_path)
+    prediction = predict_kol_fit(db_path, enriched_brief, top_n=top_n)
+    graph = prediction.graph or build_kol_knowledge_graph(db_path, brief=enriched_brief, limit=max(30, top_n * 6)).to_dict()
+    frames = _conversation_graph_frames(graph, prediction.recommendations)
+    steps = _conversation_steps(enriched_brief, prediction, frames)
+    messages = [
+        {"role": "user", "content": brief, "status": "completed"},
+        {
+            "role": "assistant",
+            "content": f"我先把 {client_name} / {project_name} 的需求拆成 brief 节点、标签节点、候选 KOL 和风险节点。",
+            "status": "thinking",
+        },
+        {
+            "role": "assistant",
+            "content": prediction.summary or "已完成 KOL 图谱推演。",
+            "status": "completed",
+        },
+    ]
+    return {
+        "conversation_id": prediction.prediction_id,
+        "status": "completed",
+        "client_name": client_name,
+        "project_name": project_name,
+        "brief": enriched_brief,
+        "messages": messages,
+        "steps": steps,
+        "graph_frames": frames,
+        "graph": graph,
+        "recommendations": prediction.recommendations,
+        "activated_tags": prediction.activated_tags,
+        "summary": prediction.summary,
+        "prediction": prediction.to_dict(),
+    }
+
+
 def _derive_tags(creator: CreatorProfile, symbolic: Any) -> list[KolEvidenceTag]:
     items: list[tuple[str, str, float, int, str, list[str]]] = []
 
@@ -481,6 +528,87 @@ def _prediction_summary(recommendations: list[dict[str, Any]], terms: set[str]) 
     top = recommendations[0]
     terms_text = "、".join(sorted(terms)[:5]) or "当前需求"
     return f"{terms_text} 激活了 {len(recommendations)} 个候选达人；首推 {top['creator_name']}，分数 {top['score']}，主要依据：{'、'.join(top.get('reasons') or [])}。"
+
+
+def _conversation_graph_frames(graph: dict[str, Any], recommendations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    nodes = graph.get("nodes") or []
+    edges = graph.get("edges") or []
+    recommendation_ids = {f"creator:{item.get('creator_id')}" for item in recommendations}
+    frame_specs = [
+        ("brief", "解析 Brief", {"input"}),
+        ("ontology", "激活需求标签", {"input", "ontology", "tag"}),
+        ("candidates", "拉入候选 KOL", {"input", "ontology", "tag", "kol"}),
+        ("risk", "检查风险与证据", {"input", "ontology", "tag", "kol", "risk"}),
+        ("final", "形成推荐名单", {"input", "ontology", "tag", "kol", "risk", "final"}),
+    ]
+    frames = []
+    for frame_id, title, stages in frame_specs:
+        frame_nodes = [
+            node
+            for node in nodes
+            if node.get("stage") in stages
+            or (frame_id == "risk" and node.get("type") == "risk-node")
+            or (frame_id == "final" and node.get("id") in recommendation_ids)
+        ]
+        frame_node_ids = {node.get("id") for node in frame_nodes}
+        frame_edges = [edge for edge in edges if edge.get("source") in frame_node_ids and edge.get("target") in frame_node_ids]
+        frames.append(
+            {
+                "frame_id": frame_id,
+                "title": title,
+                "detail": _frame_detail(frame_id, graph, recommendations),
+                "nodes": frame_nodes,
+                "edges": frame_edges,
+            }
+        )
+    return frames
+
+
+def _conversation_steps(brief: str, prediction: KolPrediction, frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {"id": "brief", "label": "解析需求", "status": "done", "detail": brief[:120], "frame_id": "brief"},
+        {
+            "id": "tags",
+            "label": "激活标签",
+            "status": "done",
+            "detail": "、".join(item.get("tag", "") for item in prediction.activated_tags[:6]),
+            "frame_id": "ontology",
+        },
+        {
+            "id": "graph",
+            "label": "生成 KOL 图谱",
+            "status": "done",
+            "detail": f"{len((prediction.graph or {}).get('nodes') or [])} nodes / {len((prediction.graph or {}).get('edges') or [])} edges",
+            "frame_id": "candidates",
+        },
+        {
+            "id": "risk",
+            "label": "风险与证据检查",
+            "status": "done",
+            "detail": f"{sum(len(item.get('risk_points') or []) for item in prediction.recommendations)} 个风险点进入判断",
+            "frame_id": "risk",
+        },
+        {
+            "id": "recommend",
+            "label": "输出推荐名单",
+            "status": "done",
+            "detail": f"Top {len(prediction.recommendations)} KOL ready",
+            "frame_id": "final",
+        },
+    ]
+
+
+def _frame_detail(frame_id: str, graph: dict[str, Any], recommendations: list[dict[str, Any]]) -> str:
+    stats = graph.get("stats") or {}
+    if frame_id == "brief":
+        return "把用户输入转成 PR Brief 节点，作为后续标签激活的起点。"
+    if frame_id == "ontology":
+        return f"激活 {len(stats.get('activated_terms') or [])} 个需求词，并连接到证据标签。"
+    if frame_id == "candidates":
+        return f"从证据标签反向拉入 {stats.get('creators', len(recommendations))} 个候选 KOL。"
+    if frame_id == "risk":
+        return "把风险标签和需要人工核验的路径显式暴露出来。"
+    return f"输出 {len(recommendations)} 个可解释 KOL 推荐。"
 
 
 def _status_priority(status: str) -> int:

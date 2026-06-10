@@ -125,6 +125,31 @@ def main() -> None:
     assert top["reasons"]
     assert top["evidence"]
 
+    conversation = client.post(
+        "/api/kol-intelligence/conversation/run",
+        headers=HEADERS,
+        json={
+            "client_name": "新能源车客户",
+            "project_name": "SUV 上市预热",
+            "message": brief,
+            "top_n": 5,
+            "history": [{"role": "user", "content": "预算中等，优先真实体验和家庭场景。"}],
+        },
+    )
+    assert conversation.status_code == 200, conversation.text
+    conversation_body = conversation.json()
+    assert conversation_body["status"] == "completed"
+    assert len(conversation_body["messages"]) >= 2
+    assert len(conversation_body["steps"]) >= 5
+    assert len(conversation_body["graph_frames"]) >= 5
+    assert conversation_body["recommendations"]
+    assert conversation_body["summary"]
+    assert conversation_body["prediction"]["recommendations"]
+    assert conversation_body["graph"]["nodes"]
+    assert conversation_body["graph"]["edges"]
+    assert all(frame["nodes"] for frame in conversation_body["graph_frames"])
+    assert any(frame["edges"] for frame in conversation_body["graph_frames"])
+
     snapshot = client.get("/api/kol-intelligence", headers=HEADERS)
     assert snapshot.status_code == 200
     assert snapshot.json()["metrics"]["predictions"] >= 1
@@ -138,7 +163,8 @@ def main() -> None:
     print(
         "OK phase8_kol_intelligence "
         f"tags={len(analyze_body['items'])} graph_nodes={len(graph_body['nodes'])} "
-        f"recommendations={len(prediction_body['recommendations'])}"
+        f"recommendations={len(prediction_body['recommendations'])} "
+        f"conversation_frames={len(conversation_body['graph_frames'])}"
     )
 
 

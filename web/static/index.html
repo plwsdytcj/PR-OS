@@ -549,6 +549,58 @@
             </div>
           </div>
 
+          <div class="phase82-workspace">
+            <section class="panel phase82-chat">
+              <div class="panel-header">
+                <div>
+                  <h2>Conversational KOL Graph</h2>
+                  <p>像聊天一样输入需求，系统边推理边把 KOL 图谱长出来。</p>
+                </div>
+                <button id="phase82ResetBtn" class="secondary" type="button">清空</button>
+              </div>
+              <div id="phase82Messages" class="phase82-messages"></div>
+              <form id="phase82Form" class="form">
+                <div class="field-row">
+                  <input name="client_name" value="Demo 新能源品牌" placeholder="客户 / 品牌" />
+                  <input name="project_name" value="KOL 上市预热" placeholder="项目名称" />
+                </div>
+                <textarea name="message" required>预算50万，新能源SUV上市预热，目标年轻家庭，平台优先小红书和抖音。需要推荐KOL，并说明为什么适合、有什么风险。</textarea>
+                <div class="field-row">
+                  <input name="top_n" type="number" min="3" max="20" value="8" />
+                  <button id="phase82RunBtn" class="primary" type="submit">运行对话图谱</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="panel phase82-graph-panel">
+              <div class="panel-header">
+                <div>
+                  <h2>动态图谱</h2>
+                  <p id="phase82FrameMeta">等待输入 brief。</p>
+                </div>
+                <div class="button-row">
+                  <button id="phase82PrevFrameBtn" class="secondary" type="button">上一步</button>
+                  <button id="phase82NextFrameBtn" class="secondary" type="button">下一步</button>
+                </div>
+              </div>
+              <div id="phase82Steps" class="phase82-steps"></div>
+              <div id="phase82GraphCanvas" class="symbolic-graph phase82-graph">
+                <div class="meta">输入需求后，Brief、标签、KOL 和风险会逐步出现。</div>
+              </div>
+            </section>
+
+            <aside class="panel phase82-recs">
+              <div class="panel-header">
+                <div>
+                  <h2>KOL 决策</h2>
+                  <p>最终推荐、命中证据和风险。</p>
+                </div>
+              </div>
+              <div id="phase82Summary" class="phase8-summary">等待推荐。</div>
+              <div id="phase82RecommendationList" class="phase8-prediction-list"></div>
+            </aside>
+          </div>
+
           <div class="panel phase8-review-panel">
             <div class="panel-header">
               <div>

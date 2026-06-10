@@ -58,6 +58,10 @@ const state = {
   phase8Prediction: null,
   phase8ReviewQueue: [],
   phase8SelectedTagIds: new Set(),
+  phase82Conversation: null,
+  phase82Messages: [],
+  phase82ActiveFrame: 0,
+  phase82FrameTimer: null,
   projectRun: null,
   projectRunSelectedNodeId: "",
   projectRunStageFilter: "",
@@ -603,6 +607,125 @@ function renderPhase8Prediction(prediction) {
     renderSymbolicGraphInto("#phase8GraphCanvas", prediction.graph);
     renderPhase8Evolution(prediction.graph.evolution || []);
   }
+}
+
+function renderPhase82Conversation(data) {
+  state.phase82Conversation = data;
+  state.phase82Messages = data?.messages || state.phase82Messages || [];
+  state.phase82ActiveFrame = 0;
+  renderPhase82Messages();
+  renderPhase82Steps();
+  renderPhase82Recommendations();
+  renderPhase82Frame();
+  startPhase82FramePlayback();
+}
+
+function renderPhase82Messages() {
+  const node = $("#phase82Messages");
+  if (!node) return;
+  const messages = state.phase82Messages || [];
+  node.innerHTML = messages.length
+    ? messages
+        .map(
+          (message) => `
+            <article class="phase82-message ${escapeHTML(message.role || "assistant")} ${escapeHTML(message.status || "completed")}">
+              <span>${escapeHTML(message.role === "user" ? "You" : "KOL OS")}</span>
+              <p>${escapeHTML(message.content || "")}</p>
+            </article>
+          `
+        )
+        .join("")
+    : emptyState("还没有对话", "输入一个甲方 brief，图谱会跟着对话长出来。");
+  node.scrollTop = node.scrollHeight;
+}
+
+function renderPhase82Steps() {
+  const node = $("#phase82Steps");
+  if (!node) return;
+  const steps = state.phase82Conversation?.steps || [];
+  node.innerHTML = steps.length
+    ? steps
+        .map((step, index) => {
+          const active = index <= state.phase82ActiveFrame ? " active" : "";
+          return `
+            <button class="phase82-step${active}" data-frame-index="${index}" type="button">
+              <span>${String(index + 1).padStart(2, "0")}</span>
+              <strong>${escapeHTML(step.label || step.id)}</strong>
+            </button>
+          `;
+        })
+        .join("")
+    : "";
+}
+
+function renderPhase82Frame() {
+  const frames = state.phase82Conversation?.graph_frames || [];
+  const frame = frames[state.phase82ActiveFrame];
+  const meta = $("#phase82FrameMeta");
+  if (!frame) {
+    if (meta) meta.textContent = "等待输入 brief。";
+    $("#phase82GraphCanvas").innerHTML = '<div class="meta">输入需求后，Brief、标签、KOL 和风险会逐步出现。</div>';
+    return;
+  }
+  if (meta) meta.textContent = `${frame.title} · ${frame.detail || ""}`;
+  renderSymbolicGraphInto("#phase82GraphCanvas", frame);
+  renderPhase82Steps();
+}
+
+function startPhase82FramePlayback() {
+  if (state.phase82FrameTimer) clearInterval(state.phase82FrameTimer);
+  const frames = state.phase82Conversation?.graph_frames || [];
+  if (frames.length <= 1) return;
+  state.phase82FrameTimer = setInterval(() => {
+    if (state.phase82ActiveFrame >= frames.length - 1) {
+      clearInterval(state.phase82FrameTimer);
+      state.phase82FrameTimer = null;
+      return;
+    }
+    state.phase82ActiveFrame += 1;
+    renderPhase82Frame();
+  }, 950);
+}
+
+function movePhase82Frame(delta) {
+  const frames = state.phase82Conversation?.graph_frames || [];
+  if (!frames.length) return;
+  if (state.phase82FrameTimer) {
+    clearInterval(state.phase82FrameTimer);
+    state.phase82FrameTimer = null;
+  }
+  state.phase82ActiveFrame = Math.max(0, Math.min(frames.length - 1, state.phase82ActiveFrame + delta));
+  renderPhase82Frame();
+}
+
+function renderPhase82Recommendations() {
+  const summary = $("#phase82Summary");
+  const list = $("#phase82RecommendationList");
+  const data = state.phase82Conversation || {};
+  if (summary) summary.textContent = data.summary || "等待推荐。";
+  if (!list) return;
+  const recommendations = data.recommendations || [];
+  list.innerHTML = recommendations.length
+    ? recommendations
+        .map(
+          (item, index) => `
+            <article class="phase8-prediction-card phase82-rec-card">
+              <div class="rank-badge">${String(index + 1).padStart(2, "0")}</div>
+              <div>
+                <div class="phase8-card-head">
+                  <strong>${escapeHTML(item.creator_name || item.creator_id)}</strong>
+                  <span class="status-pill ok">${escapeHTML(item.recommendation_level || "")} · ${escapeHTML(item.score || "")}</span>
+                </div>
+                <p>${escapeHTML(item.platform || "未知平台")}</p>
+                <div class="tag-list">${(item.reasons || []).slice(0, 6).map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`).join("")}</div>
+                ${(item.risk_points || []).length ? `<div class="meta danger-text">风险：${escapeHTML(item.risk_points.join("；"))}</div>` : ""}
+                <small>${escapeHTML((item.evidence || []).slice(0, 2).join(" / "))}</small>
+              </div>
+            </article>
+          `
+        )
+        .join("")
+    : emptyState("暂无推荐", "运行对话图谱后会出现 KOL 决策卡。");
 }
 
 function renderSocialReport(report) {
@@ -4422,6 +4545,59 @@ function bindEvents() {
         button.textContent = "预测推荐";
       }
     }
+  });
+
+  $("#phase82Form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const payload = formToObject(form);
+    payload.top_n = Number(payload.top_n || 8);
+    payload.history = state.phase82Messages || [];
+    const button = $("#phase82RunBtn");
+    if (button) {
+      button.disabled = true;
+      button.textContent = "推演中...";
+    }
+    try {
+      state.phase82Messages = [...(state.phase82Messages || []), { role: "user", content: payload.message, status: "completed" }];
+      renderPhase82Messages();
+      const data = await api("/api/kol-intelligence/conversation/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      renderPhase82Conversation(data);
+      if (data.prediction) renderPhase8Prediction(data.prediction);
+      toast("对话图谱已完成");
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = "运行对话图谱";
+      }
+    }
+  });
+
+  $("#phase82ResetBtn")?.addEventListener("click", () => {
+    if (state.phase82FrameTimer) clearInterval(state.phase82FrameTimer);
+    state.phase82Conversation = null;
+    state.phase82Messages = [];
+    state.phase82ActiveFrame = 0;
+    renderPhase82Messages();
+    renderPhase82Recommendations();
+    renderPhase82Frame();
+  });
+
+  $("#phase82PrevFrameBtn")?.addEventListener("click", () => movePhase82Frame(-1));
+  $("#phase82NextFrameBtn")?.addEventListener("click", () => movePhase82Frame(1));
+  $("#phase82Steps")?.addEventListener("click", (event) => {
+    const button = event.target.closest(".phase82-step");
+    if (!button) return;
+    if (state.phase82FrameTimer) {
+      clearInterval(state.phase82FrameTimer);
+      state.phase82FrameTimer = null;
+    }
+    state.phase82ActiveFrame = Number(button.dataset.frameIndex || 0);
+    renderPhase82Frame();
   });
 
   $("#phase8RefreshReviewBtn")?.addEventListener("click", async () => {

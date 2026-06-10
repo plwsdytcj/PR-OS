@@ -4377,6 +4377,125 @@ body.client-session #clientPortal {
   align-items: stretch;
 }
 
+.phase82-workspace {
+  align-items: stretch;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(420px, 1.45fr) minmax(280px, 0.95fr);
+  margin-bottom: 18px;
+}
+
+.phase82-chat,
+.phase82-graph-panel,
+.phase82-recs {
+  min-width: 0;
+}
+
+.phase82-messages {
+  background: #17120d;
+  border: 3px solid #17120d;
+  border-radius: 3px;
+  display: grid;
+  gap: 10px;
+  max-height: 360px;
+  min-height: 230px;
+  overflow: auto;
+  padding: 12px;
+}
+
+.phase82-message {
+  border: 3px solid #fffdf4;
+  border-radius: 3px;
+  color: #fffdf4;
+  max-width: 92%;
+  padding: 10px;
+}
+
+.phase82-message span {
+  color: var(--spark);
+  display: block;
+  font-size: 12px;
+  font-weight: 900;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+}
+
+.phase82-message p {
+  margin: 0;
+}
+
+.phase82-message.user {
+  background: #fffdf4;
+  color: #17120d;
+  justify-self: end;
+}
+
+.phase82-message.user span {
+  color: #53aa8b;
+}
+
+.phase82-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.phase82-step {
+  align-items: center;
+  background: #fffdf4;
+  border: 3px solid #17120d;
+  box-shadow: 4px 4px 0 #d8d0c0;
+  color: #17120d;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 7px;
+  padding: 7px 9px;
+}
+
+.phase82-step span {
+  align-items: center;
+  background: var(--spark);
+  border: 2px solid #17120d;
+  border-radius: 50%;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 900;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+.phase82-step.active {
+  background: #b9ffea;
+  box-shadow: 4px 4px 0 var(--spark);
+}
+
+.phase82-graph {
+  min-height: 560px;
+}
+
+.phase82-rec-card {
+  animation: phase82-pop 260ms ease-out both;
+}
+
+@keyframes phase82-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phase82-rec-card {
+    animation: none;
+  }
+}
+
 .phase8-evolution,
 .phase8-prediction-list,
 .phase8-tag-feed,
@@ -4591,6 +4710,10 @@ body.client-session #clientPortal {
   .phase8-prediction-card,
   .phase8-step,
   .phase8-review-card {
+    grid-template-columns: 1fr;
+  }
+
+  .phase82-workspace {
     grid-template-columns: 1fr;
   }
 

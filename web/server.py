@@ -130,6 +130,7 @@ from src.kol_intelligence.service import (
     list_creator_evidence_tags,
     predict_kol_fit,
     review_evidence_tag,
+    run_conversational_kol_graph,
 )
 from src.kol_intelligence.storage import init_kol_intelligence_db
 from src.normalize.mapper import infer_column_mapping, map_dataframe_to_profiles
@@ -1618,6 +1619,14 @@ async def kol_intelligence_predict(payload: dict[str, Any]) -> dict[str, Any]:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return prediction.to_dict()
+
+
+@app.post("/api/kol-intelligence/conversation/run")
+async def kol_intelligence_conversation_run(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return run_conversational_kol_graph(DB_PATH, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/symbolic-os/social-reports")

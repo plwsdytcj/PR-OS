@@ -54,6 +54,7 @@ Authentication is also adapter-shaped:
 - Phase 7J adds the Manus-like Agent task space: SSE run streaming, retry/edit/skip tool steps, multi-agent handoff artifacts, memory recall cards, and live reasoning-graph highlighting.
 - Phase 8 adds the KOL Intelligence Graph: evidence-based KOL tags, brief-activated graph evolution, and prediction recommendations.
 - Phase 8.1 adds KOL Evidence Review: tag confirmation/rejection, reviewer notes, weight tuning, and creator detail evidence-tag operations.
+- Phase 8.2 adds the Conversational KOL Graph Workspace: chat input, dynamic graph frames, and final KOL decision cards.
 - Future providers such as Authing, Feishu SSO, OIDC, and SAML should plug into the identity provider layer instead of rewriting business permissions.
 
 Object files are handled by the object storage adapter:
