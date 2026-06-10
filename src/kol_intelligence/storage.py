@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 from src.kol_intelligence.schemas import KolEvidenceTag, KolGraphSnapshot, KolPrediction
-from src.storage.postgres_payload import fetch_payloads, postgres_enabled, upsert_payload
+from src.storage.postgres_payload import fetch_payload, fetch_payloads, postgres_enabled, upsert_payload
 
 
 def init_kol_intelligence_db(path: Path) -> None:
@@ -87,6 +87,16 @@ def load_evidence_tags(path: Path, creator_id: str = "") -> list[KolEvidenceTag]
         else:
             rows = conn.execute("SELECT payload FROM kol_evidence_tags ORDER BY updated_at DESC").fetchall()
     return [KolEvidenceTag.from_json(row[0]) for row in rows]
+
+
+def load_evidence_tag(path: Path, tag_id: str) -> KolEvidenceTag | None:
+    if postgres_enabled():
+        payload = fetch_payload(path, "kol_evidence_tags", "tag_id", tag_id)
+        return KolEvidenceTag.from_json(payload) if payload else None
+    init_kol_intelligence_db(path)
+    with sqlite3.connect(path) as conn:
+        row = conn.execute("SELECT payload FROM kol_evidence_tags WHERE tag_id = ?", (tag_id,)).fetchone()
+    return KolEvidenceTag.from_json(row[0]) if row else None
 
 
 def upsert_graph_snapshot(path: Path, snapshot: KolGraphSnapshot) -> None:

@@ -37,6 +37,7 @@ const state = {
   duplicateCandidates: [],
   qualityIssues: [],
   activeCreator: null,
+  activeCreatorEvidenceTags: [],
   activeCreatorImageSuggestion: null,
   collabProposals: [],
   activeProposal: null,
@@ -55,6 +56,8 @@ const state = {
   symbolicOS: null,
   kolIntelligence: null,
   phase8Prediction: null,
+  phase8ReviewQueue: [],
+  phase8SelectedTagIds: new Set(),
   projectRun: null,
   projectRunSelectedNodeId: "",
   projectRunStageFilter: "",
@@ -380,6 +383,19 @@ async function loadKolIntelligence() {
   const data = await api("/api/kol-intelligence");
   state.kolIntelligence = data;
   renderKolIntelligence(data);
+  await loadPhase8ReviewQueue();
+}
+
+async function loadPhase8ReviewQueue() {
+  const status = $("#phase8ReviewStatus")?.value || "";
+  const creatorId = $("#phase8ReviewCreator")?.value || "";
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (creatorId) params.set("creator_id", creatorId);
+  params.set("limit", "80");
+  const data = await api(`/api/kol-intelligence/review-queue?${params.toString()}`);
+  state.phase8ReviewQueue = data.items || [];
+  renderPhase8ReviewQueue(data);
 }
 
 function renderSymbolicOS(data) {
@@ -401,6 +417,8 @@ function renderKolIntelligence(data) {
   };
   setText("#phase8CreatorsWithTags", metrics.creators_with_tags || 0);
   setText("#phase8EvidenceTags", metrics.evidence_tags || 0);
+  setText("#phase8SuggestedTags", metrics.suggested_tags || 0);
+  setText("#phase8ConfirmedTags", metrics.confirmed_tags || 0);
   setText("#phase8GraphSnapshots", metrics.graph_snapshots || 0);
   setText("#phase8Predictions", metrics.predictions || 0);
   renderPhase8TopTags(data?.top_tags || []);
@@ -410,6 +428,78 @@ function renderKolIntelligence(data) {
     renderPhase8Evolution(data.latest_graph.evolution || []);
   }
   if (data?.latest_prediction) renderPhase8Prediction(data.latest_prediction);
+}
+
+function renderPhase8ReviewQueue(data) {
+  const node = $("#phase8ReviewQueue");
+  if (!node) return;
+  const items = data?.items || state.phase8ReviewQueue || [];
+  state.phase8ReviewQueue = items;
+  if (!items.length) {
+    node.innerHTML = emptyState("暂无待审核标签", "先分析达人标签，或切换审核状态筛选。");
+    return;
+  }
+  node.innerHTML = items
+    .map(
+      (tag) => `
+        <article class="phase8-review-card ${escapeHTML(tag.status || "suggested")}">
+          <label class="checkline phase8-review-check">
+            <input class="phase8-tag-check" data-tag-id="${escapeHTML(tag.tag_id)}" type="checkbox" ${state.phase8SelectedTagIds.has(tag.tag_id) ? "checked" : ""} />
+            <span class="status-pill ${phase8StatusTone(tag.status)}">${escapeHTML(tag.status || "suggested")}</span>
+          </label>
+          <div class="phase8-review-main">
+            <div class="phase8-card-head">
+              <strong>${escapeHTML(tag.tag)}</strong>
+              <span class="meta">${escapeHTML(tag.creator_name || tag.creator_id)} · ${escapeHTML(tag.category)}</span>
+            </div>
+            <div class="phase8-review-score">
+              <span>confidence ${Math.round((tag.confidence || 0) * 100)}%</span>
+              <span>score ${escapeHTML(tag.score || 0)}</span>
+              <span>weight ${escapeHTML(tag.weight_delta || 0)}</span>
+            </div>
+            <small>${escapeHTML((tag.evidence || []).slice(0, 3).join("；"))}</small>
+            ${tag.reviewer_note ? `<div class="meta">备注：${escapeHTML(tag.reviewer_note)}</div>` : ""}
+          </div>
+          <div class="phase8-review-actions">
+            <button class="secondary phase8-review-btn" data-status="confirmed" data-tag-id="${escapeHTML(tag.tag_id)}" type="button">确认</button>
+            <button class="secondary phase8-review-btn" data-status="needs_more_evidence" data-tag-id="${escapeHTML(tag.tag_id)}" type="button">补证据</button>
+            <button class="secondary phase8-review-btn danger" data-status="rejected" data-tag-id="${escapeHTML(tag.tag_id)}" type="button">拒绝</button>
+          </div>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function phase8StatusTone(status) {
+  if (status === "confirmed") return "ok";
+  if (status === "rejected") return "danger";
+  if (status === "needs_more_evidence") return "warn";
+  return "";
+}
+
+async function reviewPhase8Tags(tagIds, status) {
+  const reviewerNote = $("#phase8ReviewNote")?.value || "";
+  const payload = { tag_ids: tagIds, status, reviewer_note: reviewerNote };
+  const data =
+    tagIds.length === 1
+      ? await api(`/api/kol-intelligence/tags/${encodeURIComponent(tagIds[0])}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status, reviewer_note: reviewerNote }),
+        })
+      : await api("/api/kol-intelligence/tags/bulk-review", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+  state.phase8SelectedTagIds.clear();
+  if (data.snapshot) {
+    state.kolIntelligence = data.snapshot;
+    renderKolIntelligence(data.snapshot);
+  }
+  await loadPhase8ReviewQueue();
+  toast(`${tagIds.length} 个标签已更新为 ${status}`);
 }
 
 function renderPhase8TopTags(tags) {
@@ -685,6 +775,12 @@ function renderCreatorOptions() {
     reviewSelect.innerHTML = state.creators
       .map((creator) => `<option value="${creator.creator_id}">${creator.name} · ${creator.platform}</option>`)
       .join("");
+  }
+  const phase8ReviewSelect = $("#phase8ReviewCreator");
+  if (phase8ReviewSelect) {
+    phase8ReviewSelect.innerHTML =
+      '<option value="">全部达人</option>' +
+      state.creators.map((creator) => `<option value="${creator.creator_id}">${creator.name} · ${creator.platform}</option>`).join("");
   }
 }
 
@@ -3049,6 +3145,7 @@ function renderGovernanceProfile(profile) {
 async function openCreatorModal(creatorId) {
   const data = await api(`/api/creators/${creatorId}`);
   state.activeCreator = data.creator;
+  state.activeCreatorEvidenceTags = data.evidence_tags || [];
   renderCreatorModal(data.creator);
   $("#creatorModal").classList.remove("hidden");
 }
@@ -3056,6 +3153,7 @@ async function openCreatorModal(creatorId) {
 function closeCreatorModal() {
   $("#creatorModal").classList.add("hidden");
   state.activeCreator = null;
+  state.activeCreatorEvidenceTags = [];
   state.activeCreatorImageSuggestion = null;
 }
 
@@ -3103,6 +3201,36 @@ function renderCreatorModal(creator) {
   $("#creatorTags").innerHTML = tags.length
     ? tags.map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`).join("")
     : '<span class="meta">暂无标签</span>';
+  renderCreatorEvidenceTags();
+}
+
+function renderCreatorEvidenceTags() {
+  const node = $("#creatorEvidenceTags");
+  if (!node) return;
+  const tags = state.activeCreatorEvidenceTags || [];
+  if (!tags.length) {
+    node.innerHTML = emptyState("暂无证据标签", "点击达人智能图谱里的“分析达人标签”后会生成。");
+    return;
+  }
+  node.innerHTML = tags
+    .slice(0, 40)
+    .map(
+      (tag) => `
+        <article class="creator-evidence-tag ${escapeHTML(tag.status || "suggested")}">
+          <div>
+            <span class="status-pill ${phase8StatusTone(tag.status)}">${escapeHTML(tag.status || "suggested")}</span>
+            <strong>${escapeHTML(tag.tag)}</strong>
+            <span class="meta">${escapeHTML(tag.category)} · confidence ${Math.round((tag.confidence || 0) * 100)}%</span>
+          </div>
+          <small>${escapeHTML((tag.evidence || []).slice(0, 2).join("；"))}</small>
+          <div class="button-row">
+            <button class="secondary creator-evidence-review-btn" data-status="confirmed" data-tag-id="${escapeHTML(tag.tag_id)}" type="button">确认</button>
+            <button class="secondary creator-evidence-review-btn danger" data-status="rejected" data-tag-id="${escapeHTML(tag.tag_id)}" type="button">拒绝</button>
+          </div>
+        </article>
+      `
+    )
+    .join("");
 }
 
 function renderCreatorMediaAssets(creator) {
@@ -4031,6 +4159,24 @@ function bindEvents() {
 
   $("#creatorImageApplyBtn")?.addEventListener("click", applyCreatorImageSuggestion);
 
+  $("#creatorModal")?.addEventListener("click", async (event) => {
+    const button = event.target.closest(".creator-evidence-review-btn");
+    if (!button) return;
+    await api(`/api/kol-intelligence/tags/${encodeURIComponent(button.dataset.tagId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: button.dataset.status }),
+    });
+    if (state.activeCreator?.creator_id) {
+      const data = await api(`/api/creators/${state.activeCreator.creator_id}`);
+      state.activeCreator = data.creator;
+      state.activeCreatorEvidenceTags = data.evidence_tags || [];
+      renderCreatorModal(data.creator);
+    }
+    await loadKolIntelligence();
+    toast(`标签已更新为 ${button.dataset.status}`);
+  });
+
   $("#manualForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const payload = formToObject(event.currentTarget);
@@ -4230,6 +4376,7 @@ function bindEvents() {
       });
       state.kolIntelligence = data.snapshot;
       renderKolIntelligence(data.snapshot);
+      await loadPhase8ReviewQueue();
       toast(`已生成 ${fmtNumber((data.items || []).length)} 个证据标签`);
     } finally {
       if (button) {
@@ -4275,6 +4422,34 @@ function bindEvents() {
         button.textContent = "预测推荐";
       }
     }
+  });
+
+  $("#phase8RefreshReviewBtn")?.addEventListener("click", async () => {
+    state.phase8SelectedTagIds.clear();
+    await loadPhase8ReviewQueue();
+    toast("审核队列已刷新");
+  });
+
+  $("#phase8ReviewStatus")?.addEventListener("change", loadPhase8ReviewQueue);
+  $("#phase8ReviewCreator")?.addEventListener("change", loadPhase8ReviewQueue);
+
+  $("#phase8ReviewQueue")?.addEventListener("change", (event) => {
+    const input = event.target.closest(".phase8-tag-check");
+    if (!input) return;
+    if (input.checked) state.phase8SelectedTagIds.add(input.dataset.tagId);
+    else state.phase8SelectedTagIds.delete(input.dataset.tagId);
+  });
+
+  $("#phase8ReviewQueue")?.addEventListener("click", async (event) => {
+    const button = event.target.closest(".phase8-review-btn");
+    if (!button) return;
+    await reviewPhase8Tags([button.dataset.tagId], button.dataset.status);
+  });
+
+  $("#phase8BulkConfirmBtn")?.addEventListener("click", async () => {
+    const ids = Array.from(state.phase8SelectedTagIds);
+    if (!ids.length) return toast("请先选择标签", true);
+    await reviewPhase8Tags(ids, "confirmed");
   });
 
   $("#dataSourceTestForm").addEventListener("submit", async (event) => {

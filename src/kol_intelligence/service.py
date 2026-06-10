@@ -6,8 +6,9 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from src.kol_intelligence.schemas import KolEvidenceTag, KolGraphSnapshot, KolPrediction, evidence_tag_id, graph_snapshot_id, prediction_id_for
+from src.kol_intelligence.schemas import KolEvidenceTag, KolGraphSnapshot, KolPrediction, evidence_tag_id, graph_snapshot_id, now_iso, prediction_id_for
 from src.kol_intelligence.storage import (
+    load_evidence_tag,
     load_evidence_tags,
     load_graph_snapshots,
     load_predictions,
@@ -73,15 +74,20 @@ def kol_intelligence_snapshot(db_path: Path) -> dict[str, Any]:
     graphs = load_graph_snapshots(db_path)
     predictions = load_predictions(db_path)
     categories = Counter(tag.category for tag in tags)
+    statuses = Counter(tag.status for tag in tags)
     creator_ids = {tag.creator_id for tag in tags}
     top_tags = Counter(tag.tag for tag in tags).most_common(16)
     return {
         "metrics": {
             "creators_with_tags": len(creator_ids),
             "evidence_tags": len(tags),
+            "suggested_tags": statuses.get("suggested", 0),
+            "confirmed_tags": statuses.get("confirmed", 0),
+            "rejected_tags": statuses.get("rejected", 0),
             "graph_snapshots": len(graphs),
             "predictions": len(predictions),
             "categories": dict(categories),
+            "statuses": dict(statuses),
         },
         "latest_graph": graphs[0].to_dict() if graphs else None,
         "latest_prediction": predictions[0].to_dict() if predictions else None,
@@ -94,8 +100,63 @@ def list_creator_evidence_tags(db_path: Path, creator_id: str = "") -> list[dict
     return [tag.to_dict() for tag in load_evidence_tags(db_path, creator_id=creator_id)]
 
 
+def evidence_review_queue(db_path: Path, status: str = "", creator_id: str = "", limit: int = 80) -> dict[str, Any]:
+    tags = load_evidence_tags(db_path, creator_id=creator_id)
+    if status:
+        tags = [tag for tag in tags if tag.status == status]
+    tags.sort(key=lambda tag: (_status_priority(tag.status), tag.category == "risk", tag.confidence, tag.score), reverse=True)
+    return {
+        "items": [tag.to_dict() for tag in tags[: max(1, limit)]],
+        "metrics": {
+            "total": len(tags),
+            "suggested": sum(1 for tag in tags if tag.status == "suggested"),
+            "confirmed": sum(1 for tag in tags if tag.status == "confirmed"),
+            "rejected": sum(1 for tag in tags if tag.status == "rejected"),
+        },
+    }
+
+
+def review_evidence_tag(db_path: Path, tag_id: str, payload: dict[str, Any], reviewer: str = "") -> KolEvidenceTag:
+    tag = load_evidence_tag(db_path, tag_id)
+    if tag is None:
+        raise KeyError(tag_id)
+    status = str(payload.get("status") or tag.status or "suggested").strip()
+    if status not in {"suggested", "confirmed", "rejected", "needs_more_evidence"}:
+        raise ValueError("invalid status")
+    tag.status = status
+    tag.reviewer_note = str(payload.get("reviewer_note") if payload.get("reviewer_note") is not None else tag.reviewer_note)
+    tag.reviewed_by = reviewer or str(payload.get("reviewed_by") or tag.reviewed_by)
+    tag.reviewed_at = now_iso()
+    if "confidence" in payload:
+        tag.confidence = _clamp_float(payload.get("confidence"), 0.0, 1.0, tag.confidence)
+    if "score" in payload:
+        tag.score = int(_clamp_float(payload.get("score"), 0, 100, tag.score))
+    if "weight_delta" in payload:
+        tag.weight_delta = int(_clamp_float(payload.get("weight_delta"), -50, 50, tag.weight_delta))
+    if payload.get("evidence"):
+        tag.evidence = list(dict.fromkeys([*tag.evidence, *split_tags(payload.get("evidence"))]))[:8]
+    tag.version += 1
+    tag.updated_at = now_iso()
+    upsert_evidence_tag(db_path, tag)
+    return tag
+
+
+def bulk_review_evidence_tags(db_path: Path, payload: dict[str, Any], reviewer: str = "") -> dict[str, Any]:
+    tag_ids = [str(item) for item in payload.get("tag_ids", []) if str(item).strip()]
+    if not tag_ids:
+        raise ValueError("tag_ids are required")
+    updated = []
+    patch = {key: value for key, value in payload.items() if key != "tag_ids"}
+    for tag_id in tag_ids:
+        try:
+            updated.append(review_evidence_tag(db_path, tag_id, patch, reviewer=reviewer))
+        except KeyError:
+            continue
+    return {"items": [tag.to_dict() for tag in updated], "updated": len(updated)}
+
+
 def build_kol_knowledge_graph(db_path: Path, brief: str = "", creator_ids: list[str] | None = None, limit: int = 80) -> KolGraphSnapshot:
-    tags = load_evidence_tags(db_path)
+    tags = _usable_tags(load_evidence_tags(db_path))
     if not tags:
         analyze_creator_evidence_tags(db_path, limit=limit)
         tags = load_evidence_tags(db_path)
@@ -187,10 +248,10 @@ def build_kol_knowledge_graph(db_path: Path, brief: str = "", creator_ids: list[
 def predict_kol_fit(db_path: Path, brief: str, top_n: int = 8) -> KolPrediction:
     if not brief.strip():
         raise ValueError("brief is required")
-    tags = load_evidence_tags(db_path)
+    tags = _usable_tags(load_evidence_tags(db_path))
     if not tags:
         analyze_creator_evidence_tags(db_path)
-        tags = load_evidence_tags(db_path)
+        tags = _usable_tags(load_evidence_tags(db_path))
     terms = _brief_terms(brief)
     graph = build_kol_knowledge_graph(db_path, brief=brief, limit=max(30, top_n * 6))
     creators = {creator.creator_id: creator for creator in load_profiles(db_path)}
@@ -311,7 +372,7 @@ def _brief_terms(brief: str) -> set[str]:
 def _score_creators(tags: list[KolEvidenceTag], terms: set[str]) -> Counter:
     scores: Counter = Counter()
     for tag in tags:
-        base = tag.score * tag.confidence
+        base = _effective_score(tag) * tag.confidence
         if _tag_hits_brief(tag, terms):
             base *= 1.8
         if tag.category == "risk":
@@ -328,7 +389,7 @@ def _score_prediction(tags: list[KolEvidenceTag], terms: set[str]) -> tuple[floa
     for tag in tags:
         hit = _tag_hits_brief(tag, terms)
         category_boost = 1.25 if tag.category in {"industry", "content", "goal", "symbolic", "platform"} else 1.0
-        contribution = tag.score * tag.confidence * category_boost
+        contribution = _effective_score(tag) * tag.confidence * category_boost
         if hit:
             contribution *= 2.1
             reasons.append(tag.tag)
@@ -420,3 +481,24 @@ def _prediction_summary(recommendations: list[dict[str, Any]], terms: set[str]) 
     top = recommendations[0]
     terms_text = "、".join(sorted(terms)[:5]) or "当前需求"
     return f"{terms_text} 激活了 {len(recommendations)} 个候选达人；首推 {top['creator_name']}，分数 {top['score']}，主要依据：{'、'.join(top.get('reasons') or [])}。"
+
+
+def _status_priority(status: str) -> int:
+    return {"suggested": 4, "needs_more_evidence": 3, "confirmed": 2, "rejected": 1}.get(status or "", 0)
+
+
+def _usable_tags(tags: list[KolEvidenceTag]) -> list[KolEvidenceTag]:
+    return [tag for tag in tags if tag.status != "rejected"]
+
+
+def _effective_score(tag: KolEvidenceTag) -> float:
+    multiplier = 1.15 if tag.status == "confirmed" else 0.72 if tag.status == "needs_more_evidence" else 1.0
+    return max(1.0, min(100.0, (tag.score + tag.weight_delta) * multiplier))
+
+
+def _clamp_float(value: Any, low: float, high: float, fallback: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    return max(low, min(high, number))

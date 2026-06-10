@@ -25,6 +25,10 @@ class KolEvidenceTag:
     source: str = ""
     evidence: list[str] = field(default_factory=list)
     status: str = "suggested"
+    reviewer_note: str = ""
+    reviewed_by: str = ""
+    reviewed_at: str = ""
+    weight_delta: int = 0
     version: int = 1
     updated_at: str = field(default_factory=now_iso)
 

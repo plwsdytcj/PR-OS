@@ -4379,7 +4379,9 @@ body.client-session #clientPortal {
 
 .phase8-evolution,
 .phase8-prediction-list,
-.phase8-tag-feed {
+.phase8-tag-feed,
+.phase8-review-queue,
+.creator-evidence-tags {
   display: grid;
   gap: 12px;
 }
@@ -4387,7 +4389,9 @@ body.client-session #clientPortal {
 .phase8-step,
 .phase8-tag-card,
 .phase8-prediction-card,
-.phase8-summary {
+.phase8-summary,
+.phase8-review-card,
+.creator-evidence-tag {
   background: #fffdf4;
   border: 3px solid #17120d;
   border-radius: 3px;
@@ -4437,6 +4441,63 @@ body.client-session #clientPortal {
 .phase8-prediction-card {
   display: grid;
   grid-template-columns: 44px 1fr;
+}
+
+.phase8-review-card {
+  align-items: flex-start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 160px 1fr auto;
+}
+
+.phase8-review-card.confirmed,
+.creator-evidence-tag.confirmed {
+  box-shadow: 5px 5px 0 #53aa8b;
+}
+
+.phase8-review-card.rejected,
+.creator-evidence-tag.rejected {
+  box-shadow: 5px 5px 0 #ff8a80;
+  opacity: 0.78;
+}
+
+.phase8-review-card.needs_more_evidence,
+.creator-evidence-tag.needs_more_evidence {
+  box-shadow: 5px 5px 0 var(--spark);
+}
+
+.phase8-review-check {
+  align-items: center;
+  margin: 0;
+}
+
+.phase8-review-main small,
+.creator-evidence-tag small {
+  color: #6f665d;
+  display: block;
+  line-height: 1.5;
+  margin-top: 8px;
+}
+
+.phase8-review-score {
+  color: #5f574f;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 13px;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.phase8-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.creator-evidence-tag {
+  display: grid;
+  gap: 10px;
 }
 
 .phase8-card-head {
@@ -4528,7 +4589,12 @@ body.client-session #clientPortal {
   }
 
   .phase8-prediction-card,
-  .phase8-step {
+  .phase8-step,
+  .phase8-review-card {
     grid-template-columns: 1fr;
+  }
+
+  .phase8-review-actions {
+    justify-content: flex-start;
   }
 }

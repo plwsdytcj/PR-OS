@@ -542,9 +542,38 @@
             <div class="metrics phase8-metrics">
               <div class="metric"><span>已打标达人</span><strong id="phase8CreatorsWithTags">0</strong></div>
               <div class="metric"><span>证据标签</span><strong id="phase8EvidenceTags">0</strong></div>
+              <div class="metric"><span>待审核</span><strong id="phase8SuggestedTags">0</strong></div>
+              <div class="metric"><span>已确认</span><strong id="phase8ConfirmedTags">0</strong></div>
               <div class="metric"><span>图谱快照</span><strong id="phase8GraphSnapshots">0</strong></div>
               <div class="metric"><span>预测次数</span><strong id="phase8Predictions">0</strong></div>
             </div>
+          </div>
+
+          <div class="panel phase8-review-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Evidence Tag Review</h2>
+                <p>确认、拒绝或要求补证据。确认后的标签会提升预测权重，拒绝的标签不会进入图谱。</p>
+              </div>
+              <div class="button-row">
+                <button id="phase8BulkConfirmBtn" class="primary" type="button">批量确认</button>
+                <button id="phase8RefreshReviewBtn" class="secondary" type="button">刷新队列</button>
+              </div>
+            </div>
+            <div class="field-row">
+              <select id="phase8ReviewStatus">
+                <option value="">全部状态</option>
+                <option value="suggested">suggested</option>
+                <option value="confirmed">confirmed</option>
+                <option value="needs_more_evidence">needs_more_evidence</option>
+                <option value="rejected">rejected</option>
+              </select>
+              <select id="phase8ReviewCreator">
+                <option value="">全部达人</option>
+              </select>
+              <input id="phase8ReviewNote" placeholder="审核备注，可选" />
+            </div>
+            <div id="phase8ReviewQueue" class="phase8-review-queue"></div>
           </div>
 
           <div class="grid two phase8-workbench">
@@ -1494,6 +1523,10 @@
           <div>
             <h3 class="detail-heading">当前画像标签</h3>
             <div id="creatorTags" class="tag-list"></div>
+          </div>
+          <div>
+            <h3 class="detail-heading">证据标签审核</h3>
+            <div id="creatorEvidenceTags" class="creator-evidence-tags"></div>
           </div>
           <button class="primary" type="submit">保存并重新画像</button>
         </form>

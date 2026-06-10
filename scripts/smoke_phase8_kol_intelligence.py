@@ -77,6 +77,33 @@ def main() -> None:
     assert len(analyze_body["items"]) >= 12
     assert analyze_body["snapshot"]["metrics"]["creators_with_tags"] >= 3
     assert any(item["evidence"] for item in analyze_body["items"])
+    suggested = [item for item in analyze_body["items"] if item["status"] == "suggested"]
+    assert suggested
+
+    confirm = client.patch(
+        f"/api/kol-intelligence/tags/{suggested[0]['tag_id']}",
+        headers=HEADERS,
+        json={"status": "confirmed", "reviewer_note": "smoke confirm", "weight_delta": 8},
+    )
+    assert confirm.status_code == 200, confirm.text
+    confirmed_tag = confirm.json()["tag"]
+    assert confirmed_tag["status"] == "confirmed"
+    assert confirmed_tag["weight_delta"] == 8
+    assert confirmed_tag["reviewer_note"] == "smoke confirm"
+
+    bulk = client.post(
+        "/api/kol-intelligence/tags/bulk-review",
+        headers=HEADERS,
+        json={"tag_ids": [item["tag_id"] for item in suggested[1:3]], "status": "rejected", "reviewer_note": "smoke reject"},
+    )
+    assert bulk.status_code == 200, bulk.text
+    assert bulk.json()["updated"] == 2
+
+    queue = client.get("/api/kol-intelligence/review-queue", headers=HEADERS)
+    assert queue.status_code == 200, queue.text
+    queue_body = queue.json()
+    assert queue_body["metrics"]["confirmed"] >= 1
+    assert queue_body["metrics"]["rejected"] >= 2
 
     brief = "新能源汽车品牌做 SUV 新品上市预热，目标年轻家庭，强调智驾、家庭安全、城市通勤和真实体验，平台优先小红书、抖音、B站。"
     graph = client.post("/api/kol-intelligence/graph", headers=HEADERS, json={"brief": brief, "limit": 30})
@@ -101,6 +128,13 @@ def main() -> None:
     snapshot = client.get("/api/kol-intelligence", headers=HEADERS)
     assert snapshot.status_code == 200
     assert snapshot.json()["metrics"]["predictions"] >= 1
+    assert snapshot.json()["metrics"]["confirmed_tags"] >= 1
+    assert snapshot.json()["metrics"]["rejected_tags"] >= 2
+
+    creator_id = analyze_body["items"][0]["creator_id"]
+    detail = client.get(f"/api/creators/{creator_id}", headers=HEADERS)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["evidence_tags"]
     print(
         "OK phase8_kol_intelligence "
         f"tags={len(analyze_body['items'])} graph_nodes={len(graph_body['nodes'])} "

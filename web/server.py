@@ -124,9 +124,12 @@ from src.knowledge.storage import init_knowledge_db
 from src.kol_intelligence.service import (
     analyze_creator_evidence_tags,
     build_kol_knowledge_graph,
+    bulk_review_evidence_tags,
+    evidence_review_queue,
     kol_intelligence_snapshot,
     list_creator_evidence_tags,
     predict_kol_fit,
+    review_evidence_tag,
 )
 from src.kol_intelligence.storage import init_kol_intelligence_db
 from src.normalize.mapper import infer_column_mapping, map_dataframe_to_profiles
@@ -312,6 +315,7 @@ def request_write_method_hint(path: str) -> bool:
             "/recommend",
             "/collaboration/",
             "/platform/",
+            "/kol-intelligence/",
             "/symbolic/",
             "/distribution/",
             "/creator-commercial/",
@@ -1401,7 +1405,7 @@ def creator_detail(creator_id: str) -> dict[str, Any]:
     profile = load_profile(DB_PATH, creator_id)
     if profile is None:
         raise HTTPException(status_code=404, detail="creator not found")
-    return {"creator": profile_payload(profile)}
+    return {"creator": profile_payload(profile), "evidence_tags": list_creator_evidence_tags(DB_PATH, creator_id=creator_id)}
 
 
 @app.post("/api/creators/{creator_id}/media/analyze")
@@ -1552,6 +1556,11 @@ def kol_intelligence_tags(creator_id: str = "") -> dict[str, Any]:
     return {"items": list_creator_evidence_tags(DB_PATH, creator_id=creator_id)}
 
 
+@app.get("/api/kol-intelligence/review-queue")
+def kol_intelligence_review_queue(status: str = "", creator_id: str = "", limit: int = 80) -> dict[str, Any]:
+    return evidence_review_queue(DB_PATH, status=status, creator_id=creator_id, limit=limit)
+
+
 @app.post("/api/kol-intelligence/analyze-tags")
 async def kol_intelligence_analyze_tags(payload: dict[str, Any]) -> dict[str, Any]:
     return analyze_creator_evidence_tags(
@@ -1559,6 +1568,31 @@ async def kol_intelligence_analyze_tags(payload: dict[str, Any]) -> dict[str, An
         creator_id=str(payload.get("creator_id") or ""),
         limit=int(payload.get("limit") or 200),
     )
+
+
+@app.patch("/api/kol-intelligence/tags/{tag_id}")
+async def kol_intelligence_review_tag(tag_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    identity = current_identity()
+    reviewer = identity.user.email if identity else ""
+    try:
+        tag = review_evidence_tag(DB_PATH, tag_id, payload, reviewer=reviewer)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="tag not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"tag": tag.to_dict(), "snapshot": kol_intelligence_snapshot(DB_PATH)}
+
+
+@app.post("/api/kol-intelligence/tags/bulk-review")
+async def kol_intelligence_bulk_review_tags(payload: dict[str, Any]) -> dict[str, Any]:
+    identity = current_identity()
+    reviewer = identity.user.email if identity else ""
+    try:
+        result = bulk_review_evidence_tags(DB_PATH, payload, reviewer=reviewer)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    result["snapshot"] = kol_intelligence_snapshot(DB_PATH)
+    return result
 
 
 @app.post("/api/kol-intelligence/graph")
