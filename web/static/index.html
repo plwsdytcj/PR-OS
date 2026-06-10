@@ -23,6 +23,7 @@
             <button class="nav-item" data-view="agentWorkspace">AI Agent</button>
             <button class="nav-item" data-view="projectRun">新建项目</button>
             <button class="nav-item" data-view="creators">达人库</button>
+            <button class="nav-item" data-view="kolIntelligence">达人智能图谱</button>
             <button class="nav-item" data-view="brief">Brief 推荐</button>
             <button class="nav-item" data-view="platformOS">Campaign OS</button>
             <button class="nav-item" data-view="symbolicOS">符号 OS</button>
@@ -523,6 +524,80 @@
               <input id="creatorSearch" class="search" placeholder="搜索名称、平台、标签、摘要" />
             </div>
             <div id="creatorList" class="creator-grid"></div>
+          </div>
+        </section>
+
+        <section id="kolIntelligence" class="view">
+          <div class="panel phase8-hero">
+            <div class="panel-header">
+              <div>
+                <h2>KOL Intelligence Graph</h2>
+                <p>把 Excel / API 达人数据变成证据标签，观察标签如何演进成推荐路径。</p>
+              </div>
+              <div class="button-row">
+                <button id="phase8AnalyzeBtn" class="primary" type="button">分析达人标签</button>
+                <button id="phase8GraphBtn" class="secondary" type="button">生成图谱</button>
+              </div>
+            </div>
+            <div class="metrics phase8-metrics">
+              <div class="metric"><span>已打标达人</span><strong id="phase8CreatorsWithTags">0</strong></div>
+              <div class="metric"><span>证据标签</span><strong id="phase8EvidenceTags">0</strong></div>
+              <div class="metric"><span>图谱快照</span><strong id="phase8GraphSnapshots">0</strong></div>
+              <div class="metric"><span>预测次数</span><strong id="phase8Predictions">0</strong></div>
+            </div>
+          </div>
+
+          <div class="grid two phase8-workbench">
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>需求激活器</h2>
+                  <p>输入甲方 brief，系统会激活标签、降权风险、预测 KOL。</p>
+                </div>
+                <button id="phase8PredictBtn" class="primary" type="button">预测推荐</button>
+              </div>
+              <textarea id="phase8BriefInput" class="brief-input">我们是新能源汽车品牌，预算50万，准备做新能源SUV新品上市预热。目标用户是25-40岁一二线城市年轻家庭，希望突出科技感、智能化、家庭安全和真实体验，平台优先小红书和抖音。</textarea>
+              <div id="phase8Evolution" class="phase8-evolution"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>预测结果</h2>
+                  <p>每个推荐必须带命中标签、证据和风险。</p>
+                </div>
+              </div>
+              <div id="phase8PredictionList" class="phase8-prediction-list"></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>知识图谱演进</h2>
+                <p>Brief、标签本体、KOL 和风险之间的动态路径。</p>
+              </div>
+            </div>
+            <div class="graph-legend">
+              <span class="legend brand">Brief</span>
+              <span class="legend product">标签本体</span>
+              <span class="legend creator">KOL</span>
+              <span class="legend tag-node">证据标签</span>
+              <span class="legend risk-node">风险</span>
+            </div>
+            <div id="phase8GraphCanvas" class="symbolic-graph phase8-graph">
+              <div class="meta">先点击“分析达人标签”，再生成图谱或预测。</div>
+            </div>
+          </div>
+
+          <div class="grid two">
+            <div class="panel">
+              <h2>高频标签</h2>
+              <div id="phase8TopTags" class="tag-library"></div>
+            </div>
+            <div class="panel">
+              <h2>最近证据标签</h2>
+              <div id="phase8RecentTags" class="phase8-tag-feed"></div>
+            </div>
           </div>
         </section>
 

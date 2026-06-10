@@ -4363,6 +4363,101 @@ body.client-session #clientPortal {
   margin-bottom: 14px;
 }
 
+.phase8-hero {
+  background:
+    linear-gradient(135deg, rgba(255, 224, 92, 0.22), rgba(83, 170, 139, 0.2)),
+    #fffdf4;
+}
+
+.phase8-metrics {
+  margin-top: 18px;
+}
+
+.phase8-workbench {
+  align-items: stretch;
+}
+
+.phase8-evolution,
+.phase8-prediction-list,
+.phase8-tag-feed {
+  display: grid;
+  gap: 12px;
+}
+
+.phase8-step,
+.phase8-tag-card,
+.phase8-prediction-card,
+.phase8-summary {
+  background: #fffdf4;
+  border: 3px solid #17120d;
+  border-radius: 3px;
+  box-shadow: 5px 5px 0 #b9ffea;
+  padding: 12px;
+}
+
+.phase8-step {
+  align-items: flex-start;
+  display: grid;
+  grid-template-columns: 42px 1fr;
+}
+
+.phase8-step > span,
+.rank-badge {
+  align-items: center;
+  background: var(--spark);
+  border: 3px solid #17120d;
+  border-radius: 50%;
+  display: inline-flex;
+  font-weight: 900;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.phase8-step strong,
+.phase8-prediction-card strong {
+  font-size: 18px;
+}
+
+.phase8-step p,
+.phase8-tag-card p,
+.phase8-prediction-card p {
+  color: #5f574f;
+  margin: 6px 0;
+}
+
+.phase8-tag-card small,
+.phase8-prediction-card small {
+  color: #6f665d;
+  display: block;
+  line-height: 1.5;
+  margin-top: 8px;
+}
+
+.phase8-prediction-card {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+}
+
+.phase8-card-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.phase8-summary {
+  background: #17120d;
+  box-shadow: 5px 5px 0 var(--spark);
+  color: #fffdf4;
+  font-weight: 800;
+}
+
+.phase8-graph {
+  min-height: 640px;
+}
+
 @media (max-width: 900px) {
   .view-poster {
     align-items: flex-start;
@@ -4429,6 +4524,11 @@ body.client-session #clientPortal {
   }
 
   .share-field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .phase8-prediction-card,
+  .phase8-step {
     grid-template-columns: 1fr;
   }
 }

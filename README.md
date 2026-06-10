@@ -26,6 +26,8 @@ PR AI OS is a local-first MVP for media agencies managing KOL resources, brand b
 - Phase 7I-B: OpenAI Agents SDK POC runtime with PR OS tool calling and native runtime fallback.
 - Phase 7I-C: per-run runtime override and Custom vs Agents SDK A/B comparison.
 - Phase 7J: Manus-like Agent task space with SSE live updates, editable/retryable tool steps, multi-agent handoff artifacts, memory recall display, and live graph highlighting.
+- Phase 8: KOL Intelligence Graph with evidence-based creator tags, graph evolution, and brief-driven prediction recommendations.
+- Phase 8 PRD: see `Phase8_KOL_Intelligence_PRD.md`.
 - Phase 7 PRD: see `Phase7_Agent_OS_PRD.md` for the Agent OS roadmap from 7A to 7E.
 - Production foundations: workspace-level data isolation, optional access key, centralized data-source status/testing, and pluggable storage/auth adapters.
 
@@ -136,6 +138,17 @@ Related APIs:
 - `GET /api/settings/data-sources`
 - `POST /api/settings/data-sources/test`
 - `GET /api/settings/storage`
+
+## Phase 8 KOL Intelligence Graph
+
+The `达人智能图谱` page is the core KOL intelligence layer:
+
+- `POST /api/kol-intelligence/analyze-tags`: derive evidence tags from creator profiles and symbolic profiles.
+- `POST /api/kol-intelligence/graph`: build the brief-to-tag-to-KOL knowledge graph and evolution steps.
+- `POST /api/kol-intelligence/predict`: activate tags from a PR brief and return KOL recommendations with evidence and risks.
+- `GET /api/kol-intelligence`: inspect current tag, graph, and prediction snapshot.
+
+This layer is intentionally independent of one specific data provider. Excel, manual import, mock API, future official APIs, or third-party data APIs can all feed the same Creator Profile and evidence tag model.
 
 ## Storage Adapter
 

@@ -53,6 +53,8 @@ const state = {
   activeCampaignRoom: null,
   dataSources: [],
   symbolicOS: null,
+  kolIntelligence: null,
+  phase8Prediction: null,
   projectRun: null,
   projectRunSelectedNodeId: "",
   projectRunStageFilter: "",
@@ -98,6 +100,7 @@ const VIEW_TITLES = {
   projectRun: ["新建 PR 项目", "输入一个需求，自动跑完 brief、符号图谱、KOL 选择和 Campaign Room。"],
   ingest: ["数据接入", "把 Excel、链接和 API 变成统一 KOL Profile。"],
   creators: ["达人库", "扫描、修正和调用你的私有 KOL 资产。"],
+  kolIntelligence: ["达人智能图谱", "证据标签、图谱演进和 KOL 预测推荐。"],
   governance: ["数据治理", "清理重复、补齐字段、提高推荐可信度。"],
   brief: ["Brief 推荐", "把甲方需求转成可解释的达人组合。"],
   proposal: ["方案导出", "把推荐结果打包成甲方可读方案。"],
@@ -373,6 +376,12 @@ async function loadSymbolicOS() {
   renderSymbolicOS(data);
 }
 
+async function loadKolIntelligence() {
+  const data = await api("/api/kol-intelligence");
+  state.kolIntelligence = data;
+  renderKolIntelligence(data);
+}
+
 function renderSymbolicOS(data) {
   const output = $("#symbolicOSOutput");
   if (output) output.textContent = JSON.stringify(data || {}, null, 2);
@@ -382,6 +391,128 @@ function renderSymbolicOS(data) {
   renderNarrativeAssets(data?.narratives || []);
   renderMatchAssets(data?.matches || []);
   renderFeedbackCorrections(data?.corrections || []);
+}
+
+function renderKolIntelligence(data) {
+  const metrics = data?.metrics || {};
+  const setText = (id, value) => {
+    const node = $(id);
+    if (node) node.textContent = fmtNumber(value);
+  };
+  setText("#phase8CreatorsWithTags", metrics.creators_with_tags || 0);
+  setText("#phase8EvidenceTags", metrics.evidence_tags || 0);
+  setText("#phase8GraphSnapshots", metrics.graph_snapshots || 0);
+  setText("#phase8Predictions", metrics.predictions || 0);
+  renderPhase8TopTags(data?.top_tags || []);
+  renderPhase8RecentTags(data?.recent_tags || []);
+  if (data?.latest_graph) {
+    renderSymbolicGraphInto("#phase8GraphCanvas", data.latest_graph);
+    renderPhase8Evolution(data.latest_graph.evolution || []);
+  }
+  if (data?.latest_prediction) renderPhase8Prediction(data.latest_prediction);
+}
+
+function renderPhase8TopTags(tags) {
+  const node = $("#phase8TopTags");
+  if (!node) return;
+  if (!tags.length) {
+    node.innerHTML = emptyState("暂无标签", "先分析达人库，系统会生成证据标签。");
+    return;
+  }
+  node.innerHTML = tags
+    .map(
+      (item) => `
+        <article class="tag-card">
+          <strong>${escapeHTML(item.tag)}</strong>
+          <span>${fmtNumber(item.count)} creators</span>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function renderPhase8RecentTags(tags) {
+  const node = $("#phase8RecentTags");
+  if (!node) return;
+  if (!tags.length) {
+    node.innerHTML = emptyState("暂无证据", "证据标签会显示来源、置信度和原始依据。");
+    return;
+  }
+  node.innerHTML = tags
+    .slice(0, 24)
+    .map(
+      (tag) => `
+        <article class="phase8-tag-card">
+          <div>
+            <span class="status-pill">${escapeHTML(tag.category)}</span>
+            <strong>${escapeHTML(tag.tag)}</strong>
+          </div>
+          <p>${escapeHTML(tag.creator_name || tag.creator_id)}</p>
+          <div class="meta">confidence ${Math.round((tag.confidence || 0) * 100)}% · ${escapeHTML(tag.source || "")}</div>
+          <small>${escapeHTML((tag.evidence || []).slice(0, 2).join("；"))}</small>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function renderPhase8Evolution(items) {
+  const node = $("#phase8Evolution");
+  if (!node) return;
+  if (!items.length) {
+    node.innerHTML = emptyState("等待推演", "生成图谱或预测后会展示演进步骤。");
+    return;
+  }
+  node.innerHTML = items
+    .map(
+      (item) => `
+        <article class="phase8-step">
+          <span>${escapeHTML(item.step || "")}</span>
+          <div>
+            <strong>${escapeHTML(item.title || "")}</strong>
+            <p>${escapeHTML(item.detail || "")}</p>
+          </div>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function renderPhase8Prediction(prediction) {
+  state.phase8Prediction = prediction;
+  const node = $("#phase8PredictionList");
+  if (!node) return;
+  const recommendations = prediction?.recommendations || [];
+  if (!recommendations.length) {
+    node.innerHTML = emptyState("暂无推荐", "输入 brief 后运行预测。");
+    return;
+  }
+  node.innerHTML = `
+    <div class="phase8-summary">${escapeHTML(prediction.summary || "")}</div>
+    ${recommendations
+      .map(
+        (item, index) => `
+          <article class="phase8-prediction-card">
+            <div class="rank-badge">${String(index + 1).padStart(2, "0")}</div>
+            <div>
+              <div class="phase8-card-head">
+                <strong>${escapeHTML(item.creator_name || item.creator_id)}</strong>
+                <span class="status-pill ok">${escapeHTML(item.recommendation_level || "")} · ${escapeHTML(item.score || "")}</span>
+              </div>
+              <p>${escapeHTML(item.platform || "未知平台")}</p>
+              <div class="tag-list">${(item.reasons || []).slice(0, 6).map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`).join("")}</div>
+              ${(item.risk_points || []).length ? `<div class="meta danger-text">风险：${escapeHTML(item.risk_points.join("；"))}</div>` : ""}
+              <small>${escapeHTML((item.evidence || []).slice(0, 2).join(" / "))}</small>
+            </div>
+          </article>
+        `
+      )
+      .join("")}
+  `;
+  if (prediction.graph) {
+    renderSymbolicGraphInto("#phase8GraphCanvas", prediction.graph);
+    renderPhase8Evolution(prediction.graph.evolution || []);
+  }
 }
 
 function renderSocialReport(report) {
@@ -1497,6 +1628,7 @@ async function reloadAll() {
   await loadPlatformDashboard();
   await loadDataSources();
   await loadSymbolicOS();
+  await loadKolIntelligence();
 }
 
 function renderResults(data) {
@@ -3125,6 +3257,13 @@ function bindEvents() {
           toast(error.message, true);
         }
       }
+      if (button.dataset.view === "kolIntelligence") {
+        try {
+          await loadKolIntelligence();
+        } catch (error) {
+          toast(error.message, true);
+        }
+      }
     })
   );
   $$(".nav-group").forEach((group) => {
@@ -4075,6 +4214,67 @@ function bindEvents() {
     if (!campaignId) return toast("请先生成 PR 项目", true);
     await openCampaignRoom(campaignId);
     setView("platformOS");
+  });
+
+  $("#phase8AnalyzeBtn")?.addEventListener("click", async () => {
+    const button = $("#phase8AnalyzeBtn");
+    if (button) {
+      button.disabled = true;
+      button.textContent = "分析中...";
+    }
+    try {
+      const data = await api("/api/kol-intelligence/analyze-tags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ limit: 300 }),
+      });
+      state.kolIntelligence = data.snapshot;
+      renderKolIntelligence(data.snapshot);
+      toast(`已生成 ${fmtNumber((data.items || []).length)} 个证据标签`);
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = "分析达人标签";
+      }
+    }
+  });
+
+  $("#phase8GraphBtn")?.addEventListener("click", async () => {
+    const brief = $("#phase8BriefInput")?.value || "";
+    const graph = await api("/api/kol-intelligence/graph", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ brief, limit: 80 }),
+    });
+    renderSymbolicGraphInto("#phase8GraphCanvas", graph);
+    renderPhase8Evolution(graph.evolution || []);
+    await loadKolIntelligence();
+    toast("KOL 知识图谱已生成");
+  });
+
+  $("#phase8PredictBtn")?.addEventListener("click", async () => {
+    const brief = ($("#phase8BriefInput")?.value || "").trim();
+    if (!brief) return toast("请输入甲方 brief", true);
+    const button = $("#phase8PredictBtn");
+    if (button) {
+      button.disabled = true;
+      button.textContent = "预测中...";
+    }
+    try {
+      const prediction = await api("/api/kol-intelligence/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brief, top_n: 8 }),
+      });
+      renderPhase8Prediction(prediction);
+      await loadKolIntelligence();
+      toast("预测推荐已完成");
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = "预测推荐";
+      }
+    }
   });
 
   $("#dataSourceTestForm").addEventListener("submit", async (event) => {

@@ -121,6 +121,14 @@ from src.intelligence.creator_multimodal import analyze_creator_image
 from src.intelligence.profiling import enrich_profiles
 from src.knowledge.service import create_knowledge_document, knowledge_document_detail, knowledge_stats, list_knowledge_documents, search_knowledge_base
 from src.knowledge.storage import init_knowledge_db
+from src.kol_intelligence.service import (
+    analyze_creator_evidence_tags,
+    build_kol_knowledge_graph,
+    kol_intelligence_snapshot,
+    list_creator_evidence_tags,
+    predict_kol_fit,
+)
+from src.kol_intelligence.storage import init_kol_intelligence_db
 from src.normalize.mapper import infer_column_mapping, map_dataframe_to_profiles
 from src.platform_os.service import (
     add_post_campaign_review,
@@ -248,6 +256,7 @@ def _init_db_bundle(path: Path | PathLike[str]) -> None:
     init_db(path)
     init_agent_db(path)
     init_knowledge_db(path)
+    init_kol_intelligence_db(path)
     init_auth_db(path)
     init_symbolic_db(path)
     init_symbolic_os_db(path)
@@ -1531,6 +1540,50 @@ def symbolic_brands() -> dict[str, Any]:
 @app.get("/api/symbolic-os")
 def symbolic_os() -> dict[str, Any]:
     return symbolic_os_snapshot(DB_PATH)
+
+
+@app.get("/api/kol-intelligence")
+def kol_intelligence() -> dict[str, Any]:
+    return kol_intelligence_snapshot(DB_PATH)
+
+
+@app.get("/api/kol-intelligence/tags")
+def kol_intelligence_tags(creator_id: str = "") -> dict[str, Any]:
+    return {"items": list_creator_evidence_tags(DB_PATH, creator_id=creator_id)}
+
+
+@app.post("/api/kol-intelligence/analyze-tags")
+async def kol_intelligence_analyze_tags(payload: dict[str, Any]) -> dict[str, Any]:
+    return analyze_creator_evidence_tags(
+        DB_PATH,
+        creator_id=str(payload.get("creator_id") or ""),
+        limit=int(payload.get("limit") or 200),
+    )
+
+
+@app.post("/api/kol-intelligence/graph")
+async def kol_intelligence_graph(payload: dict[str, Any]) -> dict[str, Any]:
+    creator_ids = payload.get("creator_ids") if isinstance(payload.get("creator_ids"), list) else []
+    snapshot = build_kol_knowledge_graph(
+        DB_PATH,
+        brief=str(payload.get("brief") or ""),
+        creator_ids=[str(item) for item in creator_ids],
+        limit=int(payload.get("limit") or 80),
+    )
+    return snapshot.to_dict()
+
+
+@app.post("/api/kol-intelligence/predict")
+async def kol_intelligence_predict(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        prediction = predict_kol_fit(
+            DB_PATH,
+            brief=str(payload.get("brief") or ""),
+            top_n=int(payload.get("top_n") or 8),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return prediction.to_dict()
 
 
 @app.get("/api/symbolic-os/social-reports")

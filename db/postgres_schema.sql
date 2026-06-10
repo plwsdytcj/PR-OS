@@ -247,6 +247,33 @@ CREATE TABLE IF NOT EXISTS feedback_corrections (
     PRIMARY KEY (tenant_id, correction_id)
 );
 
+CREATE TABLE IF NOT EXISTS kol_evidence_tags (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    tag_id TEXT NOT NULL,
+    creator_id TEXT NOT NULL,
+    category TEXT NOT NULL,
+    status TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, tag_id)
+);
+
+CREATE TABLE IF NOT EXISTS kol_graph_snapshots (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    snapshot_id TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, snapshot_id)
+);
+
+CREATE TABLE IF NOT EXISTS kol_predictions (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    prediction_id TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, prediction_id)
+);
+
 CREATE TABLE IF NOT EXISTS proposals (
     tenant_id TEXT NOT NULL DEFAULT 'default',
     proposal_id TEXT NOT NULL,
@@ -354,3 +381,6 @@ CREATE INDEX IF NOT EXISTS idx_product_symbolic_profiles_payload_gin ON product_
 CREATE INDEX IF NOT EXISTS idx_content_narrative_assets_payload_gin ON content_narrative_assets USING GIN (payload);
 CREATE INDEX IF NOT EXISTS idx_brand_creator_match_assets_payload_gin ON brand_creator_match_assets USING GIN (payload);
 CREATE INDEX IF NOT EXISTS idx_feedback_corrections_payload_gin ON feedback_corrections USING GIN (payload);
+CREATE INDEX IF NOT EXISTS idx_kol_evidence_tags_payload_gin ON kol_evidence_tags USING GIN (payload);
+CREATE INDEX IF NOT EXISTS idx_kol_graph_snapshots_payload_gin ON kol_graph_snapshots USING GIN (payload);
+CREATE INDEX IF NOT EXISTS idx_kol_predictions_payload_gin ON kol_predictions USING GIN (payload);

@@ -52,6 +52,7 @@ Authentication is also adapter-shaped:
 - Phase 7I-B adds a real OpenAI Agents SDK POC runtime. When `openai-agents` and a compatible key are configured, SDK calls PR OS tools for brief parsing, memory search, and KOL/project matching; failures fall back to the native runtime.
 - Phase 7I-C adds per-run runtime override and Custom vs Agents SDK A/B comparison.
 - Phase 7J adds the Manus-like Agent task space: SSE run streaming, retry/edit/skip tool steps, multi-agent handoff artifacts, memory recall cards, and live reasoning-graph highlighting.
+- Phase 8 adds the KOL Intelligence Graph: evidence-based KOL tags, brief-activated graph evolution, and prediction recommendations.
 - Future providers such as Authing, Feishu SSO, OIDC, and SAML should plug into the identity provider layer instead of rewriting business permissions.
 
 Object files are handled by the object storage adapter:

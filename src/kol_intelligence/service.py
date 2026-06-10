@@ -1,0 +1,422 @@
+from __future__ import annotations
+
+import math
+import re
+from collections import Counter, defaultdict
+from pathlib import Path
+from typing import Any
+
+from src.kol_intelligence.schemas import KolEvidenceTag, KolGraphSnapshot, KolPrediction, evidence_tag_id, graph_snapshot_id, prediction_id_for
+from src.kol_intelligence.storage import (
+    load_evidence_tags,
+    load_graph_snapshots,
+    load_predictions,
+    upsert_evidence_tag,
+    upsert_graph_snapshot,
+    upsert_prediction,
+)
+from src.schemas import CreatorProfile, split_tags
+from src.storage.db import load_profile, load_profiles
+from src.symbolic.creator_profiler import generate_creator_symbolic_profile
+from src.symbolic.storage import load_creator_symbolic, upsert_creator_symbolic
+
+
+CATEGORY_LABELS = {
+    "industry": "行业适配",
+    "content": "内容能力",
+    "goal": "传播目标",
+    "stage": "传播阶段",
+    "budget": "预算适配",
+    "risk": "风险",
+    "platform": "平台",
+    "symbolic": "符号资产",
+    "persona": "人设/叙事",
+    "case": "合作案例",
+    "metric": "数据表现",
+}
+
+BRIEF_KEYWORDS = {
+    "汽车": ["汽车", "车", "新能源", "suv", "智驾", "通勤", "露营"],
+    "美妆护肤": ["美妆", "护肤", "成分", "抗老", "香氛"],
+    "AI软件": ["ai", "大模型", "工具", "自动化", "效率", "agent"],
+    "母婴": ["母婴", "宝宝", "亲子", "家庭"],
+    "3C数码": ["手机", "电脑", "数码", "耳机", "相机"],
+    "小红书": ["小红书", "种草", "笔记"],
+    "抖音": ["抖音", "短视频", "直播"],
+    "B站": ["b站", "bilibili", "长视频"],
+    "预热": ["预热", "种草", "蓄水", "上市前"],
+    "转化": ["转化", "卖货", "成交", "直播", "挂链"],
+    "声量": ["声量", "曝光", "破圈", "出圈"],
+    "信任": ["信任", "专业", "背书", "真实", "测评"],
+    "年轻人": ["年轻", "genz", "z世代", "大学生", "新人群"],
+}
+
+
+def analyze_creator_evidence_tags(db_path: Path, creator_id: str = "", limit: int = 200) -> dict[str, Any]:
+    creators = [load_profile(db_path, creator_id)] if creator_id else load_profiles(db_path)[: max(1, limit)]
+    creators = [creator for creator in creators if creator is not None]
+    saved: list[KolEvidenceTag] = []
+    for creator in creators:
+        symbolic = load_creator_symbolic(db_path, creator.creator_id)
+        if symbolic is None:
+            symbolic = generate_creator_symbolic_profile(creator)
+            upsert_creator_symbolic(db_path, symbolic)
+        for tag in _derive_tags(creator, symbolic):
+            upsert_evidence_tag(db_path, tag)
+            saved.append(tag)
+    snapshot = kol_intelligence_snapshot(db_path)
+    return {"items": [item.to_dict() for item in saved], "snapshot": snapshot}
+
+
+def kol_intelligence_snapshot(db_path: Path) -> dict[str, Any]:
+    tags = load_evidence_tags(db_path)
+    graphs = load_graph_snapshots(db_path)
+    predictions = load_predictions(db_path)
+    categories = Counter(tag.category for tag in tags)
+    creator_ids = {tag.creator_id for tag in tags}
+    top_tags = Counter(tag.tag for tag in tags).most_common(16)
+    return {
+        "metrics": {
+            "creators_with_tags": len(creator_ids),
+            "evidence_tags": len(tags),
+            "graph_snapshots": len(graphs),
+            "predictions": len(predictions),
+            "categories": dict(categories),
+        },
+        "latest_graph": graphs[0].to_dict() if graphs else None,
+        "latest_prediction": predictions[0].to_dict() if predictions else None,
+        "top_tags": [{"tag": tag, "count": count} for tag, count in top_tags],
+        "recent_tags": [tag.to_dict() for tag in tags[:80]],
+    }
+
+
+def list_creator_evidence_tags(db_path: Path, creator_id: str = "") -> list[dict[str, Any]]:
+    return [tag.to_dict() for tag in load_evidence_tags(db_path, creator_id=creator_id)]
+
+
+def build_kol_knowledge_graph(db_path: Path, brief: str = "", creator_ids: list[str] | None = None, limit: int = 80) -> KolGraphSnapshot:
+    tags = load_evidence_tags(db_path)
+    if not tags:
+        analyze_creator_evidence_tags(db_path, limit=limit)
+        tags = load_evidence_tags(db_path)
+    if creator_ids:
+        allowed = set(creator_ids)
+        tags = [tag for tag in tags if tag.creator_id in allowed]
+    creators = {creator.creator_id: creator for creator in load_profiles(db_path)}
+    brief_terms = _brief_terms(brief)
+    creator_scores = _score_creators(tags, brief_terms)
+    selected_ids = [creator_id for creator_id, _ in creator_scores.most_common(limit)] or list({tag.creator_id for tag in tags})[:limit]
+    selected_tags = [tag for tag in tags if tag.creator_id in selected_ids]
+
+    nodes: dict[str, dict[str, Any]] = {}
+    edges: list[dict[str, Any]] = []
+    nodes["brief"] = {
+        "id": "brief",
+        "type": "brand",
+        "label": "PR Brief" if brief else "KOL Intelligence",
+        "stage": "input",
+        "score": 100 if brief else 70,
+        "detail": brief[:160],
+    }
+
+    for tag in selected_tags:
+        creator = creators.get(tag.creator_id)
+        creator_label = tag.creator_name or creator.name if creator else tag.creator_id
+        creator_node_id = f"creator:{tag.creator_id}"
+        category_node_id = f"category:{tag.category}"
+        tag_node_id = f"tag:{tag.category}:{tag.tag}"
+        nodes.setdefault(
+            creator_node_id,
+            {
+                "id": creator_node_id,
+                "type": "creator",
+                "label": creator_label,
+                "stage": "kol",
+                "score": min(99, max(35, creator_scores.get(tag.creator_id, tag.score))),
+                "detail": _creator_detail(creator),
+            },
+        )
+        nodes.setdefault(
+            category_node_id,
+            {
+                "id": category_node_id,
+                "type": "product",
+                "label": CATEGORY_LABELS.get(tag.category, tag.category),
+                "stage": "ontology",
+                "score": 72,
+            },
+        )
+        node_type = "risk-node" if tag.category == "risk" else "tag-node"
+        nodes.setdefault(
+            tag_node_id,
+            {
+                "id": tag_node_id,
+                "type": node_type,
+                "label": tag.tag,
+                "stage": "tag",
+                "score": tag.score,
+                "confidence": tag.confidence,
+                "detail": "；".join(tag.evidence[:2]),
+            },
+        )
+        edges.append({"source": category_node_id, "target": tag_node_id, "label": "包含", "type": "ontology", "weight": 0.45})
+        edges.append({"source": tag_node_id, "target": creator_node_id, "label": f"{int(tag.confidence * 100)}%", "type": "match", "weight": tag.confidence})
+        if brief_terms and _tag_hits_brief(tag, brief_terms):
+            edges.append({"source": "brief", "target": tag_node_id, "label": "激活", "type": "match", "weight": 0.85})
+        elif brief:
+            edges.append({"source": "brief", "target": category_node_id, "label": "推理", "type": "context", "weight": 0.3})
+
+    evolution = _graph_evolution(selected_tags, creator_scores, brief_terms)
+    snapshot = KolGraphSnapshot(
+        snapshot_id=graph_snapshot_id(brief, len(nodes)),
+        brief=brief,
+        nodes=list(nodes.values()),
+        edges=_dedupe_edges(edges)[:240],
+        evolution=evolution,
+        stats={
+            "creators": len({tag.creator_id for tag in selected_tags}),
+            "tags": len({tag.tag for tag in selected_tags}),
+            "evidence_edges": len(edges),
+            "activated_terms": sorted(brief_terms)[:20],
+        },
+    )
+    upsert_graph_snapshot(db_path, snapshot)
+    return snapshot
+
+
+def predict_kol_fit(db_path: Path, brief: str, top_n: int = 8) -> KolPrediction:
+    if not brief.strip():
+        raise ValueError("brief is required")
+    tags = load_evidence_tags(db_path)
+    if not tags:
+        analyze_creator_evidence_tags(db_path)
+        tags = load_evidence_tags(db_path)
+    terms = _brief_terms(brief)
+    graph = build_kol_knowledge_graph(db_path, brief=brief, limit=max(30, top_n * 6))
+    creators = {creator.creator_id: creator for creator in load_profiles(db_path)}
+    grouped: dict[str, list[KolEvidenceTag]] = defaultdict(list)
+    for tag in tags:
+        grouped[tag.creator_id].append(tag)
+
+    scored = []
+    activated_tags = Counter()
+    for creator_id, creator_tags in grouped.items():
+        score, reasons, risks, path = _score_prediction(creator_tags, terms)
+        if score <= 0:
+            continue
+        creator = creators.get(creator_id)
+        for reason in reasons:
+            activated_tags[reason] += 1
+        scored.append(
+            {
+                "creator_id": creator_id,
+                "creator_name": creator.name if creator else creator_tags[0].creator_name,
+                "platform": creator.platform if creator else "",
+                "score": min(99, max(1, round(score))),
+                "recommendation_level": _level(score),
+                "reasons": reasons[:6],
+                "risk_points": risks[:4],
+                "path": path[:6],
+                "evidence": _best_evidence(creator_tags, terms),
+            }
+        )
+    scored.sort(key=lambda item: item["score"], reverse=True)
+    recommendations = scored[:top_n]
+    prediction = KolPrediction(
+        prediction_id=prediction_id_for(brief, top_n),
+        brief=brief,
+        recommendations=recommendations,
+        activated_tags=[{"tag": tag, "count": count} for tag, count in activated_tags.most_common(12)],
+        graph=graph.to_dict(),
+        summary=_prediction_summary(recommendations, terms),
+    )
+    upsert_prediction(db_path, prediction)
+    return prediction
+
+
+def _derive_tags(creator: CreatorProfile, symbolic: Any) -> list[KolEvidenceTag]:
+    items: list[tuple[str, str, float, int, str, list[str]]] = []
+
+    def add(category: str, tag: str, confidence: float, score: int, source: str, evidence: list[str]) -> None:
+        tag = str(tag or "").strip()
+        if not tag:
+            return
+        items.append((category, tag, confidence, score, source, [item for item in evidence if item][:4]))
+
+    for tag in creator.industry_fit_tags:
+        add("industry", tag, 0.72, 68, "profile.industry_fit_tags", [creator.manual_notes, creator.bio])
+    for tag in creator.content_capability_tags:
+        add("content", tag, 0.74, 70, "profile.content_capability_tags", [creator.ai_summary, creator.manual_notes])
+    for tag in creator.suitable_goals:
+        add("goal", tag, 0.7, 66, "profile.suitable_goals", [creator.ai_summary, creator.manual_notes])
+    for tag in creator.suitable_stages:
+        add("stage", tag, 0.68, 62, "profile.suitable_stages", [creator.ai_summary, creator.manual_notes])
+    for tag in creator.budget_fit_tags:
+        add("budget", tag, 0.64, 58, "profile.budget_fit_tags", [f"报价 {creator.listed_price}" if creator.listed_price else "", creator.price_source])
+    for tag in creator.risk_tags:
+        add("risk", tag, 0.76, 72, "profile.risk_tags", [creator.manual_notes, creator.ai_summary])
+    if creator.platform and creator.platform != "未知":
+        add("platform", creator.platform, 0.9, 80, "profile.platform", [creator.homepage_url, creator.platform_user_id])
+    if creator.cooperation_brands:
+        for brand in creator.cooperation_brands[:8]:
+            add("case", brand, 0.66, 60, "profile.cooperation_brands", creator.cooperation_formats[:3])
+    if creator.engagement_rate:
+        add("metric", "高互动" if creator.engagement_rate >= 0.03 else "互动需核验", 0.62, 64 if creator.engagement_rate >= 0.03 else 45, "profile.engagement_rate", [f"互动率 {creator.engagement_rate:.2%}"])
+    if symbolic:
+        for tag in getattr(symbolic, "primary_tags", []) + getattr(symbolic, "secondary_tags", []):
+            add("symbolic", tag, max(0.58, float(getattr(symbolic, "confidence", 0.58) or 0.58)), 75, "symbolic.tags", _symbolic_evidence(symbolic))
+        for tag in getattr(symbolic, "risk_tags", []):
+            add("risk", tag, max(0.6, float(getattr(symbolic, "confidence", 0.6) or 0.6)), 78, "symbolic.risk_tags", _symbolic_evidence(symbolic))
+        for value in [getattr(symbolic, "persona_structure", ""), getattr(symbolic, "narrative_style", ""), getattr(symbolic, "audience_fantasy", "")]:
+            for tag in split_tags(value)[:3]:
+                add("persona", tag, 0.6, 58, "symbolic.persona", _symbolic_evidence(symbolic))
+
+    merged: dict[tuple[str, str], KolEvidenceTag] = {}
+    for category, tag, confidence, score, source, evidence in items:
+        key = (category, tag)
+        existing = merged.get(key)
+        if existing:
+            existing.confidence = min(0.98, max(existing.confidence, confidence) + 0.03)
+            existing.score = max(existing.score, score)
+            existing.evidence = list(dict.fromkeys(existing.evidence + evidence))[:6]
+            existing.source = f"{existing.source}, {source}"
+            continue
+        merged[key] = KolEvidenceTag(
+            tag_id=evidence_tag_id(creator.creator_id, tag, category),
+            creator_id=creator.creator_id,
+            creator_name=creator.name,
+            tag=tag,
+            category=category,
+            confidence=round(confidence, 3),
+            score=score,
+            source_type="derived",
+            source=source,
+            evidence=evidence or [creator.name],
+        )
+    return list(merged.values())
+
+
+def _brief_terms(brief: str) -> set[str]:
+    text = brief.lower()
+    terms = set()
+    for canonical, keywords in BRIEF_KEYWORDS.items():
+        if any(keyword.lower() in text for keyword in keywords):
+            terms.add(canonical)
+    for token in re.findall(r"[\w\u4e00-\u9fff]{2,}", text):
+        if len(token) <= 24:
+            terms.add(token)
+    return terms
+
+
+def _score_creators(tags: list[KolEvidenceTag], terms: set[str]) -> Counter:
+    scores: Counter = Counter()
+    for tag in tags:
+        base = tag.score * tag.confidence
+        if _tag_hits_brief(tag, terms):
+            base *= 1.8
+        if tag.category == "risk":
+            base *= 0.35
+        scores[tag.creator_id] += base
+    return scores
+
+
+def _score_prediction(tags: list[KolEvidenceTag], terms: set[str]) -> tuple[float, list[str], list[str], list[str]]:
+    score = 0.0
+    reasons: list[str] = []
+    risks: list[str] = []
+    path: list[str] = []
+    for tag in tags:
+        hit = _tag_hits_brief(tag, terms)
+        category_boost = 1.25 if tag.category in {"industry", "content", "goal", "symbolic", "platform"} else 1.0
+        contribution = tag.score * tag.confidence * category_boost
+        if hit:
+            contribution *= 2.1
+            reasons.append(tag.tag)
+            path.append(f"{CATEGORY_LABELS.get(tag.category, tag.category)} -> {tag.tag} -> {tag.creator_name}")
+        elif tag.category in {"content", "symbolic"}:
+            contribution *= 0.45
+        else:
+            contribution *= 0.22
+        if tag.category == "risk":
+            risks.append(tag.tag)
+            contribution *= 0.25
+        score += contribution
+    return math.sqrt(score) * 10, list(dict.fromkeys(reasons)), list(dict.fromkeys(risks)), list(dict.fromkeys(path))
+
+
+def _tag_hits_brief(tag: KolEvidenceTag, terms: set[str]) -> bool:
+    haystack = " ".join([tag.tag, tag.category, tag.source, *tag.evidence]).lower()
+    return any(term.lower() in haystack for term in terms)
+
+
+def _graph_evolution(tags: list[KolEvidenceTag], scores: Counter, terms: set[str]) -> list[dict[str, Any]]:
+    category_counts = Counter(tag.category for tag in tags)
+    activated = [tag for tag in tags if _tag_hits_brief(tag, terms)]
+    risks = [tag for tag in tags if tag.category == "risk"]
+    top_creator = scores.most_common(1)[0][0] if scores else ""
+    top_creator_name = next((tag.creator_name for tag in tags if tag.creator_id == top_creator), "")
+    return [
+        {"step": 1, "title": "接入达人数据", "detail": f"读取 {len({tag.creator_id for tag in tags})} 个达人，统一为证据标签。"},
+        {"step": 2, "title": "形成标签本体", "detail": " / ".join(f"{CATEGORY_LABELS.get(k, k)} {v}" for k, v in category_counts.most_common(5))},
+        {"step": 3, "title": "Brief 激活路径", "detail": f"{len(activated)} 个标签被需求命中。"},
+        {"step": 4, "title": "风险抑制", "detail": f"{len(risks)} 个风险标签参与降权和人工核验。"},
+        {"step": 5, "title": "预测推荐", "detail": f"当前最强路径指向 {top_creator_name or top_creator or '待补充达人'}。"},
+    ]
+
+
+def _best_evidence(tags: list[KolEvidenceTag], terms: set[str]) -> list[str]:
+    ranked = sorted(tags, key=lambda tag: (_tag_hits_brief(tag, terms), tag.confidence, tag.score), reverse=True)
+    evidence: list[str] = []
+    for tag in ranked[:6]:
+        evidence.append(f"{CATEGORY_LABELS.get(tag.category, tag.category)}:{tag.tag} - {'；'.join(tag.evidence[:2])}")
+    return evidence[:5]
+
+
+def _symbolic_evidence(symbolic: Any) -> list[str]:
+    result = []
+    for item in getattr(symbolic, "evidence", [])[:4]:
+        if isinstance(item, dict):
+            result.append(str(item.get("quote") or item.get("claim") or item))
+        else:
+            result.append(str(getattr(item, "quote", "") or getattr(item, "claim", "") or item))
+    for value in [getattr(symbolic, "content_sample", ""), getattr(symbolic, "comment_sample", ""), getattr(symbolic, "case_sample", "")]:
+        if value:
+            result.append(str(value)[:180])
+    return result[:4]
+
+
+def _creator_detail(creator: CreatorProfile | None) -> str:
+    if not creator:
+        return ""
+    parts = [creator.platform, f"粉丝 {creator.follower_count}" if creator.follower_count else "", f"报价 {creator.listed_price}" if creator.listed_price else ""]
+    return " / ".join(part for part in parts if part)
+
+
+def _dedupe_edges(edges: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen = set()
+    result = []
+    for edge in edges:
+        key = (edge.get("source"), edge.get("target"), edge.get("label"))
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(edge)
+    return result
+
+
+def _level(score: float) -> str:
+    if score >= 84:
+        return "强推荐"
+    if score >= 68:
+        return "推荐"
+    if score >= 50:
+        return "可测试"
+    return "需人工判断"
+
+
+def _prediction_summary(recommendations: list[dict[str, Any]], terms: set[str]) -> str:
+    if not recommendations:
+        return "当前 brief 没有命中足够强的 KOL 证据标签，建议补充达人内容样本或合作案例。"
+    top = recommendations[0]
+    terms_text = "、".join(sorted(terms)[:5]) or "当前需求"
+    return f"{terms_text} 激活了 {len(recommendations)} 个候选达人；首推 {top['creator_name']}，分数 {top['score']}，主要依据：{'、'.join(top.get('reasons') or [])}。"
