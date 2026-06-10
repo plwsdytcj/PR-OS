@@ -21,12 +21,13 @@ HEADERS = {"X-Tenant-ID": TENANT}
 
 
 def main() -> None:
-    old_env = {key: os.environ.get(key) for key in ["AGENT_RUNTIME", "AGENT_SDK_API_KEY", "AGENT_SDK_MODEL", "AGENT_PROVIDER"]}
+    old_env = {key: os.environ.get(key) for key in ["AGENT_RUNTIME", "AGENT_RUNTIME_ADAPTER", "AGENT_SDK_API_KEY", "AGENT_SDK_MODEL", "AGENT_PROVIDER"]}
     old_runner = sdk_runtime._run_sdk_agent
     old_project_tool = sdk_runtime.run_project_tool
     old_proposal_tool = sdk_runtime.create_proposal_tool
     try:
         os.environ["AGENT_RUNTIME"] = "openai_agents"
+        os.environ.pop("AGENT_RUNTIME_ADAPTER", None)
         os.environ["AGENT_SDK_API_KEY"] = "test-sdk-key"
         os.environ["AGENT_SDK_MODEL"] = "test-sdk-model"
         os.environ["AGENT_PROVIDER"] = "fallback"
@@ -105,6 +106,7 @@ def main() -> None:
                 "project_name": "Manus Workspace",
                 "message": "产品是潮流香氛，预算50万，目标人群18-25岁，平台小红书和抖音，需要推荐好玩的KOL并说明风险。",
                 "top_n": 3,
+                "runtime": "openai_agents",
             },
         )
         assert chat.status_code == 200, chat.text
