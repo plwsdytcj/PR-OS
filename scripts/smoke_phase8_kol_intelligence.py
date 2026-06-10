@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import sys
 
 from fastapi.testclient import TestClient
@@ -14,6 +15,8 @@ from web.server import app
 
 TENANT = "phase8-kol-intelligence-smoke"
 HEADERS = {"X-Tenant-ID": TENANT}
+if os.getenv("PR_AI_OS_ACCESS_KEY"):
+    HEADERS["X-Access-Key"] = os.getenv("PR_AI_OS_ACCESS_KEY", "")
 
 
 def main() -> None:
