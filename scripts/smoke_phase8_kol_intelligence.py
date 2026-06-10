@@ -14,6 +14,8 @@ from web.server import app
 
 
 TENANT = "phase8-kol-intelligence-smoke"
+ADMIN_EMAIL = "phase8-smoke@pr-ai-os.local"
+ADMIN_PASSWORD = "phase8-smoke-password"
 HEADERS = {"X-Tenant-ID": TENANT}
 if os.getenv("PR_AI_OS_ACCESS_KEY"):
     HEADERS["X-Access-Key"] = os.getenv("PR_AI_OS_ACCESS_KEY", "")
@@ -21,6 +23,7 @@ if os.getenv("PR_AI_OS_ACCESS_KEY"):
 
 def main() -> None:
     client = TestClient(app)
+    _ensure_auth(client)
     creators = [
         {
             "name": "小红书年轻家庭通勤",
@@ -103,6 +106,21 @@ def main() -> None:
         f"tags={len(analyze_body['items'])} graph_nodes={len(graph_body['nodes'])} "
         f"recommendations={len(prediction_body['recommendations'])}"
     )
+
+
+def _ensure_auth(client: TestClient) -> None:
+    if "X-Access-Key" in HEADERS:
+        return
+    payload = {
+        "email": ADMIN_EMAIL,
+        "password": ADMIN_PASSWORD,
+        "name": "Phase 8 Smoke",
+    }
+    response = client.post("/api/auth/bootstrap-admin", headers=HEADERS, json=payload)
+    if response.status_code == 200:
+        return
+    login = client.post("/api/auth/login", headers=HEADERS, json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
+    assert login.status_code == 200, login.text
 
 
 if __name__ == "__main__":
