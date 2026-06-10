@@ -210,7 +210,8 @@ p {
   margin-bottom: 16px;
 }
 
-.flow {
+.flow,
+.simple-guide {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -218,7 +219,8 @@ p {
   margin-top: 18px;
 }
 
-.flow div {
+.flow div,
+.simple-guide div {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 12px 14px;
@@ -226,8 +228,24 @@ p {
   font-weight: 650;
 }
 
-.flow span {
+.flow span,
+.simple-guide span {
   color: var(--muted);
+}
+
+.simple-guide {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.simple-guide div {
+  display: grid;
+  gap: 6px;
+  min-height: 104px;
+}
+
+.simple-guide strong {
+  font-size: 16px;
 }
 
 .plain-list {
@@ -3885,11 +3903,11 @@ body.client-session #clientPortal {
 
 .nav-primary {
   border-bottom: 2px dashed rgba(255, 249, 233, 0.26);
-  padding-bottom: 10px;
+  padding-bottom: 12px;
 }
 
 .nav-group {
-  background: rgba(255, 249, 233, 0.075);
+  background: rgba(255, 249, 233, 0.045);
   border: 2px solid rgba(255, 249, 233, 0.14);
   border-radius: 3px;
   padding: 7px;
@@ -3948,6 +3966,20 @@ body.client-session #clientPortal {
   padding: 8px 10px 8px 24px;
 }
 
+.nav-group:not([open]) {
+  padding: 5px 7px;
+}
+
+.nav-group:not([open]) summary {
+  color: rgba(255, 247, 223, 0.72);
+}
+
+.nav-group[open] {
+  max-height: min(58vh, 560px);
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
 .nav-group .nav-item::before {
   left: 10px;
 }
@@ -3972,6 +4004,10 @@ body.client-session #clientPortal {
 
   .nav-group {
     padding: 6px;
+  }
+
+  .simple-guide {
+    grid-template-columns: 1fr;
   }
 }
 

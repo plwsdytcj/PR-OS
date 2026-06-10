@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/favicon.ico" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260609-4" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260610-1" />
   </head>
   <body>
     <div class="app-shell">
@@ -19,43 +19,31 @@
         </div>
         <nav class="nav" aria-label="主导航">
           <div class="nav-primary">
-            <button class="nav-item active" data-view="workspace">工作台</button>
-            <button class="nav-item" data-view="agentWorkspace">AI Agent</button>
-            <button class="nav-item" data-view="projectRun">新建项目</button>
+            <button class="nav-item active" data-view="workspace">首页</button>
+            <button class="nav-item" data-view="projectRun">新建 PR 需求</button>
+            <button class="nav-item" data-view="kolIntelligence">KOL 图谱</button>
             <button class="nav-item" data-view="creators">达人库</button>
-            <button class="nav-item" data-view="kolIntelligence">达人智能图谱</button>
+            <button class="nav-item" data-view="agentWorkspace">AI Agent</button>
+          </div>
+
+          <details class="nav-group">
+            <summary>更多模块</summary>
             <button class="nav-item" data-view="brief">Brief 推荐</button>
             <button class="nav-item" data-view="platformOS">Campaign OS</button>
             <button class="nav-item" data-view="symbolicOS">符号 OS</button>
-          </div>
-
-          <details class="nav-group" open>
-            <summary>资源与治理</summary>
             <button class="nav-item" data-view="ingest">数据接入</button>
             <button class="nav-item" data-view="knowledge">知识库</button>
             <button class="nav-item" data-view="governance">数据治理</button>
             <button class="nav-item" data-view="creatorCommercial">博主商业档案</button>
-          </details>
-
-          <details class="nav-group">
-            <summary>协作与分发</summary>
             <button class="nav-item" data-view="proposal">方案导出</button>
             <button class="nav-item" data-view="collaboration">客户协作</button>
             <button class="nav-item" data-view="clientPortal">甲方方案页</button>
             <button class="nav-item" data-view="briefDistribution">Brief 分发</button>
-          </details>
-
-          <details class="nav-group">
-            <summary>符号引擎</summary>
             <button class="nav-item" data-view="symbolicCreator">博主符号档案</button>
             <button class="nav-item" data-view="symbolicBrand">品牌符号分析</button>
             <button class="nav-item" data-view="symbolicMatch">符号匹配</button>
             <button class="nav-item" data-view="symbolicGraph">符号图谱</button>
             <button class="nav-item" data-view="stressTest">压力测试</button>
-          </details>
-
-          <details class="nav-group">
-            <summary>系统</summary>
             <button class="nav-item" data-view="organization">组织管理</button>
             <button class="nav-item" data-view="dataSources">数据源设置</button>
           </details>
@@ -90,13 +78,13 @@
         <section id="workspace" class="view active">
           <div class="hero-console">
             <div>
-              <div class="eyebrow">Live project cockpit</div>
-              <h2>从 Excel 到 Campaign OS 的五段式闭环</h2>
-              <p>先把私有达人库跑起来，再接甲方协作、博主商业档案、Brief 分发和投后复盘。</p>
+              <div class="eyebrow">KOL Intelligence Workspace</div>
+              <h2>输入 PR Brief，直接看到 KOL 图谱和推荐理由</h2>
+              <p>先把达人数据变成可解释标签，再用动态图谱展示需求如何命中 KOL、证据和风险。</p>
               <div class="hero-stickers" aria-label="核心玩法">
-                <span>Creator Radar</span>
-                <span>Brief Arcade</span>
-                <span>Case Loop</span>
+                <span>Brief</span>
+                <span>Graph</span>
+                <span>KOL Match</span>
               </div>
             </div>
             <div class="hero-radar" aria-hidden="true">
@@ -123,38 +111,31 @@
 
           <div class="panel">
             <div class="panel-header">
-              <h2>OS Flow</h2>
+              <h2>开始用</h2>
               <button id="loadSampleBtn" class="primary">导入示例数据</button>
             </div>
-            <div class="flow">
-              <div><strong>Phase 1</strong><span>Excel / CSV</span></div>
-              <span>→</span>
-              <div><strong>Phase 1.5</strong><span>符号图谱</span></div>
-              <span>→</span>
-              <div><strong>Phase 2</strong><span>甲方协作</span></div>
-              <span>→</span>
-              <div><strong>Phase 3-4</strong><span>博主响应</span></div>
-              <span>→</span>
-              <div><strong>Phase 5</strong><span>Campaign OS</span></div>
+            <div class="simple-guide">
+              <div><strong>1. 导入达人</strong><span>Excel、手动录入或 API 连接。</span></div>
+              <div><strong>2. 跑 KOL 图谱</strong><span>把标签、证据和风险连成动态图。</span></div>
+              <div><strong>3. 生成推荐</strong><span>输出可解释的 KOL 名单和 brief 方案。</span></div>
             </div>
           </div>
 
           <div class="grid two">
             <div class="panel">
-              <h2>当前能力</h2>
+              <h2>现在能做什么</h2>
               <ul class="plain-list">
-                <li>支持 Excel / CSV、人工录入、链接录入、Mock API、OneAPI Connector。</li>
-                <li>自动生成行业标签、内容能力标签、预算标签和风险提示。</li>
-                <li>按行业、内容能力、传播阶段、报价、风险和数据可信度做匹配评分。</li>
-                <li>Phase 1.5 增加符号档案、品牌符号分析、叙事路径和压力测试。</li>
+                <li>导入达人资料并自动打标签。</li>
+                <li>输入甲方 brief，匹配 KOL 和解释路径。</li>
+                <li>用动态图谱看清标签、证据、风险如何影响推荐。</li>
               </ul>
             </div>
             <div class="panel">
-              <h2>建议演示路径</h2>
+              <h2>最短演示路径</h2>
               <ol class="plain-list">
                 <li>点击导入示例数据。</li>
-                <li>进入 Brief 推荐，使用默认新能源车 brief。</li>
-                <li>查看推荐表与 Markdown 方案。</li>
+                <li>进入 KOL 图谱，输入一个 PR brief。</li>
+                <li>查看动态图谱和右侧推荐卡。</li>
               </ol>
             </div>
           </div>
@@ -1607,6 +1588,6 @@
         </details>
       </section>
     </div>
-    <script src="/static/app.js?v=20260609-4"></script>
+    <script src="/static/app.js?v=20260610-1"></script>
   </body>
 </html>
