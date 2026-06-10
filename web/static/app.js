@@ -14,6 +14,8 @@ const state = {
   activeArtifactDetail: null,
   activeAgentGraphNodeId: "",
   agentPollTimer: null,
+  agentRuntime: null,
+  agentRuntimeComparison: null,
   knowledgeDocuments: [],
   knowledgeStats: null,
   knowledgeSearchResults: [],
@@ -316,6 +318,13 @@ async function loadAgentTasks() {
   state.agentThreads = data.items || [];
   state.agentTasks = state.agentThreads;
   renderAgentTasks();
+}
+
+async function loadAgentRuntime() {
+  if (state.currentIdentity?.user?.user_type === "client") return;
+  const data = await api("/api/agent/runtime");
+  state.agentRuntime = data;
+  renderAgentRuntimeControls();
 }
 
 async function loadKnowledge() {
@@ -782,6 +791,57 @@ function renderAgentTasks() {
         .join("")
     : emptyState("暂无 Agent 会话", "输入一个 PR 需求后会生成 Thread、消息、执行和产物。");
   renderAgentMessages();
+}
+
+function renderAgentRuntimeControls() {
+  const meta = $("#agentRuntimeMeta");
+  const select = $("#agentRuntimeSelect");
+  if (!meta || !select) return;
+  const runtime = state.agentRuntime;
+  if (!runtime) {
+    meta.textContent = "Runtime 状态读取中...";
+    return;
+  }
+  const sdk = (runtime.available_runtimes || []).find((item) => item.name === "openai_agents");
+  const active = runtime.active || {};
+  meta.textContent = `当前默认 ${runtime.active_runtime || "custom"} · ${active.mode || "native"} · SDK ${sdk?.mode || "unknown"}`;
+  select.querySelector('option[value="openai_agents"]').disabled = !(sdk?.available);
+}
+
+function renderAgentRuntimeComparison() {
+  const node = $("#agentRuntimeComparison");
+  if (!node) return;
+  const comparison = state.agentRuntimeComparison;
+  if (!comparison) {
+    node.classList.add("hidden");
+    node.innerHTML = "";
+    return;
+  }
+  const payload = comparison.comparison || {};
+  const runs = payload.runs || {};
+  const runtimeNames = Object.keys(runs);
+  node.classList.remove("hidden");
+  node.innerHTML = `
+    <div class="agent-runtime-comparison-head">
+      <strong>Runtime A/B 对比</strong>
+      <span>${escapeHTML(payload.runtime_a || "custom")} vs ${escapeHTML(payload.runtime_b || "openai_agents")}</span>
+    </div>
+    <div class="runtime-compare-grid">
+      ${runtimeNames
+        .map((name) => {
+          const item = runs[name] || {};
+          return `
+            <article>
+              <span>${escapeHTML(name)}</span>
+              <strong>${escapeHTML(item.status || "-")}</strong>
+              <div class="meta">候选 ${fmtNumber(item.candidate_count || 0)} · 工具 ${fmtNumber(item.tool_count || 0)} · 图谱 ${fmtNumber(item.graph_nodes || 0)}</div>
+              ${item.sdk_status ? `<div class="meta">SDK ${escapeHTML(item.sdk_status)} · ${escapeHTML(item.sdk_message || "")}</div>` : ""}
+            </article>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
 }
 
 function renderAgentRun(data) {
@@ -1308,6 +1368,7 @@ async function reloadAll() {
   await loadGovernance();
   await loadSymbolicEngines();
   await loadAgentTasks();
+  await loadAgentRuntime();
   await loadKnowledge();
   await loadCollaboration();
   await loadOrganization();
@@ -3083,8 +3144,10 @@ function bindEvents() {
     state.activeAgentThread = null;
     state.activeAgentRun = null;
     state.activeAgentArtifacts = [];
+    state.agentRuntimeComparison = null;
     renderAgentTasks();
     renderAgentRun({ events: [], artifacts: [], run: {}, task: {} });
+    renderAgentRuntimeComparison();
     toast("已准备新 Agent 会话");
   });
   $("#refreshKnowledgeBtn")?.addEventListener("click", () => loadKnowledge().then(() => toast("知识库已刷新")));
@@ -3170,6 +3233,33 @@ function bindEvents() {
       }
     }
   });
+  $("#agentCompareRuntimeBtn")?.addEventListener("click", async (event) => {
+    const form = $("#agentChatForm");
+    if (!form) return;
+    const payload = formToObject(form);
+    const button = event.currentTarget;
+    try {
+      button.disabled = true;
+      button.textContent = "对比中...";
+      const data = await api("/api/agent/chat/compare-runtimes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, runtime_a: "custom", runtime_b: "openai_agents", require_plan_approval: false }),
+      });
+      state.agentRuntimeComparison = data;
+      state.activeAgentRun = data.runtime_b;
+      state.activeAgentArtifacts = data.runtime_b?.artifacts || [];
+      renderAgentRun(data.runtime_b);
+      renderAgentRuntimeComparison();
+      await loadAgentTasks();
+      toast("Runtime A/B 对比已完成");
+    } catch (error) {
+      toast(error.message, true);
+    } finally {
+      button.disabled = false;
+      button.textContent = "A/B 对比";
+    }
+  });
   $("#agentApproveBtn")?.addEventListener("click", async (event) => {
     const runId = event.currentTarget.dataset.runId;
     if (!runId) return;
@@ -3182,10 +3272,11 @@ function bindEvents() {
     const runId = event.currentTarget.dataset.runId;
     if (!runId) return;
     const topN = Number($("#agentChatForm")?.elements?.top_n?.value || 8);
+    const runtime = $("#agentRuntimeSelect")?.value || "auto";
     const data = await api(`/api/agent/runs/${runId}/approve-plan`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ top_n: topN }),
+      body: JSON.stringify({ top_n: topN, runtime }),
     });
     renderAgentRun(data);
     await loadAgentTasks();
@@ -3211,10 +3302,11 @@ function bindEvents() {
     const runId = form.dataset.runId;
     if (!runId) return;
     const payload = formToObject(form);
+    const runtime = $("#agentRuntimeSelect")?.value || "auto";
     const data = await api(`/api/agent/runs/${runId}/clarification`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ supplement: payload.supplement, top_n: Number(payload.top_n || 8) }),
+      body: JSON.stringify({ supplement: payload.supplement, top_n: Number(payload.top_n || 8), runtime }),
     });
     form.reset();
     renderAgentRun(data);

@@ -24,6 +24,7 @@ PR AI OS is a local-first MVP for media agencies managing KOL resources, brand b
 - Phase 7H: Manus-like Agent thread chat with message history, linked runs, artifacts, and graph state.
 - Phase 7I-A: replaceable Agent Runtime Adapter boundary.
 - Phase 7I-B: OpenAI Agents SDK POC runtime with PR OS tool calling and native runtime fallback.
+- Phase 7I-C: per-run runtime override and Custom vs Agents SDK A/B comparison.
 - Phase 7 PRD: see `Phase7_Agent_OS_PRD.md` for the Agent OS roadmap from 7A to 7E.
 - Production foundations: workspace-level data isolation, optional access key, centralized data-source status/testing, and pluggable storage/auth adapters.
 
@@ -272,6 +273,17 @@ AGENT_SDK_MODEL=glm-4-flash
 AGENT_SDK_BASE_URL=https://open.bigmodel.cn/api/paas/v4
 ```
 
+## Phase 7I-C Runtime A/B Control
+
+The Agent Workspace can now test runtimes without changing production defaults:
+
+- The Agent Chat form includes a runtime selector: `auto`, `custom`, or `openai_agents`.
+- A single run can override the default runtime through `runtime` in the request payload.
+- `POST /api/agent/chat/compare-runtimes` runs the same brief through `custom` and `openai_agents`.
+- The comparison response includes candidate count, tool count, graph node count, SDK status, both run IDs, and a `runtime_comparison` artifact.
+
+This keeps `AGENT_RUNTIME=custom` as the safe production default while allowing real SDK A/B trials on selected briefs.
+
 ## Phase 7B Streaming Agent Execution
 
 The Agent Workspace now supports a Manus-like live execution loop:
@@ -453,6 +465,7 @@ python3 scripts/smoke_phase7g_agent_reasoning_graph.py
 python3 scripts/smoke_phase7h_agent_threads.py
 python3 scripts/smoke_phase7i_runtime_adapter.py
 python3 scripts/smoke_phase7i_b_agent_sdk.py
+python3 scripts/smoke_phase7i_c_runtime_ab.py
 python3 scripts/smoke_agent_model_provider.py
 python3 scripts/smoke_data_sources.py
 python3 scripts/smoke_storage_adapter.py

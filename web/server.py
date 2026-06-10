@@ -36,7 +36,9 @@ from src.auth.service import (
 )
 from src.auth.storage import init_auth_db, load_all_clients, load_all_project_access, load_all_users, load_client_users_for_client
 from src.agent.runtime import approve_agent_run, cancel_agent_run, commit_agent_memory_suggestion, create_agent_thread, get_agent_run, get_agent_task, get_agent_thread, list_agent_tasks, list_agent_threads
-from src.agent.runtime_adapter import get_runtime_adapter, runtime_status as agent_runtime_status
+from src.agent.runtime_adapter import CUSTOM_RUNTIME, OPENAI_AGENTS_RUNTIME, get_runtime_adapter, requested_runtime_name, runtime_status as agent_runtime_status
+from src.agent.schemas import AgentArtifact, artifact_id_for
+from src.agent.storage import upsert_artifact
 from src.agent.storage import init_agent_db
 from src.connectors.excel_connector import load_table_file
 from src.connectors.link_connector import parse_links
@@ -582,6 +584,64 @@ def agent_runtime() -> dict[str, Any]:
     return agent_runtime_status()
 
 
+def _runtime_from_payload(payload: dict[str, Any]) -> str:
+    return _normalize_runtime_name(str(payload.get("runtime") or payload.get("agent_runtime") or requested_runtime_name()))
+
+
+def _normalize_runtime_name(value: str) -> str:
+    name = value.strip().lower()
+    if name in {"", "default", "auto"}:
+        return requested_runtime_name()
+    if name in {"openai", "openai-agents", "agents_sdk", "agent_sdk"}:
+        return OPENAI_AGENTS_RUNTIME
+    if name in {CUSTOM_RUNTIME, OPENAI_AGENTS_RUNTIME}:
+        return name
+    return requested_runtime_name()
+
+
+def _runtime_comparison_payload(runtime_a: str, first: dict[str, Any], runtime_b: str, second: dict[str, Any]) -> dict[str, Any]:
+    first_metrics = _run_compare_metrics(first)
+    second_metrics = _run_compare_metrics(second)
+    return {
+        "runtime_a": runtime_a,
+        "runtime_b": runtime_b,
+        "runs": {
+            runtime_a: first_metrics,
+            runtime_b: second_metrics,
+        },
+        "delta": {
+            "candidate_count": second_metrics["candidate_count"] - first_metrics["candidate_count"],
+            "tool_count": second_metrics["tool_count"] - first_metrics["tool_count"],
+            "graph_nodes": second_metrics["graph_nodes"] - first_metrics["graph_nodes"],
+            "sdk_runtime_b": second_metrics["sdk_status"],
+        },
+    }
+
+
+def _run_compare_metrics(payload: dict[str, Any]) -> dict[str, Any]:
+    artifacts = payload.get("artifacts") or []
+    events = payload.get("events") or []
+    project = next((item for item in artifacts if item.get("artifact_type") == "project_run"), {})
+    proposal = next((item for item in artifacts if item.get("artifact_type") == "proposal"), {})
+    trace = next((item for item in artifacts if item.get("artifact_type") == "tool_trace"), {})
+    graph = next((item for item in artifacts if item.get("artifact_type") == "reasoning_graph"), {})
+    sdk_event = next((item for item in events if item.get("event_type") == "sdk_runtime" and item.get("status") in {"completed", "failed"}), {})
+    project_summary = (project.get("payload") or {}).get("summary") or {}
+    proposal_summary = (proposal.get("payload") or {}).get("summary") or {}
+    trace_payload = trace.get("payload") or {}
+    graph_summary = (graph.get("payload") or {}).get("summary") or {}
+    return {
+        "run_id": (payload.get("run") or {}).get("run_id", ""),
+        "status": (payload.get("run") or {}).get("status", ""),
+        "candidate_count": int(proposal_summary.get("candidate_count") or project_summary.get("matches") or 0),
+        "project_matches": int(project_summary.get("matches") or 0),
+        "tool_count": int(trace_payload.get("count") or 0),
+        "graph_nodes": int(graph_summary.get("node_count") or project_summary.get("graph_nodes") or 0),
+        "sdk_status": sdk_event.get("status") or "",
+        "sdk_message": sdk_event.get("title") or "",
+    }
+
+
 @app.post("/api/agent/threads")
 async def agent_thread_create(payload: dict[str, Any]) -> dict[str, Any]:
     identity = require_internal("project_run")
@@ -615,7 +675,7 @@ async def agent_thread_message(thread_id: str, payload: dict[str, Any], backgrou
     top_n = int(payload.get("top_n") or 8)
     db_path = _db_path_ctx.get()
     try:
-        adapter = get_runtime_adapter()
+        adapter = get_runtime_adapter(_runtime_from_payload(payload))
         started = adapter.start_thread_message(
             db_path,
             thread_id,
@@ -646,7 +706,7 @@ async def agent_chat(payload: dict[str, Any]) -> dict[str, Any]:
     if not message:
         raise HTTPException(status_code=400, detail="message is required")
     try:
-        return get_runtime_adapter().run_chat(
+        return get_runtime_adapter(_runtime_from_payload(payload)).run_chat(
             DB_PATH,
             message=message,
             task_id=str(payload.get("task_id") or ""),
@@ -669,7 +729,7 @@ async def agent_chat_start(payload: dict[str, Any], background_tasks: Background
     top_n = int(payload.get("top_n") or 8)
     db_path = _db_path_ctx.get()
     try:
-        adapter = get_runtime_adapter()
+        adapter = get_runtime_adapter(_runtime_from_payload(payload))
         started = adapter.start_chat(
             db_path,
             message=message,
@@ -684,6 +744,54 @@ async def agent_chat_start(payload: dict[str, Any], background_tasks: Background
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     background_tasks.add_task(adapter.execute_run, db_path, started["run"]["run_id"], top_n, bool(payload.get("require_plan_approval")))
     return started
+
+
+@app.post("/api/agent/chat/compare-runtimes")
+async def agent_chat_compare_runtimes(payload: dict[str, Any]) -> dict[str, Any]:
+    identity = require_internal("project_run")
+    message = str(payload.get("message") or payload.get("brief") or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
+    top_n = int(payload.get("top_n") or 8)
+    client_name = str(payload.get("client_name") or "")
+    project_name = str(payload.get("project_name") or "")
+    db_path = _db_path_ctx.get()
+    first_runtime = str(payload.get("runtime_a") or CUSTOM_RUNTIME)
+    second_runtime = str(payload.get("runtime_b") or OPENAI_AGENTS_RUNTIME)
+    try:
+        first = get_runtime_adapter(_normalize_runtime_name(first_runtime)).run_chat(
+            db_path,
+            message=message,
+            client_name=client_name,
+            project_name=f"{project_name} · {first_runtime}",
+            top_n=top_n,
+            created_by=identity.user.user_id,
+            require_plan_approval=False,
+        )
+        second = get_runtime_adapter(_normalize_runtime_name(second_runtime)).run_chat(
+            db_path,
+            message=message,
+            client_name=client_name,
+            project_name=f"{project_name} · {second_runtime}",
+            top_n=top_n,
+            created_by=identity.user.user_id,
+            require_plan_approval=False,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    comparison = _runtime_comparison_payload(first_runtime, first, second_runtime, second)
+    artifact = AgentArtifact(
+        artifact_id=artifact_id_for(first["task"]["task_id"], "runtime_comparison", f"{first_runtime}_vs_{second_runtime}"),
+        task_id=first["task"]["task_id"],
+        run_id=first["run"]["run_id"],
+        artifact_type="runtime_comparison",
+        title="Runtime A/B 对比",
+        summary=f"{first_runtime} vs {second_runtime}：候选、耗时、SDK 状态和图谱规模对比。",
+        payload=comparison,
+    )
+    upsert_artifact(db_path, artifact)
+    first = get_agent_run(db_path, first["run"]["run_id"]) or first
+    return {"runtime_a": first, "runtime_b": second, "comparison": comparison, "artifact": artifact.to_dict()}
 
 
 @app.get("/api/agent/runs/{run_id}")
@@ -717,7 +825,7 @@ async def agent_run_approve(run_id: str) -> dict[str, Any]:
 async def agent_run_approve_plan(run_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     require_internal("write")
     try:
-        return get_runtime_adapter().approve_plan(DB_PATH, run_id, top_n=int(payload.get("top_n") or 8))
+        return get_runtime_adapter(_runtime_from_payload(payload)).approve_plan(DB_PATH, run_id, top_n=int(payload.get("top_n") or 8))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -735,7 +843,7 @@ async def agent_run_cancel(run_id: str) -> dict[str, Any]:
 async def agent_run_clarification(run_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     identity = require_internal("project_run")
     try:
-        return get_runtime_adapter().resume_clarification(
+        return get_runtime_adapter(_runtime_from_payload(payload)).resume_clarification(
             DB_PATH,
             run_id,
             supplement=str(payload.get("supplement") or ""),

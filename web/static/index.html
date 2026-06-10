@@ -202,13 +202,21 @@
                   <textarea name="message" required>预算50万，新能源SUV上市预热，目标年轻用户，平台优先小红书和抖音。需要推荐KOL、生成客户可看的方案，并说明主要风险。</textarea>
                   <div class="field-row">
                     <input name="top_n" type="number" value="8" min="3" max="30" />
+                    <select id="agentRuntimeSelect" name="runtime" aria-label="Agent runtime">
+                      <option value="auto">Runtime: Auto</option>
+                      <option value="custom">Custom Native</option>
+                      <option value="openai_agents">Agents SDK</option>
+                    </select>
                     <button id="agentRunBtn" class="primary" type="submit">启动 Agent</button>
+                    <button id="agentCompareRuntimeBtn" class="secondary" type="button">A/B 对比</button>
                   </div>
+                  <p id="agentRuntimeMeta" class="meta">Runtime 状态读取中...</p>
                   <label class="checkline">
                     <input name="require_plan_approval" type="checkbox" />
                     先确认执行计划，再调用工具
                   </label>
                 </form>
+                <div id="agentRuntimeComparison" class="agent-runtime-comparison hidden"></div>
               </div>
 
               <div class="panel agent-run-panel">
