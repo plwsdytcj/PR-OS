@@ -183,6 +183,26 @@ img {
   font-weight: 1000;
 }
 
+.layer-label {
+  flex-wrap: wrap;
+  max-width: 620px;
+  transform: rotate(-1deg);
+}
+
+.layer-label span,
+.layer-label strong {
+  min-width: auto;
+  height: auto;
+  padding: 10px 13px;
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.layer-label strong {
+  background: var(--ink);
+  color: var(--paper);
+}
+
 .label-stack span:nth-child(1) {
   background: var(--acid);
 }
@@ -338,10 +358,14 @@ p {
   z-index: 2;
   display: grid;
   width: min(370px, 74%);
-  grid-template-columns: repeat(3, 1fr);
   overflow: hidden;
   background: var(--paper);
   transform: rotate(-4deg);
+}
+
+.os-layer-card {
+  width: min(430px, 78%);
+  grid-template-columns: 1fr;
 }
 
 .poster-card span,
@@ -356,6 +380,19 @@ p {
   font-weight: 1000;
 }
 
+.os-layer-card span {
+  justify-content: start;
+  min-height: 58px;
+  padding: 0 18px;
+  border-right: 0;
+  border-bottom: 3px solid var(--line);
+  font-size: clamp(18px, 2.2vw, 28px);
+}
+
+.os-layer-card span:last-child {
+  border-bottom: 0;
+}
+
 .poster-card span {
   background: var(--acid);
 }
@@ -366,6 +403,22 @@ p {
 
 .poster-card em {
   border-right: 0;
+  background: var(--rose);
+}
+
+.os-layer-card span:nth-child(1) {
+  background: var(--acid);
+}
+
+.os-layer-card span:nth-child(2) {
+  background: #ffffff;
+}
+
+.os-layer-card span:nth-child(3) {
+  background: var(--mint);
+}
+
+.os-layer-card span:nth-child(4) {
   background: var(--rose);
 }
 
@@ -632,6 +685,11 @@ p {
   .poster-card strong,
   .poster-card em {
     min-height: 84px;
+  }
+
+  .os-layer-card span {
+    min-height: 52px;
+    font-size: 18px;
   }
 
   .floating-note {
