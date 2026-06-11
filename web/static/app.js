@@ -64,6 +64,7 @@ const state = {
   phase82FrameTimer: null,
   kolIntakeResult: null,
   homeBriefConversation: null,
+  homeBriefShare: null,
   projectRun: null,
   projectRunSelectedNodeId: "",
   projectRunStageFilter: "",
@@ -786,6 +787,7 @@ function renderKolIntakeResult(data) {
 
 function renderHomeBriefResult(data) {
   state.homeBriefConversation = data;
+  state.homeBriefShare = null;
   const node = $("#homeBriefResult");
   if (!node) return;
   if (!data) {
@@ -849,13 +851,31 @@ function renderHomeBriefResult(data) {
         <div class="button-row">
           <button class="secondary home-proposal-copy-btn" type="button">复制方案</button>
           <button class="secondary home-proposal-download-btn" type="button">下载方案</button>
+          <button class="secondary home-proposal-share-btn" type="button">生成甲方链接</button>
           <button class="secondary home-proposal-open-btn" type="button">打开方案页</button>
         </div>
       </div>
       <pre>${escapeHTML(proposalPreview)}${proposal.split("\n").length > 18 ? "\n..." : ""}</pre>
+      <div id="homeProposalShareBox" class="home-proposal-share hidden"></div>
     </div>
   `;
   if (finalFrame) renderSymbolicGraphInto("#homeBriefGraphCanvas", finalFrame);
+}
+
+function renderHomeProposalShare(data) {
+  state.homeBriefShare = data;
+  const box = $("#homeProposalShareBox");
+  if (!box) return;
+  const proposal = data?.proposal || {};
+  const shareUrl = proposal.share_url ? new URL(proposal.share_url, window.location.origin).toString() : "";
+  box.classList.toggle("hidden", !shareUrl);
+  box.innerHTML = shareUrl
+    ? `
+      <span>甲方链接</span>
+      <code>${escapeHTML(shareUrl)}</code>
+      <button class="secondary home-share-copy-btn" type="button">复制链接</button>
+    `
+    : "";
 }
 
 function buildHomeBriefProposal(data) {
@@ -4417,6 +4437,34 @@ function bindEvents() {
     }
     if (event.target.closest(".home-proposal-download-btn")) {
       downloadProposal();
+      return;
+    }
+    if (event.target.closest(".home-proposal-share-btn")) {
+      const conversation = state.homeBriefConversation;
+      if (!conversation?.brief) return toast("请先生成 Brief 推荐", true);
+      const data = await api("/api/collaboration/proposals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_name: conversation.client_name || "未命名客户",
+          project_name: conversation.project_name || "KOL 推荐方案",
+          brief: conversation.brief,
+          top_n: Math.max(1, Math.min(12, (conversation.recommendations || []).length || 8)),
+          created_by: "home_brief_chat",
+        }),
+      });
+      renderHomeProposalShare(data);
+      await loadCollaboration();
+      toast("甲方分享链接已生成");
+      return;
+    }
+    const shareCopyButton = event.target.closest(".home-share-copy-btn");
+    if (shareCopyButton) {
+      const shareUrl = state.homeBriefShare?.proposal?.share_url
+        ? new URL(state.homeBriefShare.proposal.share_url, window.location.origin).toString()
+        : "";
+      await copyText(shareUrl);
+      toast("甲方链接已复制");
       return;
     }
     if (event.target.closest(".home-proposal-open-btn")) {
