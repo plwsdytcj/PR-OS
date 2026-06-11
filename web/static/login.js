@@ -62,27 +62,5 @@ function bindLoginForm() {
   });
 }
 
-function bindBootstrapForm() {
-  $("#bootstrapForm")?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    setFeedback("正在创建 admin...", "neutral");
-    try {
-      await api("/api/auth/bootstrap-admin", {
-        method: "POST",
-        body: JSON.stringify({
-          email: form.get("adminEmail"),
-          password: form.get("adminPassword"),
-        }),
-      });
-      setFeedback("Admin 已创建，正在进入工作台。", "success");
-      window.setTimeout(redirectToApp, 250);
-    } catch (error) {
-      setFeedback(error.message || "创建失败", "danger");
-    }
-  });
-}
-
 bindLoginForm();
-bindBootstrapForm();
 checkExistingSession();
