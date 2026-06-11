@@ -795,6 +795,9 @@ function renderHomeBriefResult(data) {
   const frames = data.graph_frames || [];
   const finalFrame = frames[frames.length - 1] || data.graph || null;
   const recommendations = data.recommendations || [];
+  const proposal = buildHomeBriefProposal(data);
+  state.lastProposal = proposal;
+  const proposalPreview = proposal.split("\n").slice(0, 18).join("\n");
   node.innerHTML = `
     <div class="home-brief-meta">
       <span>${escapeHTML(data.project_name || "PR Brief")}</span>
@@ -837,8 +840,66 @@ function renderHomeBriefResult(data) {
           : emptyState("暂无推荐", "先导入 KOL 或补充 brief。")}
       </div>
     </div>
+    <div class="home-brief-proposal">
+      <div class="panel-header">
+        <div>
+          <h3>客户方案草稿</h3>
+          <p>基于本次图谱推荐自动整理，可复制给甲方或继续编辑。</p>
+        </div>
+        <div class="button-row">
+          <button class="secondary home-proposal-copy-btn" type="button">复制方案</button>
+          <button class="secondary home-proposal-download-btn" type="button">下载方案</button>
+          <button class="secondary home-proposal-open-btn" type="button">打开方案页</button>
+        </div>
+      </div>
+      <pre>${escapeHTML(proposalPreview)}${proposal.split("\n").length > 18 ? "\n..." : ""}</pre>
+    </div>
   `;
   if (finalFrame) renderSymbolicGraphInto("#homeBriefGraphCanvas", finalFrame);
+}
+
+function buildHomeBriefProposal(data) {
+  const recommendations = data?.recommendations || [];
+  const lines = [
+    `# ${data?.project_name || "KOL 推荐方案"}`,
+    "",
+    `客户：${data?.client_name || "待确认"}`,
+    "",
+    "## 1. Brief 摘要",
+    "",
+    data?.brief || "待补充 brief。",
+    "",
+    "## 2. 图谱推演结论",
+    "",
+    data?.summary || "系统已完成 KOL 图谱推演。",
+    "",
+    "## 3. 推荐 KOL",
+    "",
+  ];
+  if (!recommendations.length) {
+    lines.push("- 暂无推荐，请补充 KOL 数据或细化 brief。", "");
+  }
+  recommendations.slice(0, 12).forEach((item, index) => {
+    lines.push(
+      `### ${index + 1}. ${item.creator_name || item.creator_id}（${item.platform || "未知平台"}）`,
+      "",
+      `- 推荐等级：${item.recommendation_level || "待判断"}`,
+      `- 匹配分：${item.score || "-"}`,
+      `- 推荐理由：${(item.reasons || []).join("、") || "待补充"}`,
+      `- 证据：${(item.evidence || []).slice(0, 4).join("；") || "待补充"}`,
+      `- 风险：${(item.risk_points || []).join("；") || "暂无明显风险"}`,
+      ""
+    );
+  });
+  lines.push(
+    "## 4. 下一步",
+    "",
+    "1. 媒介复核推荐名单、报价和档期。",
+    "2. 补充真实案例、历史合作和内容样稿。",
+    "3. 与甲方确认平台组合、预算分配和风险边界。",
+    "4. 进入 Campaign Room 跟进执行和投后复盘。"
+  );
+  return lines.join("\n");
 }
 
 function renderSocialReport(report) {
@@ -3595,6 +3656,27 @@ function downloadProposal() {
   URL.revokeObjectURL(url);
 }
 
+async function copyText(value) {
+  const text = String(value || "");
+  if (!text) {
+    toast("没有可复制的内容", true);
+    return;
+  }
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+}
+
 function bindEvents() {
   renderTenantStatus();
   $$(".nav-item").forEach((button) =>
@@ -4323,6 +4405,24 @@ function bindEvents() {
         button.disabled = false;
         button.textContent = "跑图推荐";
       }
+    }
+  });
+
+  $("#homeBriefResult")?.addEventListener("click", async (event) => {
+    const copyButton = event.target.closest(".home-proposal-copy-btn");
+    if (copyButton) {
+      await copyText(state.lastProposal);
+      toast("方案已复制");
+      return;
+    }
+    if (event.target.closest(".home-proposal-download-btn")) {
+      downloadProposal();
+      return;
+    }
+    if (event.target.closest(".home-proposal-open-btn")) {
+      setView("proposal");
+      $("#proposalOutput").value = state.lastProposal || "";
+      toast("已打开方案页");
     }
   });
 

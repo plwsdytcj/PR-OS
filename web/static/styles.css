@@ -324,6 +324,33 @@ p {
   margin: 0;
 }
 
+.home-brief-proposal {
+  background: #fffdf4;
+  border: 2px solid rgba(23, 18, 13, 0.14);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.home-brief-proposal .panel-header {
+  margin-bottom: 10px;
+}
+
+.home-brief-proposal h3 {
+  margin: 0;
+}
+
+.home-brief-proposal pre {
+  background: rgba(255, 255, 255, 0.66);
+  border: 1px solid rgba(23, 18, 13, 0.12);
+  border-radius: 8px;
+  color: var(--ink);
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
 .kol-intake-panel {
   margin-bottom: 16px;
 }
