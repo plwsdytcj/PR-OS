@@ -248,6 +248,82 @@ p {
   font-size: 16px;
 }
 
+.home-brief-panel {
+  margin-bottom: 16px;
+}
+
+.home-brief-form textarea {
+  min-height: 118px;
+}
+
+.home-brief-result {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.home-brief-meta {
+  background: #fffdf4;
+  border: 2px solid rgba(23, 18, 13, 0.14);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.home-brief-meta span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.home-brief-meta strong {
+  line-height: 1.45;
+}
+
+.home-brief-steps {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.home-brief-step {
+  background: #f9fbfd;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  min-height: 68px;
+  padding: 10px;
+}
+
+.home-brief-step span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.home-brief-output {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(320px, 1.25fr) minmax(260px, 0.85fr);
+}
+
+.home-brief-graph {
+  min-height: 360px;
+}
+
+.home-brief-recs {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.home-brief-rec {
+  margin: 0;
+}
+
 .kol-intake-panel {
   margin-bottom: 16px;
 }
@@ -4065,7 +4141,9 @@ body.client-session #clientPortal {
   }
 
   .field-row.three,
-  .kol-intake-summary {
+  .kol-intake-summary,
+  .home-brief-output,
+  .home-brief-steps {
     grid-template-columns: 1fr;
   }
 }

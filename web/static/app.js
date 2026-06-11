@@ -63,6 +63,7 @@ const state = {
   phase82ActiveFrame: 0,
   phase82FrameTimer: null,
   kolIntakeResult: null,
+  homeBriefConversation: null,
   projectRun: null,
   projectRunSelectedNodeId: "",
   projectRunStageFilter: "",
@@ -781,6 +782,63 @@ function renderKolIntakeResult(data) {
         : ""
     }
   `;
+}
+
+function renderHomeBriefResult(data) {
+  state.homeBriefConversation = data;
+  const node = $("#homeBriefResult");
+  if (!node) return;
+  if (!data) {
+    node.innerHTML = "";
+    return;
+  }
+  const frames = data.graph_frames || [];
+  const finalFrame = frames[frames.length - 1] || data.graph || null;
+  const recommendations = data.recommendations || [];
+  node.innerHTML = `
+    <div class="home-brief-meta">
+      <span>${escapeHTML(data.project_name || "PR Brief")}</span>
+      <strong>${escapeHTML(data.summary || "已完成 KOL 推演。")}</strong>
+    </div>
+    <div class="home-brief-steps">
+      ${(data.steps || [])
+        .map(
+          (step, index) => `
+            <div class="home-brief-step">
+              <span>${String(index + 1).padStart(2, "0")}</span>
+              <strong>${escapeHTML(step.label || step.id)}</strong>
+            </div>
+          `
+        )
+        .join("")}
+    </div>
+    <div class="home-brief-output">
+      <div id="homeBriefGraphCanvas" class="symbolic-graph home-brief-graph"></div>
+      <div class="home-brief-recs">
+        ${recommendations.length
+          ? recommendations
+              .slice(0, 5)
+              .map(
+                (item, index) => `
+                  <article class="phase8-prediction-card home-brief-rec">
+                    <div class="rank-badge">${String(index + 1).padStart(2, "0")}</div>
+                    <div>
+                      <div class="phase8-card-head">
+                        <strong>${escapeHTML(item.creator_name || item.creator_id)}</strong>
+                        <span class="status-pill ok">${escapeHTML(item.recommendation_level || "")} · ${escapeHTML(item.score || "")}</span>
+                      </div>
+                      <p>${escapeHTML(item.platform || "未知平台")}</p>
+                      <div class="tag-list">${(item.reasons || []).slice(0, 5).map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`).join("")}</div>
+                    </div>
+                  </article>
+                `
+              )
+              .join("")
+          : emptyState("暂无推荐", "先导入 KOL 或补充 brief。")}
+      </div>
+    </div>
+  `;
+  if (finalFrame) renderSymbolicGraphInto("#homeBriefGraphCanvas", finalFrame);
 }
 
 function renderSocialReport(report) {
@@ -4239,6 +4297,33 @@ function bindEvents() {
     await api("/api/import/sample", { method: "POST" });
     await reloadAll();
     toast("示例数据已导入");
+  });
+
+  $("#homeBriefForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const payload = formToObject(event.currentTarget);
+    payload.top_n = Number(payload.top_n || 5);
+    const button = $("#homeBriefSubmitBtn");
+    if (button) {
+      button.disabled = true;
+      button.textContent = "推演中...";
+    }
+    try {
+      const data = await api("/api/kol-intelligence/conversation/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      renderHomeBriefResult(data);
+      renderPhase82Conversation(data);
+      if (data.prediction) renderPhase8Prediction(data.prediction);
+      toast("Brief 图谱和 KOL 推荐已生成");
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = "跑图推荐";
+      }
+    }
   });
 
   $("#kolIntakeForm")?.addEventListener("submit", async (event) => {

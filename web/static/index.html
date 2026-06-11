@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/favicon.ico" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260611-1" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260611-2" />
   </head>
   <body>
     <div class="app-shell">
@@ -92,6 +92,25 @@
               <span></span>
               <span></span>
             </div>
+          </div>
+
+          <div class="panel home-brief-panel">
+            <div class="panel-header">
+              <div>
+                <h2>PR Brief Chat</h2>
+                <p>把甲方需求丢进来，直接跑 KOL 图谱和推荐名单。</p>
+              </div>
+            </div>
+            <form id="homeBriefForm" class="form home-brief-form">
+              <div class="field-row three">
+                <input name="client_name" value="Demo 客户" placeholder="客户 / 品牌" />
+                <input name="project_name" value="新品预热" placeholder="项目名称" />
+                <button id="homeBriefSubmitBtn" class="primary" type="submit">跑图推荐</button>
+              </div>
+              <textarea name="message" required>新能源汽车品牌做 SUV 新品上市预热，目标年轻家庭，强调智驾、家庭安全、城市通勤和真实体验，平台优先小红书、抖音、B站。</textarea>
+              <input name="top_n" type="number" value="5" min="1" max="20" aria-label="推荐数量" />
+            </form>
+            <div id="homeBriefResult" class="home-brief-result"></div>
           </div>
 
           <div class="panel kol-intake-panel">
@@ -1612,6 +1631,6 @@
         </details>
       </section>
     </div>
-    <script src="/static/app.js?v=20260611-1"></script>
+    <script src="/static/app.js?v=20260611-2"></script>
   </body>
 </html>
