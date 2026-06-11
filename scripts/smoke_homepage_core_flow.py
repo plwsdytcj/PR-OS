@@ -14,11 +14,14 @@ from web.server import app
 
 
 TENANT = f"homepage-core-flow-smoke-{uuid4().hex[:8]}"
+ADMIN_EMAIL = "homepage-core-flow-smoke@pr-ai-os.local"
+ADMIN_PASSWORD = "homepage-core-flow-password"
 HEADERS = {"X-Tenant-ID": TENANT}
 
 
 def main() -> None:
     client = TestClient(app)
+    _ensure_auth(client)
 
     intake = client.post(
         "/api/kol-intake",
@@ -103,6 +106,19 @@ def main() -> None:
         f"recommendations={len(conversation_body['recommendations'])} "
         f"candidates={len(share_body['candidates'])}"
     )
+
+
+def _ensure_auth(client: TestClient) -> None:
+    payload = {
+        "email": ADMIN_EMAIL,
+        "password": ADMIN_PASSWORD,
+        "name": "Homepage Core Flow Smoke",
+    }
+    response = client.post("/api/auth/bootstrap-admin", headers=HEADERS, json=payload)
+    if response.status_code == 200:
+        return
+    login = client.post("/api/auth/login", headers=HEADERS, json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
+    assert login.status_code == 200, login.text
 
 
 if __name__ == "__main__":
