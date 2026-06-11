@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/favicon.ico" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260610-1" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260611-1" />
   </head>
   <body>
     <div class="app-shell">
@@ -92,6 +92,30 @@
               <span></span>
               <span></span>
             </div>
+          </div>
+
+          <div class="panel kol-intake-panel">
+            <div class="panel-header">
+              <div>
+                <h2>新增 KOL</h2>
+                <p>粘贴资料、上传表格或截图，系统会建档并生成证据标签。</p>
+              </div>
+            </div>
+            <form id="kolIntakeForm" class="form kol-intake-form">
+              <div class="field-row three">
+                <select name="input_type" aria-label="录入类型">
+                  <option value="text">粘贴文字</option>
+                  <option value="file">上传 Excel / CSV</option>
+                  <option value="image">上传图片</option>
+                  <option value="auto">自动判断</option>
+                </select>
+                <input name="name" placeholder="达人名（图片可选）" />
+                <button id="kolIntakeSubmitBtn" class="primary" type="submit">识别并打标签</button>
+              </div>
+              <textarea name="text" placeholder="例：达人：小红书美妆测评 KOL&#10;平台：小红书｜粉丝：12.3万｜报价：18000&#10;内容：真实测评、成分分析、新品种草&#10;适合：新品预热、信任背书&#10;风险：硬广比例需要控制"></textarea>
+              <input name="file" type="file" accept=".csv,.xlsx,.xls,image/*" />
+            </form>
+            <div id="kolIntakeResult" class="kol-intake-result"></div>
           </div>
 
           <div class="metrics">
@@ -1588,6 +1612,6 @@
         </details>
       </section>
     </div>
-    <script src="/static/app.js?v=20260610-1"></script>
+    <script src="/static/app.js?v=20260611-1"></script>
   </body>
 </html>

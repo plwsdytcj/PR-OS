@@ -29,6 +29,7 @@ PR AI OS is a local-first MVP for media agencies managing KOL resources, brand b
 - Phase 8: KOL Intelligence Graph with evidence-based creator tags, graph evolution, and brief-driven prediction recommendations.
 - Phase 8.1: KOL Evidence Review with tag confirmation, rejection, reviewer notes, weight adjustments, and creator detail evidence tags.
 - Phase 8.2: Conversational KOL Graph Workspace with chat-driven graph frames and final KOL decision cards.
+- KOL Intake: one unified entry for pasted text, Excel/CSV files, and screenshots/images; it creates creator profiles, derives evidence tags, and refreshes the KOL graph.
 - Phase 8 PRD: see `Phase8_KOL_Intelligence_PRD.md`.
 - Phase 8.1 PRD: see `Phase8_1_KOL_Evidence_Review_PRD.md`.
 - Phase 8.2 PRD: see `Phase8_2_Conversational_KOL_Graph_PRD.md`.
@@ -151,6 +152,7 @@ The `达人智能图谱` page is the core KOL intelligence layer:
 - `GET /api/kol-intelligence/review-queue`: review suggested, confirmed, rejected, or evidence-needed tags.
 - `PATCH /api/kol-intelligence/tags/{tag_id}` and `POST /api/kol-intelligence/tags/bulk-review`: confirm, reject, request more evidence, or tune tag weight.
 - `POST /api/kol-intelligence/conversation/run`: run the chat-driven KOL graph workspace and return messages, graph frames, and final KOL decisions.
+- `POST /api/kol-intake`: unified KOL intake for text, Excel/CSV, and image uploads; returns created creators, generated evidence tags, and graph summary.
 - `POST /api/kol-intelligence/graph`: build the brief-to-tag-to-KOL knowledge graph and evolution steps.
 - `POST /api/kol-intelligence/predict`: activate tags from a PR brief and return KOL recommendations with evidence and risks.
 - `GET /api/kol-intelligence`: inspect current tag, graph, and prediction snapshot.

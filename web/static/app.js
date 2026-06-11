@@ -62,6 +62,7 @@ const state = {
   phase82Messages: [],
   phase82ActiveFrame: 0,
   phase82FrameTimer: null,
+  kolIntakeResult: null,
   projectRun: null,
   projectRunSelectedNodeId: "",
   projectRunStageFilter: "",
@@ -726,6 +727,60 @@ function renderPhase82Recommendations() {
         )
         .join("")
     : emptyState("暂无推荐", "运行对话图谱后会出现 KOL 决策卡。");
+}
+
+function renderKolIntakeResult(data) {
+  state.kolIntakeResult = data;
+  const node = $("#kolIntakeResult");
+  if (!node) return;
+  if (!data) {
+    node.innerHTML = "";
+    return;
+  }
+  const creators = data.creators || [];
+  const tagSummary = data.tag_summary || [];
+  const patchKeys = Object.keys(data.suggested_patch || data.parsed_fields || {});
+  node.innerHTML = `
+    <div class="kol-intake-summary">
+      <div>
+        <span>已建档</span>
+        <strong>${fmtNumber(data.imported)}</strong>
+      </div>
+      <div>
+        <span>证据标签</span>
+        <strong>${fmtNumber(tagSummary.reduce((sum, item) => sum + Number(item.tag_count || 0), 0))}</strong>
+      </div>
+      <div>
+        <span>图谱节点</span>
+        <strong>${fmtNumber(data.graph_summary?.nodes || 0)}</strong>
+      </div>
+    </div>
+    <div class="kol-intake-cards">
+      ${creators
+        .map((creator) => {
+          const summary = tagSummary.find((item) => item.creator_id === creator.creator_id) || {};
+          const tags = (summary.tags || []).slice(0, 8).map((tag) => tag.tag || tag.category || "");
+          return `
+            <article class="creator-card kol-intake-card">
+              <div class="card-kicker">${escapeHTML(data.source || "intake")} · ${escapeHTML(creator.platform || "未知平台")}</div>
+              <div class="creator-card-head">
+                <h3>${escapeHTML(creator.name || "未命名 KOL")}</h3>
+                <button class="secondary open-creator-btn" data-creator-id="${escapeHTML(creator.creator_id)}" type="button">详情</button>
+              </div>
+              <div class="meta">粉丝 ${fmtNumber(creator.follower_count)} · 报价 ${fmtNumber(creator.listed_price)}</div>
+              <p>${escapeHTML(creator.ai_summary || creator.bio || "已完成基础画像。")}</p>
+              <div class="tag-list">${tags.map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`).join("")}</div>
+            </article>
+          `;
+        })
+        .join("")}
+    </div>
+    ${
+      patchKeys.length
+        ? `<div class="meta">识别字段：${patchKeys.map((key) => escapeHTML(key)).join(" / ")}</div>`
+        : ""
+    }
+  `;
 }
 
 function renderSocialReport(report) {
@@ -4184,6 +4239,28 @@ function bindEvents() {
     await api("/api/import/sample", { method: "POST" });
     await reloadAll();
     toast("示例数据已导入");
+  });
+
+  $("#kolIntakeForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const body = new FormData(form);
+    const button = $("#kolIntakeSubmitBtn");
+    if (button) {
+      button.disabled = true;
+      button.textContent = "识别中...";
+    }
+    try {
+      const data = await api("/api/kol-intake", { method: "POST", body });
+      renderKolIntakeResult(data);
+      await reloadAll();
+      toast(`已建档 ${data.imported} 个 KOL，并生成证据标签`);
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = "识别并打标签";
+      }
+    }
   });
 
   $("#fileForm").addEventListener("submit", async (event) => {

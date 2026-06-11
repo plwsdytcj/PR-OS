@@ -146,7 +146,7 @@ from src.platform_os.service import (
 from src.platform_os.storage import init_platform_db, load_all_campaign_projects, load_campaign_project, upsert_campaign_project
 from src.project_run.service import run_pr_project
 from src.report.proposal_generator import generate_markdown_proposal
-from src.schemas import CreatorProfile
+from src.schemas import CreatorProfile, split_tags
 from src.simulation.llm_fallback import LlmFallbackStressTest
 from src.simulation.mirofish_adapter import MiroFishCliAdapter
 from src.llm.glm_client import GlmClient
@@ -522,6 +522,114 @@ def _quality_report(profiles: list[CreatorProfile], sheet_counts: dict[str, int]
             "bio": round((total - sum(1 for profile in profiles if not profile.bio)) / total, 3) if total else 0,
         },
     }
+
+
+def _number_from_text(text: str) -> int:
+    value = str(text or "").strip().replace(",", "")
+    multiplier = 1
+    if "万" in value or "w" in value.lower():
+        multiplier = 10_000
+    elif "k" in value.lower():
+        multiplier = 1_000
+    elif "m" in value.lower():
+        multiplier = 1_000_000
+    match = re.search(r"\d+(?:\.\d+)?", value)
+    return int(float(match.group(0)) * multiplier) if match else 0
+
+
+def _float_from_text(text: str) -> float:
+    match = re.search(r"\d+(?:\.\d+)?", str(text or ""))
+    if not match:
+        return 0.0
+    number = float(match.group(0))
+    return number / 100 if "%" in str(text) else number
+
+
+def _field_after_label(text: str, labels: list[str]) -> str:
+    for label in labels:
+        pattern = rf"{re.escape(label)}\s*[:：]\s*([^\n|；;]+)"
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    return ""
+
+
+def _parse_creator_text(text: str, fallback_name: str = "") -> dict[str, Any]:
+    text = str(text or "").strip()
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    name = _field_after_label(text, ["达人", "达人名", "名称", "账号", "昵称", "name"]) or fallback_name
+    if not name and lines:
+        name = re.sub(r"^(达人|账号|名称|name)\s*[:：]\s*", "", lines[0], flags=re.IGNORECASE).strip()
+    platform = _field_after_label(text, ["平台", "渠道", "platform"])
+    if not platform:
+        for candidate in ["小红书", "抖音", "B站", "bilibili", "快手", "微博", "视频号", "公众号"]:
+            if candidate.lower() in text.lower():
+                platform = "B站" if candidate.lower() == "bilibili" else candidate
+                break
+    follower_count = _number_from_text(_field_after_label(text, ["粉丝", "粉丝数", "粉丝量", "followers", "fans"]))
+    listed_price = _number_from_text(_field_after_label(text, ["报价", "价格", "刊例", "price"]))
+    engagement_rate = _float_from_text(_field_after_label(text, ["互动率", "engagement"]))
+    content_tags = split_tags(_field_after_label(text, ["内容", "内容方向", "内容能力", "标签", "达人标签"]))
+    industry_tags = split_tags(_field_after_label(text, ["行业", "垂类", "品类", "适合行业"]))
+    suitable_goals = split_tags(_field_after_label(text, ["适合", "目标", "传播目标", "适合目标"]))
+    risk_tags = split_tags(_field_after_label(text, ["风险", "注意", "风险点"]))
+    bio = _field_after_label(text, ["简介", "bio", "账号简介"]) or text[:280]
+    payload = {
+        "name": name or "未命名 KOL",
+        "platform": platform or "未知",
+        "bio": bio,
+        "follower_count": follower_count,
+        "listed_price": listed_price,
+        "engagement_rate": engagement_rate,
+        "industry_fit_tags": industry_tags,
+        "content_capability_tags": content_tags,
+        "suitable_goals": suitable_goals,
+        "risk_tags": risk_tags,
+        "manual_notes": text,
+    }
+    return {key: value for key, value in payload.items() if value not in ["", [], 0, 0.0]}
+
+
+def _profiles_from_payloads(items: list[dict[str, Any]], source: str) -> list[CreatorProfile]:
+    if not items:
+        return []
+    profiles = map_dataframe_to_profiles(pd.DataFrame(items), source=source)
+    return enrich_profiles(profiles)
+
+
+def _intake_tag_summary(profiles: list[CreatorProfile]) -> list[dict[str, Any]]:
+    result = []
+    for profile in profiles:
+        tags = list_creator_evidence_tags(DB_PATH, creator_id=profile.creator_id)
+        result.append(
+            {
+                "creator_id": profile.creator_id,
+                "creator_name": profile.name,
+                "platform": profile.platform,
+                "tags": [tag.to_dict() if hasattr(tag, "to_dict") else dict(tag) for tag in tags[:12]],
+                "tag_count": len(tags),
+            }
+        )
+    return result
+
+
+def _kol_intake_response(profiles: list[CreatorProfile], source: str, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+    for profile in profiles:
+        analyze_creator_evidence_tags(DB_PATH, creator_id=profile.creator_id, limit=200)
+    graph = build_kol_knowledge_graph(DB_PATH, limit=80).to_dict() if profiles else {"nodes": [], "edges": []}
+    response = {
+        "source": source,
+        "imported": len(profiles),
+        "creators": [profile_payload(profile) for profile in profiles],
+        "tag_summary": _intake_tag_summary(profiles),
+        "graph_summary": {
+            "nodes": len(graph.get("nodes") or []),
+            "edges": len(graph.get("edges") or []),
+        },
+    }
+    if extra:
+        response.update(extra)
+    return response
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -1967,6 +2075,110 @@ async def import_links(payload: dict[str, Any]) -> dict[str, Any]:
     profiles = enrich_profiles(parse_links(lines))
     upsert_profiles(DB_PATH, profiles)
     return {"imported": len(profiles)}
+
+
+@app.post("/api/kol-intake")
+async def kol_intake(
+    input_type: str = Form("auto"),
+    text: str = Form(""),
+    name: str = Form(""),
+    replace: bool = Form(False),
+    file: UploadFile | None = File(None),
+) -> dict[str, Any]:
+    content = await file.read() if file is not None else b""
+    filename = file.filename if file is not None else ""
+    content_type = file.content_type or guess_content_type(filename or "upload") if file is not None else ""
+    mode = (input_type or "auto").strip().lower()
+    if mode == "auto":
+        if content and content_type.startswith("image/"):
+            mode = "image"
+        elif content:
+            mode = "file"
+        else:
+            mode = "text"
+
+    if mode == "text":
+        payload = _parse_creator_text(text, fallback_name=name)
+        profiles = _profiles_from_payloads([payload], source="kol_intake:text")
+        if not profiles:
+            raise HTTPException(status_code=400, detail="未识别到可保存的 KOL 信息")
+        upsert_profiles(DB_PATH, profiles)
+        return _kol_intake_response(profiles, "text", {"parsed_fields": payload})
+
+    if mode == "file":
+        if not content:
+            raise HTTPException(status_code=400, detail="file is required")
+        source_object = _store_uploaded_object(content, filename or "upload", category="kol-intake")
+        holder = BytesIO(content)
+        holder.name = filename or "upload"
+        tables = load_table_file(holder)
+        if not tables:
+            raise HTTPException(status_code=400, detail="未识别到可导入的表格")
+        profiles: list[CreatorProfile] = []
+        sheet_counts: dict[str, int] = {}
+        for sheet_name, df in tables.items():
+            sheet_profiles = map_dataframe_to_profiles(df, source=f"kol_intake:file:{sheet_name}", column_mapping=infer_column_mapping(df))
+            profiles.extend(sheet_profiles)
+            sheet_counts[sheet_name] = len(sheet_profiles)
+        profiles, dedupe_report = strong_dedupe_profiles(profiles)
+        profiles = enrich_profiles(profiles)
+        if replace:
+            replace_profiles(DB_PATH, profiles)
+        else:
+            upsert_profiles(DB_PATH, profiles)
+        return _kol_intake_response(
+            profiles,
+            "file",
+            {
+                "sheet_counts": sheet_counts,
+                "source_object": source_object,
+                "quality_report": _quality_report(profiles, sheet_counts, []) | {"dedupe": dedupe_report},
+            },
+        )
+
+    if mode == "image":
+        if not content:
+            raise HTTPException(status_code=400, detail="image file is required")
+        if not content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="only image uploads are supported")
+        stored = _store_uploaded_object(content, filename or "creator-image", category="creator-media")
+        seed_payload = _parse_creator_text(text, fallback_name=name or Path(filename or "图片达人").stem)
+        seed_profiles = _profiles_from_payloads([seed_payload], source="kol_intake:image_seed")
+        if not seed_profiles:
+            raise HTTPException(status_code=400, detail="未识别到图片对应的达人名称")
+        profile = seed_profiles[0]
+        analysis = analyze_creator_image(
+            content,
+            content_type,
+            filename=filename or "",
+            context={
+                "creator_id": profile.creator_id,
+                "name": profile.name,
+                "platform": profile.platform,
+                "bio": profile.bio,
+            },
+        )
+        patch = analysis.get("extracted_fields") if isinstance(analysis.get("extracted_fields"), dict) else {}
+        merged_payload = seed_payload | {key: value for key, value in patch.items() if value not in ["", [], 0, 0.0]}
+        if not merged_payload.get("name"):
+            merged_payload["name"] = profile.name
+        profiles = _profiles_from_payloads([merged_payload], source="kol_intake:image")
+        if not profiles:
+            profiles = [profile]
+        updated = _append_creator_media_asset(profiles[0], stored, image_type=analysis.get("image_type", "unknown"))
+        upsert_profiles(DB_PATH, [updated])
+        return _kol_intake_response(
+            [updated],
+            "image",
+            {
+                "image_analysis": analysis,
+                "suggested_patch": patch,
+                "source_object": stored,
+                "parsed_fields": merged_payload,
+            },
+        )
+
+    raise HTTPException(status_code=400, detail="input_type must be auto, text, file, or image")
 
 
 @app.post("/api/import/manual")
