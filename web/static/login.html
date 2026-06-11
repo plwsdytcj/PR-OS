@@ -9,8 +9,8 @@
       content="Login to Kolness PR AI OS as an internal PR team member or client reviewer."
     />
     <link rel="icon" href="/favicon.ico" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/login.css?v=20260609-4" />
-    <script src="/static/login.js?v=20260609-4" defer></script>
+    <link rel="stylesheet" href="/static/login.css?v=20260611-1" />
+    <script src="/static/login.js?v=20260611-1" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#loginForm">跳到登录表单</a>
@@ -25,29 +25,18 @@
         </a>
 
         <div class="hero-copy">
-          <p class="eyebrow">Identity router</p>
-          <h1 id="loginHeroTitle">一个入口，进入两种 PR 工作空间。</h1>
+          <p class="eyebrow">Kolness Access</p>
+          <h1 id="loginHeroTitle">一个入口，自动进入你的 PR 工作空间。</h1>
           <p>
-            内部团队进入完整 PR OS，甲方客户进入项目 Portal。系统会根据账号权限自动切换视图。
+            内部团队进入完整 PR OS，甲方客户进入项目 Portal。你只需要登录，系统会根据账号权限自动分流。
           </p>
-        </div>
-
-        <div class="role-grid" aria-label="选择登录身份">
-          <button class="role-card active" type="button" data-role-tab="internal">
-            <span>内部团队</span>
-            <strong>Agent / 达人库 / Campaign OS</strong>
-          </button>
-          <button class="role-card" type="button" data-role-tab="client">
-            <span>甲方客户</span>
-            <strong>方案确认 / KOL 候选 / 反馈</strong>
-          </button>
         </div>
       </section>
 
       <section class="login-panel" aria-labelledby="loginTitle">
-        <div class="panel-tag" id="loginModePill">内部团队</div>
-        <h2 id="loginTitle">登录 PR AI OS</h2>
-        <p id="loginHelp">进入内部工作台，处理 brief、达人匹配、推理图谱和客户项目。</p>
+        <div class="panel-tag" id="loginModePill">Identity required</div>
+        <h2 id="loginTitle">登录 Kolness</h2>
+        <p id="loginHelp">同一个入口支持内部成员和甲方账号，登录后自动进入对应视图。</p>
 
         <form id="loginForm" class="auth-form">
           <label>
@@ -78,7 +67,12 @@
           </form>
         </details>
 
-        <a class="back-link" href="/">返回落地页</a>
+        <div class="login-hint-grid" aria-label="登录后视图">
+          <span>Internal OS</span>
+          <span>Client Portal</span>
+        </div>
+
+        <a class="back-link" href="/">返回首页</a>
       </section>
     </main>
   </body>

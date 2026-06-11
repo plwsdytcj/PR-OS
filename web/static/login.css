@@ -353,3 +353,124 @@ input:focus {
     min-height: 118px;
   }
 }
+
+/* Clean single-entry login refresh */
+:root {
+  --paper: #fffdf6;
+  --surface: #f3ead7;
+  --ink: #14110d;
+  --muted: #6b6256;
+  --line: #14110d;
+  --acid: #f4d655;
+  --mint: #57b89d;
+  --blue: #2f61ff;
+  --radius: 8px;
+}
+
+body {
+  background:
+    linear-gradient(90deg, rgba(20, 17, 13, 0.045) 1px, transparent 1px) 0 0 / 44px 44px,
+    linear-gradient(180deg, #fffdf6 0%, #f6efdf 100%);
+}
+
+.login-shell {
+  grid-template-columns: minmax(0, 0.95fr) minmax(360px, 480px);
+  gap: clamp(22px, 4vw, 52px);
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+.brand-panel,
+.login-panel {
+  border-width: 3px;
+  box-shadow: 9px 9px 0 var(--line);
+}
+
+.brand-panel {
+  min-height: min(600px, calc(100vh - 96px));
+  background:
+    linear-gradient(130deg, rgba(244, 214, 85, 0.24), transparent 36%),
+    linear-gradient(320deg, rgba(87, 184, 157, 0.24), transparent 42%),
+    var(--paper);
+}
+
+.hero-copy {
+  margin: auto 0;
+}
+
+h1 {
+  max-width: 760px;
+  font-size: clamp(42px, 7vw, 82px);
+  line-height: 0.94;
+}
+
+.hero-copy p {
+  max-width: 680px;
+}
+
+.login-panel {
+  align-self: center;
+  background: rgba(255, 253, 246, 0.94);
+}
+
+.panel-tag {
+  box-shadow: 3px 3px 0 var(--line);
+}
+
+.auth-form {
+  gap: 16px;
+}
+
+input {
+  border-width: 2px;
+  min-height: 56px;
+}
+
+.primary-action,
+.secondary-action {
+  border-width: 2px;
+  box-shadow: 5px 5px 0 var(--acid);
+}
+
+.primary-action {
+  background: var(--ink);
+}
+
+.bootstrap-box {
+  border-width: 2px;
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.login-hint-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.login-hint-grid span {
+  border: 2px solid rgba(20, 17, 13, 0.14);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 950;
+  padding: 10px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+@media (max-width: 980px) {
+  .login-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .brand-panel {
+    min-height: 360px;
+  }
+}
+
+@media (max-width: 640px) {
+  .login-hint-grid {
+    grid-template-columns: 1fr;
+  }
+}

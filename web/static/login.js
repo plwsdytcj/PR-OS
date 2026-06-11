@@ -1,35 +1,10 @@
-const modeCopy = {
-  internal: {
-    pill: "内部团队",
-    title: "登录 PR AI OS",
-    help: "进入内部工作台，处理 brief、达人匹配、推理图谱和客户项目。",
-  },
-  client: {
-    pill: "甲方客户",
-    title: "登录项目 Portal",
-    help: "查看项目方案、候选 KOL、推荐理由和需要确认的传播信息。",
-  },
-};
-
 const $ = (selector) => document.querySelector(selector);
-
-let currentMode = "internal";
 
 function setFeedback(message, tone = "neutral") {
   const node = $("#loginFeedback");
   if (!node) return;
   node.textContent = message || "";
   node.dataset.tone = tone;
-}
-
-function setMode(mode) {
-  currentMode = modeCopy[mode] ? mode : "internal";
-  document.querySelectorAll("[data-role-tab]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.roleTab === currentMode);
-  });
-  $("#loginModePill").textContent = modeCopy[currentMode].pill;
-  $("#loginTitle").textContent = modeCopy[currentMode].title;
-  $("#loginHelp").textContent = modeCopy[currentMode].help;
 }
 
 async function api(path, options = {}) {
@@ -50,7 +25,7 @@ async function api(path, options = {}) {
 }
 
 function redirectToApp() {
-  window.location.href = "/app?v=20260609-4";
+  window.location.href = "/app?v=20260611-5";
 }
 
 async function checkExistingSession() {
@@ -63,12 +38,6 @@ async function checkExistingSession() {
   } catch {
     setFeedback("");
   }
-}
-
-function bindRoleTabs() {
-  document.querySelectorAll("[data-role-tab]").forEach((button) => {
-    button.addEventListener("click", () => setMode(button.dataset.roleTab));
-  });
 }
 
 function bindLoginForm() {
@@ -114,8 +83,6 @@ function bindBootstrapForm() {
   });
 }
 
-bindRoleTabs();
 bindLoginForm();
 bindBootstrapForm();
-setMode("internal");
 checkExistingSession();
