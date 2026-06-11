@@ -25,7 +25,7 @@ async function api(path, options = {}) {
 }
 
 function redirectToApp() {
-  window.location.href = "/app?v=20260611-5";
+  window.location.href = "/app?v=20260611-6";
 }
 
 async function checkExistingSession() {
