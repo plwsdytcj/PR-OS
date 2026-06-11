@@ -320,6 +320,7 @@ def request_write_method_hint(path: str) -> bool:
             "/symbolic/",
             "/distribution/",
             "/creator-commercial/",
+            "/kol-intake",
         ]
     )
 
@@ -2085,6 +2086,7 @@ async def kol_intake(
     replace: bool = Form(False),
     file: UploadFile | None = File(None),
 ) -> dict[str, Any]:
+    require_internal("write")
     content = await file.read() if file is not None else b""
     filename = file.filename if file is not None else ""
     content_type = file.content_type or guess_content_type(filename or "upload") if file is not None else ""
