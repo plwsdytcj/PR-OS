@@ -2399,6 +2399,22 @@ function updateProjectRunZoomLabel() {
   const label = $("#projectRunGraphZoomLabel");
   if (!label) return;
   label.textContent = `${Math.round((state.projectRunGraphScale || 1) * 100)}%${state.projectRunGraphAutoFit ? " auto" : ""}`;
+  label.title = "在画布内滚动鼠标或触控板即可缩放";
+}
+
+function zoomProjectRunGraph(nextScale, anchor = null) {
+  if (!state.projectRun?.graph) return;
+  const canvas = $("#projectRunGraphCanvas");
+  const previousScale = clampNumber(state.projectRunGraphScale || 1, 0.42, 2.2);
+  state.projectRunGraphAutoFit = false;
+  state.projectRunGraphScale = clampNumber(nextScale, 0.42, 2.2);
+  const ratio = state.projectRunGraphScale / previousScale;
+  const before = anchor && canvas ? { left: canvas.scrollLeft, top: canvas.scrollTop, x: anchor.x, y: anchor.y } : null;
+  renderSymbolicGraphInto("#projectRunGraphCanvas", state.projectRun.graph);
+  if (before && canvas && Number.isFinite(ratio)) {
+    canvas.scrollLeft = (before.left + before.x) * ratio - before.x;
+    canvas.scrollTop = (before.top + before.y) * ratio - before.y;
+  }
 }
 
 function renderSymbolicGraphInto(selector, graph) {
@@ -2415,7 +2431,7 @@ function renderSymbolicGraphInto(selector, graph) {
   if (selector === "#projectRunGraphCanvas" && state.projectRunGraphAutoFit) {
     state.projectRunGraphScale = projectRunGraphFitScale(width, height);
   }
-  const scale = selector === "#projectRunGraphCanvas" ? clampNumber(state.projectRunGraphScale || 1, 0.42, 1.8) : 1;
+  const scale = selector === "#projectRunGraphCanvas" ? clampNumber(state.projectRunGraphScale || 1, 0.42, 2.2) : 1;
   const positioned = layoutGraphNodes(nodes, width, height);
   const nodeMap = Object.fromEntries(positioned.map((node) => [node.id, node]));
   const edgeSvg = edges
@@ -4796,11 +4812,36 @@ function bindEvents() {
     const action = button.dataset.projectGraphZoom;
     if (action === "fit") {
       state.projectRunGraphAutoFit = true;
+      renderSymbolicGraphInto("#projectRunGraphCanvas", state.projectRun.graph);
+      return;
     } else {
-      state.projectRunGraphAutoFit = false;
       const delta = action === "in" ? 0.12 : -0.12;
-      state.projectRunGraphScale = clampNumber((state.projectRunGraphScale || 1) + delta, 0.42, 1.8);
+      zoomProjectRunGraph((state.projectRunGraphScale || 1) + delta);
     }
+  });
+
+  $("#projectRunGraphCanvas")?.addEventListener(
+    "wheel",
+    (event) => {
+      if (!state.projectRun?.graph) return;
+      event.preventDefault();
+      const canvas = event.currentTarget;
+      const rect = canvas.getBoundingClientRect();
+      const anchor = {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      };
+      const direction = event.deltaY > 0 ? -1 : 1;
+      const speed = event.ctrlKey || event.metaKey ? 0.16 : 0.1;
+      const nextScale = (state.projectRunGraphScale || 1) * (1 + direction * speed);
+      zoomProjectRunGraph(nextScale, anchor);
+    },
+    { passive: false }
+  );
+
+  $("#projectRunGraphCanvas")?.addEventListener("dblclick", () => {
+    if (!state.projectRun?.graph) return;
+    state.projectRunGraphAutoFit = true;
     renderSymbolicGraphInto("#projectRunGraphCanvas", state.projectRun.graph);
   });
 

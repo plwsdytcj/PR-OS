@@ -4139,6 +4139,7 @@ body.client-session #clientPortal {
   min-height: 480px;
   overscroll-behavior: contain;
   scroll-behavior: smooth;
+  touch-action: none;
 }
 
 .project-run-graph.zoomable-graph svg {
@@ -4169,6 +4170,15 @@ body.client-session #clientPortal {
   padding: 7px 9px;
   text-align: center;
   text-transform: uppercase;
+}
+
+.project-run-graph-toolbar em {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  margin-right: auto;
 }
 
 .project-run-graph-toolbar button {
