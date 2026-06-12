@@ -4140,6 +4140,13 @@ body.client-session #clientPortal {
   overscroll-behavior: contain;
   scroll-behavior: smooth;
   touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.project-run-graph.dragging {
+  cursor: grabbing;
+  scroll-behavior: auto;
 }
 
 .project-run-graph.zoomable-graph svg {

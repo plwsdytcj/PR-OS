@@ -75,6 +75,7 @@ const state = {
   projectRunProgressTimer: null,
   projectRunGraphScale: 1,
   projectRunGraphAutoFit: true,
+  projectRunGraphDrag: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -3444,6 +3445,7 @@ function resetProjectRunWorkspace({ demo = false, values = null } = {}) {
   state.projectRunStageFilter = "";
   state.projectRunGraphScale = 1;
   state.projectRunGraphAutoFit = true;
+  state.projectRunGraphDrag = null;
   const nextValues =
     values ||
     (demo
@@ -4775,6 +4777,10 @@ function bindEvents() {
   document.addEventListener("click", (event) => {
     const node = event.target.closest("#projectRunGraphCanvas .graph-node");
     if (!node || !state.projectRun?.graph) return;
+    if (state.projectRunGraphDrag?.moved) {
+      state.projectRunGraphDrag = null;
+      return;
+    }
     state.projectRunSelectedNodeId = node.dataset.nodeId || "";
     state.projectRunStageFilter = "";
     renderSymbolicGraphInto("#projectRunGraphCanvas", state.projectRun.graph);
@@ -4844,6 +4850,47 @@ function bindEvents() {
     state.projectRunGraphAutoFit = true;
     renderSymbolicGraphInto("#projectRunGraphCanvas", state.projectRun.graph);
   });
+
+  $("#projectRunGraphCanvas")?.addEventListener("pointerdown", (event) => {
+    if (!state.projectRun?.graph) return;
+    if (event.button !== 0) return;
+    const canvas = event.currentTarget;
+    state.projectRunGraphDrag = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      scrollLeft: canvas.scrollLeft,
+      scrollTop: canvas.scrollTop,
+      moved: false,
+    };
+    canvas.classList.add("dragging");
+    canvas.setPointerCapture?.(event.pointerId);
+  });
+
+  $("#projectRunGraphCanvas")?.addEventListener("pointermove", (event) => {
+    const drag = state.projectRunGraphDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const canvas = event.currentTarget;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+    canvas.scrollLeft = drag.scrollLeft - dx;
+    canvas.scrollTop = drag.scrollTop - dy;
+  });
+
+  const endProjectGraphDrag = (event) => {
+    const drag = state.projectRunGraphDrag;
+    const canvas = $("#projectRunGraphCanvas");
+    if (!drag) return;
+    if (event?.pointerId && drag.pointerId !== event.pointerId) return;
+    canvas?.classList.remove("dragging");
+    canvas?.releasePointerCapture?.(drag.pointerId);
+    if (!drag.moved) state.projectRunGraphDrag = null;
+  };
+
+  $("#projectRunGraphCanvas")?.addEventListener("pointerup", endProjectGraphDrag);
+  $("#projectRunGraphCanvas")?.addEventListener("pointercancel", endProjectGraphDrag);
+  $("#projectRunGraphCanvas")?.addEventListener("pointerleave", endProjectGraphDrag);
 
   window.addEventListener("resize", () => {
     if (!state.projectRun?.graph || !state.projectRunGraphAutoFit) return;
