@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260612-6" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260612-7" />
   </head>
   <body>
     <div class="app-shell">
@@ -194,8 +194,8 @@
           <div class="history-command panel">
             <div>
               <div class="eyebrow">workspace memory</div>
-              <h2>历史任务 / 资产中心</h2>
-              <p>把 Campaign、Agent 会话、甲方方案和 Brief 分发统一成一条可追溯的工作资产时间线。</p>
+              <h2>历史任务 / Campaign 资产库</h2>
+              <p>所有跑过的 Campaign、Agent 会话、甲方方案和 Brief 分发统一沉淀在这里。</p>
             </div>
             <button id="refreshHistoryBtn" class="primary" type="button">刷新历史</button>
           </div>
@@ -486,16 +486,6 @@
             </div>
           </div>
 
-          <div class="panel project-asset-library">
-            <div class="panel-header">
-              <div>
-                <h2>历史 Campaign 资产库</h2>
-                <p>每次生成的 brief、图谱、KOL 名单、方案、分发和复盘都会沉淀在这里。</p>
-              </div>
-              <button id="refreshProjectAssetsBtn" class="secondary" type="button">刷新资产库</button>
-            </div>
-            <div id="projectRunHistoryList" class="asset-history-list"></div>
-          </div>
         </section>
 
         <section id="ingest" class="view">
@@ -1676,6 +1666,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260612-6"></script>
+    <script src="/static/app.js?v=20260612-7"></script>
   </body>
 </html>

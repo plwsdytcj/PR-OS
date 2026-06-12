@@ -3850,10 +3850,6 @@ body.client-session #clientPortal {
   margin: 6px 0 0;
 }
 
-.project-asset-library {
-  margin-top: 20px;
-}
-
 .asset-history-list {
   display: grid;
   gap: 12px;
