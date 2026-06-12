@@ -172,6 +172,51 @@ const PROJECT_RUN_DEMO_VALUES = {
   top_n: "8",
 };
 
+const PROJECT_RUN_RANDOM_BRIEFS = [
+  {
+    client_name: "新锐国货美妆品牌",
+    project_name: "修护精华新品种草",
+    brief:
+      "预算30万，主推一款屏障修护精华，目标用户是22-32岁敏感肌、熬夜党和成分党。希望突出温和修护、真实使用前后对比、国货科研感。平台优先小红书、抖音，需要选择适合种草和测评的KOL，并规避夸大功效、医美擦边和虚假对比风险。",
+    top_n: "8",
+  },
+  {
+    client_name: "独立咖啡连锁品牌",
+    project_name: "城市快闪店开业传播",
+    brief:
+      "预算18万，上海新店开业和周末快闪活动，目标用户是20-35岁城市白领、咖啡爱好者和生活方式人群。希望突出城市松弛感、社交打卡、限定菜单和好拍空间。平台优先小红书、抖音，需要推荐探店、摄影、生活方式KOL，并评估排队体验和价格争议风险。",
+    top_n: "6",
+  },
+  {
+    client_name: "二次元手游发行团队",
+    project_name: "新角色上线预热",
+    brief:
+      "预算45万，手游新角色上线预热，目标用户是18-28岁二次元、剧情党、抽卡玩家。希望突出角色人设、世界观、声优和二创潜力。平台优先B站、抖音、小红书，需要选择游戏解说、剧情分析、画师和coser类KOL，并提前推演抽卡争议、角色强度争议和饭圈化风险。",
+    top_n: "10",
+  },
+  {
+    client_name: "高端宠物食品品牌",
+    project_name: "冻干新品信任背书",
+    brief:
+      "预算25万，推出猫狗冻干新品，目标用户是25-40岁一二线养宠人群。希望突出配方安全、适口性、营养透明和真实喂养反馈。平台优先小红书、抖音、视频号，需要推荐养宠知识、宠物日常和兽医科普类KOL，并规避宠物健康承诺和竞品拉踩风险。",
+    top_n: "8",
+  },
+  {
+    client_name: "企业 AI SaaS 公司",
+    project_name: "销售 Copilot 行业方案发布",
+    brief:
+      "预算60万，发布面向制造业和消费品企业的销售 Copilot 方案，目标用户是CEO、销售VP、数字化负责人。希望突出降本增效、CRM集成、销售知识库和可控AI。平台优先公众号、视频号、B站、知乎，需要推荐企业服务、AI转型和管理咨询类KOL，并说明技术可信度、数据安全和ROI夸大风险。",
+    top_n: "8",
+  },
+  {
+    client_name: "户外运动生活方式品牌",
+    project_name: "轻量徒步鞋春季种草",
+    brief:
+      "预算35万，推广轻量徒步鞋春季新品，目标用户是24-38岁城市户外、周末徒步和露营人群。希望突出舒适、轻量、防滑、城市到山野的穿搭场景。平台优先小红书、抖音、B站，需要推荐户外、穿搭、旅行和测评KOL，并规避功能参数夸大和专业户外安全风险。",
+    top_n: "8",
+  },
+];
+
 function toast(message, isError = false) {
   const node = $("#toast");
   node.textContent = message;
@@ -3372,23 +3417,28 @@ function fillProjectRunForm(values) {
   });
 }
 
-function resetProjectRunWorkspace({ demo = false } = {}) {
+function randomProjectRunBrief() {
+  return PROJECT_RUN_RANDOM_BRIEFS[Math.floor(Math.random() * PROJECT_RUN_RANDOM_BRIEFS.length)] || PROJECT_RUN_DEMO_VALUES;
+}
+
+function resetProjectRunWorkspace({ demo = false, values = null } = {}) {
   stopProjectRunProgress();
   state.projectRun = null;
   state.projectRunSelectedNodeId = "";
   state.projectRunStageFilter = "";
   state.projectRunGraphScale = 1;
   state.projectRunGraphAutoFit = true;
-  fillProjectRunForm(
-    demo
+  const nextValues =
+    values ||
+    (demo
       ? PROJECT_RUN_DEMO_VALUES
       : {
           client_name: "",
           project_name: "",
           brief: "",
           top_n: "8",
-        }
-  );
+        });
+  fillProjectRunForm(nextValues);
   $("#projectRunResult")?.classList.add("hidden");
   const steps = $("#projectRunSteps");
   if (steps) steps.innerHTML = '<div class="meta">等待输入 PR 需求。</div>';
@@ -5193,6 +5243,13 @@ function bindEvents() {
     resetProjectRunWorkspace();
     $("#projectRunForm input[name='client_name']")?.focus();
     toast("已开启新 PR 需求");
+  });
+
+  $("#projectRunRandomBtn")?.addEventListener("click", () => {
+    const brief = randomProjectRunBrief();
+    resetProjectRunWorkspace({ values: brief });
+    $("#projectRunForm textarea[name='brief']")?.focus();
+    toast(`已生成随机 Brief：${brief.project_name}`);
   });
 
   $("#projectRunDemoBtn")?.addEventListener("click", () => {
