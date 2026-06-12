@@ -434,11 +434,15 @@
                 <div class="field-row">
                   <input name="top_n" type="number" value="8" min="3" max="30" />
                   <select name="simulation_engine" aria-label="投放前推演引擎">
-                    <option value="auto">Auto：优先 MiroFish</option>
-                    <option value="mirofish">MiroFish CLI</option>
-                    <option value="llm_fallback">OS fallback</option>
+                    <option value="llm_fallback">快推演：先出 KOL 推荐</option>
+                    <option value="mirofish">深度推演：MiroFish，约 3-8 分钟</option>
+                    <option value="auto">Auto：MiroFish 超时后自动快推演</option>
                   </select>
                   <button id="projectRunSubmitBtn" class="primary" type="submit">一键生成完整方案</button>
+                </div>
+                <div id="projectRunEngineNotice" class="project-run-engine-notice" data-mode="fast">
+                  <strong>当前是快推演</strong>
+                  <span>会优先完成 brief 解析、KOL 匹配、风险提示和 Campaign 资产沉淀。</span>
                 </div>
               </form>
             </div>

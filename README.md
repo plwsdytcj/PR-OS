@@ -104,10 +104,10 @@ OBJECT_STORE_SECRET_ACCESS_KEY=
 OBJECT_STORE_PUBLIC_BASE_URL=
 
 MIROFISH_COMMAND=mirofish
-MIROFISH_LLM_PROVIDER=codex-cli
+MIROFISH_LLM_PROVIDER=glm
 MIROFISH_PLATFORM=twitter
 MIROFISH_MAX_ROUNDS=1
-MIROFISH_TIMEOUT_SECONDS=240
+MIROFISH_TIMEOUT_SECONDS=420
 ```
 
 Behavior:
@@ -120,7 +120,8 @@ Behavior:
 - If `ONEAPI_API_KEY` is missing, OneAPI status is shown as not configured; Mock API and Excel remain usable.
 - If MiroFish CLI is not installed or times out, Campaign stress tests use the OS fallback Simulation Layer in Auto mode.
 - `MIROFISH_COMMAND` points to the external MiroFish runtime. For the current CLI-only fork, prefer a source checkout command such as `uv --directory /opt/mirofish run mirofish`, because the wheel install does not include the OASIS `scripts/` directory needed by the simulation subprocess.
-- `MIROFISH_LLM_PROVIDER` must be `claude-cli` or `codex-cli`; the upstream fork's provider name is historical, while the actual subprocess calls `claude` or `codex`.
+- `MIROFISH_LLM_PROVIDER=glm` uses the patched MiroFish runtime in `vendor/mirofish-openai-compatible.patch`, which adds OpenAI-compatible model support and reuses `GLM_API_KEY`, `GLM_BASE_URL`, and `GLM_MODEL`.
+- Run `scripts/install_mirofish_runtime.sh /opt/mirofish` on a server to install the patched external runtime, then set `MIROFISH_COMMAND="uv --directory /opt/mirofish run mirofish"`.
 - If `PR_AI_OS_ACCESS_KEY` is set, private API calls require `X-Access-Key`; public client/creator links remain accessible.
 - If `PR_AI_OS_AUTH_ENABLED=true`, private APIs require login. If it is false, auth activates automatically after the first local user is created with `/api/auth/bootstrap-admin`.
 - `PR_AI_OS_COOKIE_SECURE=true` should be used only behind HTTPS.

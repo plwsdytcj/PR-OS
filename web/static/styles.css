@@ -3824,6 +3824,38 @@ body.client-session #clientPortal {
   white-space: nowrap;
 }
 
+.project-run-engine-notice {
+  align-items: flex-start;
+  background: #fff7cb;
+  border: 3px solid #17120d;
+  box-shadow: 4px 4px 0 rgba(23, 18, 13, 0.92);
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 12px 14px;
+}
+
+.project-run-engine-notice strong {
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.project-run-engine-notice span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.project-run-engine-notice[data-mode="deep"] {
+  background: #bfffe9;
+  box-shadow: 4px 4px 0 var(--accent);
+}
+
+.project-run-engine-notice[data-mode="auto"] {
+  background: #ffe4dc;
+  box-shadow: 4px 4px 0 var(--coral);
+}
+
 .project-run-steps {
   display: grid;
   gap: 10px;

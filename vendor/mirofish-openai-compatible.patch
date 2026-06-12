@@ -1,0 +1,264 @@
+diff --git a/app/cli.py b/app/cli.py
+index 938beb5..a6e36c7 100644
+--- a/app/cli.py
++++ b/app/cli.py
+@@ -525,7 +525,7 @@ def cmd_doctor() -> int:
+     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+     env_path = os.path.join(repo_root, ".env")
+ 
+-    valid_providers = ("claude-cli", "codex-cli")
++    valid_providers = ("claude-cli", "codex-cli", "openai-compatible", "glm")
+ 
+     def provider_set() -> bool:
+         return bool(os.environ.get("LLM_PROVIDER", "").strip())
+@@ -546,7 +546,7 @@ def cmd_doctor() -> int:
+         DoctorCheck(
+             name="LLM_PROVIDER set",
+             check=provider_set,
+-            hint="export LLM_PROVIDER=claude-cli (or codex-cli) in .env",
++            hint="export LLM_PROVIDER=claude-cli, codex-cli, openai-compatible, or glm in .env",
+         ),
+         DoctorCheck(
+             name="LLM_PROVIDER valid",
+@@ -555,9 +555,8 @@ def cmd_doctor() -> int:
+         ),
+     ]
+ 
+-    # Only probe the provider binary when the provider name is a real option —
+-    # otherwise the row is noise on top of the LLM_PROVIDER valid failure.
+-    if Config.LLM_PROVIDER in valid_providers:
++    # Only probe the provider binary when the provider name is a CLI option.
++    if Config.LLM_PROVIDER in ("claude-cli", "codex-cli"):
+         provider = Config.LLM_PROVIDER
+ 
+         def provider_binary_on_path() -> bool:
+@@ -570,6 +569,26 @@ def cmd_doctor() -> int:
+                 hint=f"install the {provider} binary or add it to PATH",
+             )
+         )
++    elif Config.LLM_PROVIDER in ("openai-compatible", "glm"):
++        checks.extend(
++            [
++                DoctorCheck(
++                    name="LLM API key set",
++                    check=lambda: bool(Config.LLM_API_KEY),
++                    hint="set LLM_API_KEY, OPENAI_API_KEY, or GLM_API_KEY",
++                ),
++                DoctorCheck(
++                    name="LLM base URL set",
++                    check=lambda: bool(Config.LLM_BASE_URL),
++                    hint="set LLM_BASE_URL, OPENAI_BASE_URL, or GLM_BASE_URL",
++                ),
++                DoctorCheck(
++                    name="LLM model set",
++                    check=lambda: bool(Config.LLM_MODEL),
++                    hint="set LLM_MODEL, OPENAI_MODEL, or GLM_MODEL",
++                ),
++            ]
++        )
+ 
+     return doctor_runner(checks, exit_on_fail=False)
+ 
+diff --git a/app/config.py b/app/config.py
+index ef3effd..c58cde9 100644
+--- a/app/config.py
++++ b/app/config.py
+@@ -30,6 +30,14 @@ def _resolve_path(default_path: str, env_name: str) -> str:
+     return os.path.abspath(raw_value)
+ 
+ 
++def _normalize_openai_base_url(value: str) -> str:
++    value = (value or "").strip().rstrip("/")
++    suffix = "/chat/completions"
++    if value.endswith(suffix):
++        return value[: -len(suffix)]
++    return value
++
++
+ _load_environment()
+ 
+ 
+@@ -39,6 +47,14 @@ class Config:
+     DEBUG = _get_bool_env("DEBUG", False)
+ 
+     LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "claude-cli").strip().lower()
++    LLM_API_KEY = os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY") or os.environ.get("GLM_API_KEY") or ""
++    LLM_BASE_URL = _normalize_openai_base_url(
++        os.environ.get("LLM_BASE_URL")
++        or os.environ.get("OPENAI_BASE_URL")
++        or os.environ.get("GLM_BASE_URL")
++        or "https://api.openai.com/v1"
++    )
++    LLM_MODEL = os.environ.get("LLM_MODEL") or os.environ.get("OPENAI_MODEL") or os.environ.get("GLM_MODEL") or "gpt-4o-mini"
+ 
+     DATA_DIR = _resolve_path(os.path.join(os.path.dirname(__file__), "../data/graphs"), "DATA_DIR")
+ 
+@@ -70,7 +86,12 @@ class Config:
+         """Validate required configuration."""
+         errors: list[str] = []
+ 
+-        if cls.LLM_PROVIDER not in ("claude-cli", "codex-cli"):
+-            errors.append(f"LLM_PROVIDER must be 'claude-cli' or 'codex-cli', got '{cls.LLM_PROVIDER}'")
++        if cls.LLM_PROVIDER not in ("claude-cli", "codex-cli", "openai-compatible", "glm"):
++            errors.append(
++                "LLM_PROVIDER must be 'claude-cli', 'codex-cli', 'openai-compatible', or 'glm', "
++                f"got '{cls.LLM_PROVIDER}'"
++            )
++        if cls.LLM_PROVIDER in {"openai-compatible", "glm"} and not cls.LLM_API_KEY:
++            errors.append("LLM_API_KEY, OPENAI_API_KEY, or GLM_API_KEY is required for openai-compatible/glm")
+ 
+         return errors
+diff --git a/app/services/simulation_runner.py b/app/services/simulation_runner.py
+index 9161f99..ddebd70 100644
+--- a/app/services/simulation_runner.py
++++ b/app/services/simulation_runner.py
+@@ -404,6 +404,7 @@ class SimulationRunner:
+                 sys.executable,
+                 script_path,
+                 "--config", config_path,
++                "--no-wait",
+             ]
+ 
+             if max_rounds is not None and max_rounds > 0:
+diff --git a/app/utils/llm_client.py b/app/utils/llm_client.py
+index f4fbb4c..4a0fb14 100644
+--- a/app/utils/llm_client.py
++++ b/app/utils/llm_client.py
+@@ -8,6 +8,8 @@ import subprocess
+ import time
+ from typing import Optional, Dict, Any, List
+ 
++from openai import OpenAI
++
+ from ..config import Config
+ from .logger import get_logger
+ 
+@@ -22,8 +24,14 @@ class LLMClient:
+ 
+     def __init__(self, provider: Optional[str] = None):
+         self.provider = (provider or Config.LLM_PROVIDER or "claude-cli").lower()
+-        if self.provider not in ("claude-cli", "codex-cli"):
+-            raise ValueError(f"Unsupported LLM provider: {self.provider!r}. Use 'claude-cli' or 'codex-cli'.")
++        if self.provider not in ("claude-cli", "codex-cli", "openai-compatible", "glm"):
++            raise ValueError(
++                f"Unsupported LLM provider: {self.provider!r}. "
++                "Use 'claude-cli', 'codex-cli', 'openai-compatible', or 'glm'."
++            )
++        self.model = Config.LLM_MODEL
++        self.base_url = Config.LLM_BASE_URL
++        self.api_key = Config.LLM_API_KEY
+ 
+     def _split_system_message(self, messages: List[Dict[str, str]]):
+         """Split system message from conversation messages."""
+@@ -56,6 +64,8 @@ class LLMClient:
+         last_error = None
+         for attempt in range(MAX_RETRIES):
+             try:
++                if self.provider in {"openai-compatible", "glm"}:
++                    return self._chat_openai_compatible(messages, temperature, max_tokens, response_format)
+                 if self.provider == "codex-cli":
+                     return self._chat_codex_cli(messages, temperature, max_tokens, response_format)
+                 return self._chat_claude_cli(messages, temperature, max_tokens, response_format)
+@@ -165,6 +175,53 @@ class LLMClient:
+         except subprocess.TimeoutExpired:
+             raise RuntimeError("Codex CLI timed out after 180s")
+ 
++    def _chat_openai_compatible(
++        self,
++        messages: List[Dict[str, str]],
++        temperature: float,
++        max_tokens: int,
++        response_format: Optional[Dict] = None
++    ) -> str:
++        """Chat via OpenAI-compatible HTTP API such as GLM, DeepSeek, Qwen, or Moonshot."""
++        if not self.api_key:
++            raise RuntimeError("LLM_API_KEY/OPENAI_API_KEY/GLM_API_KEY is required")
++
++        request_messages = list(messages)
++        kwargs: Dict[str, Any] = {
++            "model": self.model,
++            "messages": request_messages,
++            "temperature": temperature,
++            "max_tokens": max_tokens,
++        }
++        if response_format and response_format.get("type") == "json_object":
++            kwargs["response_format"] = {"type": "json_object"}
++
++        try:
++            client = OpenAI(api_key=self.api_key, base_url=self.base_url)
++            response = client.chat.completions.create(**kwargs)
++            content = response.choices[0].message.content or ""
++            return self._clean_content(content)
++        except Exception as exc:
++            # Some compatible providers/models do not support response_format.
++            if response_format and response_format.get("type") == "json_object":
++                kwargs.pop("response_format", None)
++                request_messages = [
++                    *messages,
++                    {
++                        "role": "user",
++                        "content": "Return valid JSON only. No markdown fences, no explanation.",
++                    },
++                ]
++                kwargs["messages"] = request_messages
++                try:
++                    client = OpenAI(api_key=self.api_key, base_url=self.base_url)
++                    response = client.chat.completions.create(**kwargs)
++                    content = response.choices[0].message.content or ""
++                    return self._clean_content(content)
++                except Exception:
++                    pass
++            raise RuntimeError(f"OpenAI-compatible LLM failed: {type(exc).__name__}: {exc}") from exc
++
+     def chat_json(
+         self,
+         messages: List[Dict[str, str]],
+diff --git a/app/utils/oasis_llm.py b/app/utils/oasis_llm.py
+index fc82d9b..fb5193d 100644
+--- a/app/utils/oasis_llm.py
++++ b/app/utils/oasis_llm.py
+@@ -20,8 +20,8 @@ logger = get_logger('mirofish.oasis_llm')
+ DEFAULT_CLI_SEMAPHORE = 3
+ 
+ 
+-class CLIModel(OpenAIModel):
+-    """CAMEL model backend that proxies requests to Claude/Codex CLI."""
++class BridgeModel(OpenAIModel):
++    """CAMEL model backend that proxies requests to configured MiroFish LLM providers."""
+ 
+     def __init__(
+         self,
+@@ -38,7 +38,7 @@ class CLIModel(OpenAIModel):
+         super().__init__(
+             model_type=model_type,
+             model_config_dict=model_config_dict,
+-            api_key=api_key or 'cli-bridge',
++            api_key=api_key or Config.LLM_API_KEY or 'llm-bridge',
+             url=url,
+             timeout=timeout,
+             max_retries=max_retries,
+@@ -143,14 +143,20 @@ def create_oasis_model(config: Dict[str, Any], use_boost: bool = False):
+         or 'claude-cli'
+     ).lower()
+ 
+-    model = config.get('llm_model') or provider
++    model = (
++        os.environ.get('LLM_MODEL')
++        or config.get('llm_model')
++        or Config.LLM_MODEL
++        or provider
++    )
+ 
+-    logger.info(f"OASIS model: provider={provider}, model={model}, mode=cli-bridge")
+-    return CLIModel(
++    logger.info(f"OASIS model: provider={provider}, model={model}, mode=llm-bridge")
++    return BridgeModel(
+         model_type=model,
+         provider=provider,
+         model_config_dict={},
+-        api_key='cli-bridge',
++        api_key=Config.LLM_API_KEY or 'llm-bridge',
++        url=Config.LLM_BASE_URL,
+     )
+ 
+ 

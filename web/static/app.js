@@ -3581,6 +3581,8 @@ function buildProjectRunProgressGraph(stepIndex) {
 
 function startProjectRunProgress(payload) {
   stopProjectRunProgress();
+  const engineMode = projectRunEngineMode(payload.simulation_engine);
+  state.projectRunEngineMode = engineMode;
   state.projectRun = { graph: buildProjectRunProgressGraph(0), matches: [], simulation_report: {}, narratives: [] };
   state.projectRunSelectedNodeId = "progress_brief";
   state.projectRunStageFilter = "";
@@ -3595,23 +3597,23 @@ function startProjectRunProgress(payload) {
     saveNotice.innerHTML = `
       <div>
         <span class="card-kicker">live reasoning</span>
-        <strong>正在生成 Campaign 推理流</strong>
-        <p>${escapeHTML(payload.client_name || "当前客户")} · ${escapeHTML(payload.project_name || "PR 项目")} · 后端完成后会自动保存为历史任务。</p>
+        <strong>${escapeHTML(engineMode.runningTitle)}</strong>
+        <p>${escapeHTML(payload.client_name || "当前客户")} · ${escapeHTML(payload.project_name || "PR 项目")} · ${escapeHTML(engineMode.runningDetail)}</p>
       </div>
       <span class="project-run-live-badge">RUNNING</span>
     `;
   }
   $("#projectRunGraphMeta").textContent = "推理节点会按 brief、语境、品牌、产品、KOL、叙事、风险逐步出现。";
-  renderProjectRunProgressFrame(0);
+  renderProjectRunProgressFrame(0, engineMode);
   let index = 0;
   state.projectRunProgressTimer = setInterval(() => {
     index = Math.min(index + 1, PROJECT_RUN_PROGRESS_STEPS.length - 1);
-    renderProjectRunProgressFrame(index);
+    renderProjectRunProgressFrame(index, engineMode);
     if (index >= PROJECT_RUN_PROGRESS_STEPS.length - 1) stopProjectRunProgress();
   }, 900);
 }
 
-function renderProjectRunProgressFrame(index) {
+function renderProjectRunProgressFrame(index, engineMode = state.projectRunEngineMode || projectRunEngineMode("llm_fallback")) {
   const graph = buildProjectRunProgressGraph(index);
   state.projectRun = { ...(state.projectRun || {}), graph };
   const activeNode = graph.nodes[index] || graph.nodes[0];
@@ -3639,7 +3641,7 @@ function renderProjectRunProgressFrame(index) {
       </div>
     `;
   }
-  renderProjectRunSimulation({ summary: "正在等待风险推演结果。", final_recommendation: "真实候选、压力测试和内容资产会在后端完成后替换当前预演。" });
+  renderProjectRunSimulation({ summary: engineMode.simulationSummary, final_recommendation: engineMode.simulationDetail });
   const narratives = $("#projectRunNarratives");
   if (narratives) {
     narratives.innerHTML = `
@@ -3650,6 +3652,56 @@ function renderProjectRunProgressFrame(index) {
       </div>
     `;
   }
+}
+
+function projectRunEngineMode(value) {
+  const engine = String(value || "llm_fallback");
+  if (engine === "mirofish") {
+    return {
+      mode: "deep",
+      label: "深度 MiroFish 推演",
+      buttonText: "深度推演中...",
+      noticeTitle: "当前是深度推演",
+      noticeText: "会启动 MiroFish 多智能体推演，通常需要 3-8 分钟。适合正式方案、投前压力测试和沉淀客户可读证据。",
+      runningTitle: "正在执行 MiroFish 深度推演",
+      runningDetail: "这一步会比较久，完成后会保存图谱、报告和风险推演资产。",
+      simulationSummary: "MiroFish 深度推演正在运行。",
+      simulationDetail: "系统会先生成 KOL 推荐预演画布，后端完成后替换为真实 MiroFish 图谱和报告。",
+    };
+  }
+  if (engine === "auto") {
+    return {
+      mode: "auto",
+      label: "Auto 推演",
+      buttonText: "Auto 推演中...",
+      noticeTitle: "当前是 Auto 推演",
+      noticeText: "会优先尝试 MiroFish；如果耗时过长或运行失败，会自动切回快推演，保证方案先产出。",
+      runningTitle: "正在执行 Auto 推演",
+      runningDetail: "系统会优先尝试深度推演，超时后自动保底生成 Campaign 资产。",
+      simulationSummary: "Auto 推演正在运行。",
+      simulationDetail: "如 MiroFish 超时，系统会自动使用 OS fallback，避免整个项目卡死。",
+    };
+  }
+  return {
+    mode: "fast",
+    label: "快推演",
+    buttonText: "生成中...",
+    noticeTitle: "当前是快推演",
+    noticeText: "会优先完成 brief 解析、KOL 匹配、风险提示和 Campaign 资产沉淀。",
+    runningTitle: "正在生成 Campaign 快推演",
+    runningDetail: "后端完成后会自动保存为历史任务。",
+    simulationSummary: "正在等待风险推演结果。",
+    simulationDetail: "真实候选、压力测试和内容资产会在后端完成后替换当前预演。",
+  };
+}
+
+function updateProjectRunEngineNotice() {
+  const select = $("#projectRunForm select[name='simulation_engine']");
+  const notice = $("#projectRunEngineNotice");
+  if (!select || !notice) return;
+  const mode = projectRunEngineMode(select.value);
+  notice.dataset.mode = mode.mode;
+  notice.innerHTML = `<strong>${escapeHTML(mode.noticeTitle)}</strong><span>${escapeHTML(mode.noticeText)}</span>`;
 }
 
 function renderProjectRunStageLegend(graph) {
@@ -5492,17 +5544,21 @@ function bindEvents() {
     toast("已恢复示例需求");
   });
 
+  $("#projectRunForm select[name='simulation_engine']")?.addEventListener("change", updateProjectRunEngineNotice);
+  updateProjectRunEngineNotice();
+
   $("#projectRunForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
     const button = $("#projectRunSubmitBtn");
     const payload = formToObject(form);
     payload.top_n = Number(payload.top_n || 8);
+    const engineMode = projectRunEngineMode(payload.simulation_engine);
     startProjectRunProgress(payload);
     $("#projectRunResult")?.scrollIntoView({ behavior: "smooth", block: "start" });
     if (button) {
       button.disabled = true;
-      button.textContent = "生成中...";
+      button.textContent = engineMode.buttonText;
     }
     try {
       const data = await api("/api/project-run", {

@@ -30,7 +30,7 @@ class MiroFishCliAdapter(StressTestAdapter):
 
     def __init__(self, executable: str | None = None, timeout_seconds: int | None = None) -> None:
         self.command = shlex.split(executable or os.getenv("MIROFISH_COMMAND") or "mirofish")
-        self.timeout_seconds = timeout_seconds or int(os.getenv("MIROFISH_TIMEOUT_SECONDS", "240"))
+        self.timeout_seconds = timeout_seconds or int(os.getenv("MIROFISH_TIMEOUT_SECONDS", "420"))
         self.max_rounds = int(os.getenv("MIROFISH_MAX_ROUNDS", "2"))
 
     def available(self) -> bool:
@@ -121,7 +121,100 @@ class MiroFishCliAdapter(StressTestAdapter):
 
 
 def _seed_markdown(payload: dict[str, Any]) -> str:
-    return "# Campaign Stress Test Seed\n\n```json\n" + json.dumps(payload, ensure_ascii=False, indent=2) + "\n```\n"
+    seed = _compact_seed_payload(payload)
+    return "# Campaign Stress Test Seed\n\n```json\n" + json.dumps(seed, ensure_ascii=False, indent=2) + "\n```\n"
+
+
+def _compact_seed_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Keep MiroFish grounded without sending the full PR OS object graph.
+
+    The full project payload contains nested reports, assets, campaign rooms and
+    generated plans. Feeding all of that into MiroFish makes ontology extraction
+    and persona generation too slow for a campaign run. This seed keeps only the
+    business facts needed for stress testing.
+    """
+    brief = payload.get("brief") if isinstance(payload.get("brief"), dict) else {}
+    brand = payload.get("brand") if isinstance(payload.get("brand"), dict) else {}
+    product = payload.get("product") if isinstance(payload.get("product"), dict) else {}
+    social_report = payload.get("social_report") if isinstance(payload.get("social_report"), dict) else {}
+    matches = payload.get("matches") if isinstance(payload.get("matches"), list) else []
+    narratives = payload.get("narratives") if isinstance(payload.get("narratives"), list) else []
+
+    return {
+        "client_name": _clip(payload.get("client_name"), 80),
+        "project_name": _clip(payload.get("project_name"), 120),
+        "raw_brief": _clip(payload.get("raw_brief"), 900),
+        "brief": {
+            "industry": _clip(brief.get("industry"), 80),
+            "product": _clip(brief.get("product"), 120),
+            "budget": brief.get("budget", 0),
+            "goals": _compact_list(brief.get("goals"), 8),
+            "target_audience": _compact_list(brief.get("target_audience"), 8),
+            "platform_preference": _compact_list(brief.get("platform_preference"), 6),
+            "content_preference": _compact_list(brief.get("content_preference"), 8),
+        },
+        "brand": {
+            "brand_name": _clip(brand.get("brand_name"), 100),
+            "industry": _clip(brand.get("industry"), 80),
+            "product": _clip(brand.get("product"), 120),
+            "target_tags": _compact_list(brand.get("target_tags"), 10),
+            "suitable_creator_types": _compact_list(brand.get("suitable_creator_types"), 8),
+            "risk_tags": _compact_list(brand.get("risk_tags"), 8),
+        },
+        "product": {
+            "product_name": _clip(product.get("product_name"), 120),
+            "category": _clip(product.get("category"), 80),
+            "metaphors": _compact_list(product.get("metaphors"), 8),
+            "use_scenarios": _compact_list(product.get("use_scenarios"), 8),
+        },
+        "social_context": {
+            "title": _clip(social_report.get("title"), 160),
+            "issues": _compact_list(social_report.get("issues"), 8, item_limit=160),
+            "risk_points": _compact_list(social_report.get("risk_points"), 8, item_limit=160),
+        },
+        "top_kol_candidates": [_compact_match(item) for item in matches[:8] if isinstance(item, dict)],
+        "narrative_paths": [_compact_narrative(item) for item in narratives[:3] if isinstance(item, dict)],
+    }
+
+
+def _compact_match(item: dict[str, Any]) -> dict[str, Any]:
+    creator = item.get("creator") if isinstance(item.get("creator"), dict) else item
+    return {
+        "creator_id": _clip(item.get("creator_id") or creator.get("creator_id"), 80),
+        "creator_name": _clip(item.get("creator_name") or creator.get("name"), 120),
+        "platform": _clip(creator.get("platform") or item.get("platform"), 60),
+        "score": item.get("score") or item.get("match_score"),
+        "tags": _compact_list(
+            creator.get("content_capability_tags")
+            or creator.get("industry_fit_tags")
+            or item.get("matched_tags")
+            or item.get("tags"),
+            10,
+        ),
+        "reason": _clip(item.get("reason") or item.get("recommended_role") or item.get("suggested_content"), 180),
+        "risks": _compact_list(item.get("risk_points") or item.get("risk_flags"), 5, item_limit=140),
+    }
+
+
+def _compact_narrative(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "title": _clip(item.get("title") or item.get("path_name"), 160),
+        "summary": _clip(item.get("summary") or item.get("content_path") or item.get("core_message"), 260),
+        "platform": _clip(item.get("platform"), 60),
+    }
+
+
+def _compact_list(value: Any, limit: int, item_limit: int = 80) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [_clip(item, item_limit) for item in value[:limit] if _clip(item, item_limit)]
+
+
+def _clip(value: Any, limit: int) -> str:
+    text = str(value or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
 
 
 def _valid_mirofish_provider(value: str | None) -> str:
