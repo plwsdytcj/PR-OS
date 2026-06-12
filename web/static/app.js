@@ -7,6 +7,8 @@ const state = {
   workspaceHistory: [],
   historySummary: {},
   historyFilter: "all",
+  historyLoaded: false,
+  historyLoading: false,
   authUsers: [],
   authClients: [],
   projectAccess: [],
@@ -298,6 +300,7 @@ function setView(viewId) {
   $$(".nav-group").forEach((group) => {
     group.open = Boolean(activeNav && group.contains(activeNav));
   });
+  if (viewId === "history") ensureWorkspaceHistoryLoaded();
 }
 
 function applySidebarState() {
@@ -415,10 +418,39 @@ async function loadCollaboration() {
 
 async function loadWorkspaceHistory() {
   if (state.currentIdentity?.user?.user_type === "client") return;
-  const data = await api("/api/history/workspace");
-  state.workspaceHistory = data.items || [];
-  state.historySummary = data.summary || {};
+  state.historyLoading = true;
   renderWorkspaceHistory();
+  try {
+    const data = await api("/api/history/workspace");
+    state.workspaceHistory = data.items || [];
+    state.historySummary = data.summary || {};
+    state.historyLoaded = true;
+  } finally {
+    state.historyLoading = false;
+    renderWorkspaceHistory();
+  }
+}
+
+async function ensureWorkspaceHistoryLoaded() {
+  if (state.currentIdentity?.user?.user_type === "client") return;
+  if (state.historyLoaded || state.historyLoading) return;
+  try {
+    await loadWorkspaceHistory();
+  } catch (error) {
+    state.historyLoading = false;
+    renderWorkspaceHistory();
+    toast(error.message || "历史资产加载失败", true);
+  }
+}
+
+async function refreshWorkspaceHistoryIfVisible() {
+  if (state.currentIdentity?.user?.user_type === "client") return;
+  state.historyLoaded = false;
+  state.historySummary = {};
+  state.workspaceHistory = [];
+  if ($("#history")?.classList.contains("active")) {
+    await loadWorkspaceHistory();
+  }
 }
 
 async function loadOrganization() {
@@ -1479,6 +1511,14 @@ function renderWorkspaceHistory() {
   });
   const list = $("#historyList");
   if (!list) return;
+  if (state.historyLoading) {
+    list.innerHTML = emptyState("正在加载历史资产", "正在读取 Campaign、Agent 会话、甲方方案和 Brief 分发记录。");
+    return;
+  }
+  if (!state.historyLoaded) {
+    list.innerHTML = emptyState("历史资产按需加载", "打开历史任务后会自动加载，也可以点击刷新历史。");
+    return;
+  }
   const items = state.workspaceHistory.filter((item) => state.historyFilter === "all" || item.type === state.historyFilter);
   list.innerHTML = items.length
     ? items
@@ -2130,7 +2170,7 @@ function startAgentPolling(runId) {
         const threadId = state.activeAgentThread?.thread?.thread_id;
         if (threadId) await loadAgentThread(threadId);
         await loadAgentTasks();
-        await loadWorkspaceHistory();
+        await refreshWorkspaceHistoryIfVisible();
       }
     });
     source.addEventListener("agent_error", (event) => {
@@ -2160,7 +2200,7 @@ function startAgentPollFallback(runId) {
         const threadId = state.activeAgentThread?.thread?.thread_id;
         if (threadId) await loadAgentThread(threadId);
         await loadAgentTasks();
-        await loadWorkspaceHistory();
+        await refreshWorkspaceHistoryIfVisible();
       }
     } catch (error) {
       stopAgentPolling();
@@ -2202,7 +2242,6 @@ async function reloadAll() {
   await loadAgentTasks();
   await loadAgentRuntime();
   await loadKnowledge();
-  await loadWorkspaceHistory();
   await loadCollaboration();
   await loadOrganization();
   await loadCommercial();
@@ -4416,7 +4455,7 @@ function bindEvents() {
       renderAgentRun(data);
       startAgentPolling(data.run?.run_id);
       await loadAgentTasks();
-      await loadWorkspaceHistory();
+      await refreshWorkspaceHistoryIfVisible();
       toast("Agent 已启动，执行过程会实时刷新");
     } catch (error) {
       toast(error.message, true);
@@ -5309,7 +5348,7 @@ function bindEvents() {
     await loadDistribution();
     await openDistribution(data.brief.brief_id);
     await loadPlatformDashboard();
-    await loadWorkspaceHistory();
+    await refreshWorkspaceHistoryIfVisible();
     toast("Brief 分发名单已生成");
   });
 
@@ -5322,7 +5361,7 @@ function bindEvents() {
       body: JSON.stringify(payload),
     });
     await loadPlatformDashboard();
-    await loadWorkspaceHistory();
+    await refreshWorkspaceHistoryIfVisible();
     await openCampaignRoom(data.project.campaign.campaign_id);
     toast("Campaign 项目和 3 套方案已生成");
   });
@@ -5366,7 +5405,7 @@ function bindEvents() {
       });
       stopProjectRunProgress();
       renderProjectRun(data.run);
-      await Promise.all([loadPlatformDashboard(), loadWorkspaceHistory(), loadSymbolicOS(), loadCreators()]);
+      await Promise.all([loadPlatformDashboard(), refreshWorkspaceHistoryIfVisible(), loadSymbolicOS(), loadCreators()]);
       toast("完整 PR 项目链路已生成");
     } catch (error) {
       stopProjectRunProgress();
