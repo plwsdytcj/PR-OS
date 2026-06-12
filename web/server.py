@@ -370,7 +370,12 @@ def _open_mode_identity() -> Identity:
 
 
 def _session_cookie_kwargs() -> dict[str, Any]:
-    return {"httponly": True, "samesite": "lax", "secure": os.getenv("PR_AI_OS_COOKIE_SECURE", "").lower() in {"1", "true", "yes"}}
+    return {
+        "httponly": True,
+        "path": "/",
+        "samesite": "lax",
+        "secure": os.getenv("PR_AI_OS_COOKIE_SECURE", "").lower() in {"1", "true", "yes"},
+    }
 
 
 def _auth_bypass_for_access_key(request: Request) -> bool:
@@ -1268,7 +1273,12 @@ async def auth_logout(request: Request) -> JSONResponse:
     if session_id:
         logout_session(DB_PATH, session_id)
     response = JSONResponse({"ok": True})
-    response.delete_cookie(AUTH_COOKIE_NAME)
+    response.delete_cookie(
+        AUTH_COOKIE_NAME,
+        path="/",
+        samesite="lax",
+        secure=os.getenv("PR_AI_OS_COOKIE_SECURE", "").lower() in {"1", "true", "yes"},
+    )
     return response
 
 

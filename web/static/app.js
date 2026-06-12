@@ -4448,6 +4448,8 @@ function bindEvents() {
       stopAgentPolling();
       await api("/api/auth/logout", { method: "POST" });
       state.currentIdentity = null;
+      state.accessKey = "";
+      localStorage.removeItem("pr_ai_os_access_key");
       renderAuthUser();
       await reloadAll();
       toast("已退出登录");
