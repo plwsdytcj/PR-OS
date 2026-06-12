@@ -4197,10 +4197,12 @@ body.client-session #clientPortal {
 }
 
 .graph-stage-legend {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(136px, max-content));
   gap: 8px;
+  justify-content: start;
   margin: 0 0 14px;
+  overflow: visible;
 }
 
 .stage-pill {
@@ -4212,13 +4214,23 @@ body.client-session #clientPortal {
   display: inline-flex;
   font-weight: 850;
   gap: 8px;
+  justify-content: space-between;
   min-height: 34px;
+  min-width: 136px;
   padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.stage-pill span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .stage-pill strong {
   background: #17120d;
   color: #fffdf4;
+  flex: 0 0 auto;
   min-width: 24px;
   padding: 1px 6px;
   text-align: center;

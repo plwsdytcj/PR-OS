@@ -3619,7 +3619,7 @@ function renderProjectRunStageLegend(graph) {
         .map((stage) => {
           const [label, cls] = GRAPH_STAGE_LABELS[stage];
           const active = state.projectRunStageFilter === stage ? " active" : "";
-          return `<button class="stage-pill ${escapeHTML(cls)}${active}" data-stage="${escapeHTML(stage)}" type="button">${escapeHTML(label)} <strong>${fmtNumber(counts[stage])}</strong></button>`;
+          return `<button class="stage-pill ${escapeHTML(cls)}${active}" data-stage="${escapeHTML(stage)}" type="button" title="${escapeHTML(label)} · ${fmtNumber(counts[stage])} 个图谱节点"><span>${escapeHTML(label)}</span><strong>${fmtNumber(counts[stage])}</strong></button>`;
         })
         .join("")
     : '<div class="meta">暂无阶段数据。</div>';
