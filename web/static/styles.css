@@ -6057,10 +6057,14 @@ textarea {
 .nav-primary .nav-item,
 .nav-group .nav-item {
   color: rgba(255, 253, 246, 0.86);
+  padding-left: 26px;
 }
 
 .nav-item::before {
   background: #57e0b1;
+  height: 7px;
+  left: 12px;
+  width: 7px;
 }
 
 .nav-item:hover,
