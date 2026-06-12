@@ -102,6 +102,12 @@ OBJECT_STORE_REGION=
 OBJECT_STORE_ACCESS_KEY_ID=
 OBJECT_STORE_SECRET_ACCESS_KEY=
 OBJECT_STORE_PUBLIC_BASE_URL=
+
+MIROFISH_COMMAND=mirofish
+MIROFISH_LLM_PROVIDER=codex-cli
+MIROFISH_PLATFORM=twitter
+MIROFISH_MAX_ROUNDS=1
+MIROFISH_TIMEOUT_SECONDS=240
 ```
 
 Behavior:
@@ -112,7 +118,9 @@ Behavior:
 - `AGENT_SDK_API_KEY`, `AGENT_SDK_MODEL`, and `AGENT_SDK_BASE_URL` configure the SDK runtime. For GLM/OpenAI-compatible providers, set `AGENT_SDK_BASE_URL` to the API root, for example `https://open.bigmodel.cn/api/paas/v4`; if omitted, the app also derives it from `AGENT_BASE_URL` or `GLM_BASE_URL`.
 - `AGENT_SDK_TRACING=false` disables OpenAI trace export by default, which avoids noisy logs when running the SDK against GLM or another OpenAI-compatible provider.
 - If `ONEAPI_API_KEY` is missing, OneAPI status is shown as not configured; Mock API and Excel remain usable.
-- If MiroFish CLI is not installed, Campaign stress tests use the OS fallback Simulation Layer.
+- If MiroFish CLI is not installed or times out, Campaign stress tests use the OS fallback Simulation Layer in Auto mode.
+- `MIROFISH_COMMAND` points to the external MiroFish runtime. For the current CLI-only fork, prefer a source checkout command such as `uv --directory /opt/mirofish run mirofish`, because the wheel install does not include the OASIS `scripts/` directory needed by the simulation subprocess.
+- `MIROFISH_LLM_PROVIDER` must be `claude-cli` or `codex-cli`; the upstream fork's provider name is historical, while the actual subprocess calls `claude` or `codex`.
 - If `PR_AI_OS_ACCESS_KEY` is set, private API calls require `X-Access-Key`; public client/creator links remain accessible.
 - If `PR_AI_OS_AUTH_ENABLED=true`, private APIs require login. If it is false, auth activates automatically after the first local user is created with `/api/auth/bootstrap-admin`.
 - `PR_AI_OS_COOKIE_SECURE=true` should be used only behind HTTPS.

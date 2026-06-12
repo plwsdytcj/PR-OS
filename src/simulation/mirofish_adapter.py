@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import json
+import os
+import shlex
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
+
 from src.schemas import stable_id
 from src.simulation.schemas import AgentReaction, SimulationEdge, SimulationNode, SimulationReport, SimulationTimelineEvent
 from src.simulation.stress_test_adapter import StressTestAdapter
+
+load_dotenv()
 
 
 class MiroFishCliAdapter(StressTestAdapter):
@@ -22,36 +28,71 @@ class MiroFishCliAdapter(StressTestAdapter):
 
     engine_name = "mirofish_cli"
 
-    def __init__(self, executable: str = "mirofish") -> None:
-        self.executable = executable
+    def __init__(self, executable: str | None = None, timeout_seconds: int | None = None) -> None:
+        self.command = shlex.split(executable or os.getenv("MIROFISH_COMMAND") or "mirofish")
+        self.timeout_seconds = timeout_seconds or int(os.getenv("MIROFISH_TIMEOUT_SECONDS", "240"))
+        self.max_rounds = int(os.getenv("MIROFISH_MAX_ROUNDS", "2"))
 
     def available(self) -> bool:
-        return shutil.which(self.executable) is not None
+        return bool(self.command) and shutil.which(self.command[0]) is not None
 
     def run(self, payload: dict[str, Any]) -> SimulationReport:
         if not self.available():
             raise RuntimeError("MiroFish CLI is not installed or not on PATH")
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
+            output_dir = workdir / "runs"
             seed = workdir / "campaign_seed.md"
             seed.write_text(_seed_markdown(payload), encoding="utf-8")
             requirement = "对该 PR/KOL 投放方案做投放前压力测试，输出正负反馈、误读点、风险和优化建议。不要预测 ROI 或爆款。"
-            output = subprocess.run(
-                [self.executable, "run", "--files", str(seed), "--requirement", requirement, "--json"],
-                cwd=workdir,
-                text=True,
-                capture_output=True,
-                timeout=180,
-                check=False,
-            )
+            env = os.environ.copy()
+            env["LLM_PROVIDER"] = os.getenv("MIROFISH_LLM_PROVIDER") or _valid_mirofish_provider(env.get("LLM_PROVIDER"))
+            command = [
+                *self.command,
+                "run",
+                "--files",
+                str(seed),
+                "--requirement",
+                requirement,
+                "--platform",
+                os.getenv("MIROFISH_PLATFORM", "parallel"),
+                "--max-rounds",
+                str(self.max_rounds),
+                "--output-dir",
+                str(output_dir),
+                "--json",
+            ]
+            try:
+                output = subprocess.run(
+                    command,
+                    cwd=workdir,
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                    timeout=self.timeout_seconds,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise RuntimeError(f"MiroFish CLI timed out after {self.timeout_seconds}s") from exc
             if output.returncode != 0:
                 raise RuntimeError(output.stderr or output.stdout or "MiroFish CLI failed")
-            verdict = _load_first_existing(workdir, ["verdict.json", "summary.json"])
-            graph = _load_first_existing(workdir, ["graph.json"])
-            timeline_data = _load_first_existing(workdir, ["timeline.json"])
-            actions = _load_jsonl(workdir / "actions.jsonl")
-            artifacts = _load_artifacts(workdir, ["swarm-overview.svg", "cluster-map.svg", "timeline.svg", "report.md"])
-            report_md = (workdir / "report.md").read_text(encoding="utf-8") if (workdir / "report.md").exists() else output.stdout
+            manifest = _resolve_mirofish_manifest(output.stdout, output_dir)
+            run_dir = output_dir / manifest.get("run_id", "") if manifest else _latest_child_dir(output_dir)
+            artifact_paths = _resolve_manifest_artifacts(run_dir, manifest)
+            verdict = _load_json_path(artifact_paths.get("verdict") or run_dir / "report" / "verdict.json")
+            summary = _load_json_path(artifact_paths.get("report_summary") or run_dir / "report" / "summary.json")
+            graph = _load_json_path(artifact_paths.get("graph_json") or run_dir / "graph" / "graph.json")
+            timeline_data = _load_json_path(artifact_paths.get("timeline_json") or run_dir / "simulation" / "timeline.json")
+            actions = _load_jsonl(artifact_paths.get("actions_log") or run_dir / "simulation" / "actions.jsonl")
+            artifacts = _load_artifacts_from_paths(
+                {
+                    "swarm-overview.svg": artifact_paths.get("swarm_overview") or run_dir / "visuals" / "swarm-overview.svg",
+                    "cluster-map.svg": artifact_paths.get("cluster_map") or run_dir / "visuals" / "cluster-map.svg",
+                    "timeline.svg": artifact_paths.get("timeline") or run_dir / "visuals" / "timeline.svg",
+                    "report.md": artifact_paths.get("report_markdown") or run_dir / "report" / "report.md",
+                }
+            )
+            report_md = artifacts.get("report.md") or output.stdout
             graph_nodes = graph.get("nodes", []) if isinstance(graph, dict) else []
             graph_edges = graph.get("edges", []) if isinstance(graph, dict) else []
             if isinstance(timeline_data, dict):
@@ -63,13 +104,13 @@ class MiroFishCliAdapter(StressTestAdapter):
             return SimulationReport(
                 report_id=stable_id(json.dumps(payload, ensure_ascii=False), "mirofish", prefix="sim"),
                 engine=self.engine_name,
-                summary=verdict.get("summary") or report_md[:240],
-                positive_reactions=verdict.get("positive_reactions", []),
-                negative_reactions=verdict.get("negative_reactions", []),
-                misreading_points=verdict.get("misreading_points", []),
-                risk_points=verdict.get("risk_points", []),
-                optimization_suggestions=verdict.get("optimization_suggestions", []),
-                final_recommendation=verdict.get("final_recommendation", "MiroFish 推演结果仅作为压力测试参考。"),
+                summary=_mirofish_summary(verdict, summary, report_md),
+                positive_reactions=_extract_signals(verdict, "positive"),
+                negative_reactions=_extract_signals(verdict, "negative"),
+                misreading_points=summary.get("key_dynamics", []) if isinstance(summary, dict) else [],
+                risk_points=_extract_signals(verdict, "negative")[:5],
+                optimization_suggestions=verdict.get("key_dynamics", []) if isinstance(verdict, dict) else [],
+                final_recommendation=verdict.get("prediction", "MiroFish 推演结果仅作为压力测试参考。") if isinstance(verdict, dict) else "MiroFish 推演结果仅作为压力测试参考。",
                 nodes=_normalize_nodes(graph_nodes),
                 edges=_normalize_edges(graph_edges),
                 timeline=_normalize_timeline(timeline_items, actions),
@@ -83,15 +124,52 @@ def _seed_markdown(payload: dict[str, Any]) -> str:
     return "# Campaign Stress Test Seed\n\n```json\n" + json.dumps(payload, ensure_ascii=False, indent=2) + "\n```\n"
 
 
-def _load_first_existing(workdir: Path, names: list[str]) -> dict[str, Any]:
-    for name in names:
-        path = workdir / name
-        if path.exists():
-            try:
-                return json.loads(path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                return {}
+def _valid_mirofish_provider(value: str | None) -> str:
+    normalized = (value or "").strip().lower()
+    if normalized in {"claude-cli", "codex-cli"}:
+        return normalized
+    return "claude-cli"
+
+
+def _resolve_mirofish_manifest(stdout: str, output_dir: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(stdout)
+        if isinstance(payload, dict) and payload.get("run_id"):
+            return payload
+    except json.JSONDecodeError:
+        pass
+    run_dir = _latest_child_dir(output_dir)
+    if run_dir:
+        return _load_json_path(run_dir / "manifest.json")
     return {}
+
+
+def _latest_child_dir(output_dir: Path) -> Path:
+    if not output_dir.exists():
+        return output_dir
+    children = [path for path in output_dir.iterdir() if path.is_dir()]
+    if not children:
+        return output_dir
+    return max(children, key=lambda path: path.stat().st_mtime)
+
+
+def _resolve_manifest_artifacts(run_dir: Path, manifest: dict[str, Any]) -> dict[str, Path]:
+    artifacts: dict[str, Path] = {}
+    for key, rel_path in (manifest.get("artifacts") or {}).items():
+        path = run_dir / str(rel_path)
+        if path.exists():
+            artifacts[str(key)] = path
+    return artifacts
+
+
+def _load_json_path(path: Path | None) -> dict[str, Any]:
+    if not path or not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {"timeline": payload}
 
 
 def _load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -110,13 +188,33 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def _load_artifacts(workdir: Path, names: list[str]) -> dict[str, str]:
+def _load_artifacts_from_paths(paths: dict[str, Path]) -> dict[str, str]:
     artifacts: dict[str, str] = {}
-    for name in names:
-        path = workdir / name
-        if path.exists():
+    for name, path in paths.items():
+        if path and path.exists():
             artifacts[name] = path.read_text(encoding="utf-8")
     return artifacts
+
+
+def _mirofish_summary(verdict: dict[str, Any], summary: dict[str, Any], report_md: str) -> str:
+    if isinstance(verdict, dict):
+        for key in ("summary", "prediction"):
+            if verdict.get(key):
+                return str(verdict[key])
+    if isinstance(summary, dict) and summary.get("verdict", {}).get("prediction"):
+        return str(summary["verdict"]["prediction"])
+    return report_md[:240]
+
+
+def _extract_signals(verdict: dict[str, Any], direction: str) -> list[str]:
+    signals = verdict.get("signals", []) if isinstance(verdict, dict) else []
+    rows: list[str] = []
+    for signal in signals:
+        if not isinstance(signal, dict):
+            continue
+        if signal.get("direction") == direction and signal.get("signal"):
+            rows.append(str(signal["signal"]))
+    return rows
 
 
 def _normalize_nodes(items: list[Any]) -> list[SimulationNode]:

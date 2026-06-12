@@ -3127,7 +3127,8 @@ def symbolic_engines() -> dict[str, Any]:
 async def symbolic_stress_test(payload: dict[str, Any]) -> dict[str, Any]:
     engine = str(payload.get("engine") or "llm_fallback")
     if engine == "mirofish":
-        adapter = MiroFishCliAdapter(executable=str(payload.get("executable") or "mirofish"))
+        executable = str(payload.get("executable") or "").strip() or None
+        adapter = MiroFishCliAdapter(executable=executable)
         try:
             report = adapter.run(payload)
         except Exception as exc:
