@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260612-8" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260612-9" />
   </head>
   <body>
     <div class="app-shell">
@@ -461,8 +461,14 @@
                 <button id="projectRunOpenRoomBtn" class="primary" type="button">查看完整项目</button>
               </div>
               <div id="projectRunStageLegend" class="graph-stage-legend"></div>
+              <div class="project-run-graph-toolbar" aria-label="图谱缩放控制">
+                <span id="projectRunGraphZoomLabel">100% auto</span>
+                <button class="secondary" data-project-graph-zoom="out" type="button">-</button>
+                <button class="secondary" data-project-graph-zoom="fit" type="button">Fit</button>
+                <button class="secondary" data-project-graph-zoom="in" type="button">+</button>
+              </div>
               <div class="project-run-graph-layout">
-                <div id="projectRunGraphCanvas" class="symbolic-graph project-run-graph"></div>
+                <div id="projectRunGraphCanvas" class="symbolic-graph project-run-graph zoomable-graph"></div>
                 <aside id="projectRunNodeInspector" class="graph-node-inspector">
                   <div class="meta">点击图谱节点查看分析依据。</div>
                 </aside>
@@ -1666,6 +1672,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260612-8"></script>
+    <script src="/static/app.js?v=20260612-9"></script>
   </body>
 </html>

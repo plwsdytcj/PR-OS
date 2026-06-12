@@ -73,6 +73,8 @@ const state = {
   projectRunSelectedNodeId: "",
   projectRunStageFilter: "",
   projectRunProgressTimer: null,
+  projectRunGraphScale: 1,
+  projectRunGraphAutoFit: true,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -2328,6 +2330,24 @@ function renderSymbolicGraph(graph) {
   renderSymbolicGraphInto("#symbolicGraphCanvas", graph);
 }
 
+function clampNumber(value, min, max) {
+  return Math.min(max, Math.max(min, Number(value || 0)));
+}
+
+function projectRunGraphFitScale(width, height) {
+  const canvas = $("#projectRunGraphCanvas");
+  if (!canvas) return 1;
+  const availableWidth = Math.max(320, canvas.clientWidth - 28);
+  const availableHeight = Math.max(360, canvas.clientHeight - 28);
+  return clampNumber(Math.min(availableWidth / width, availableHeight / height, 1), 0.42, 1.35);
+}
+
+function updateProjectRunZoomLabel() {
+  const label = $("#projectRunGraphZoomLabel");
+  if (!label) return;
+  label.textContent = `${Math.round((state.projectRunGraphScale || 1) * 100)}%${state.projectRunGraphAutoFit ? " auto" : ""}`;
+}
+
 function renderSymbolicGraphInto(selector, graph) {
   const canvas = $(selector);
   if (!canvas) return;
@@ -2339,6 +2359,10 @@ function renderSymbolicGraphInto(selector, graph) {
   }
   const width = 1180;
   const height = Math.max(620, Math.ceil(nodes.length / 5) * 150);
+  if (selector === "#projectRunGraphCanvas" && state.projectRunGraphAutoFit) {
+    state.projectRunGraphScale = projectRunGraphFitScale(width, height);
+  }
+  const scale = selector === "#projectRunGraphCanvas" ? clampNumber(state.projectRunGraphScale || 1, 0.42, 1.8) : 1;
   const positioned = layoutGraphNodes(nodes, width, height);
   const nodeMap = Object.fromEntries(positioned.map((node) => [node.id, node]));
   const edgeSvg = edges
@@ -2374,7 +2398,8 @@ function renderSymbolicGraphInto(selector, graph) {
       `;
     })
     .join("");
-  canvas.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="符号关系图谱">${edgeSvg}${nodeSvg}</svg>`;
+  canvas.innerHTML = `<svg width="${Math.round(width * scale)}" height="${Math.round(height * scale)}" viewBox="0 0 ${width} ${height}" role="img" aria-label="符号关系图谱">${edgeSvg}${nodeSvg}</svg>`;
+  if (selector === "#projectRunGraphCanvas") updateProjectRunZoomLabel();
 }
 
 function renderSymbolicEngines(data) {
@@ -3353,6 +3378,8 @@ function startProjectRunProgress(payload) {
   state.projectRun = { graph: buildProjectRunProgressGraph(0), matches: [], simulation_report: {}, narratives: [] };
   state.projectRunSelectedNodeId = "progress_brief";
   state.projectRunStageFilter = "";
+  state.projectRunGraphAutoFit = true;
+  state.projectRunGraphScale = 1;
   $("#projectRunResult")?.classList.remove("hidden");
   $("#projectRunKolCount").textContent = "-";
   $("#projectRunNodeCount").textContent = "1";
@@ -4659,6 +4686,25 @@ function bindEvents() {
     renderProjectRunStageLegend(state.projectRun.graph);
     renderSymbolicGraphInto("#projectRunGraphCanvas", state.projectRun.graph);
     renderProjectRunNodeInspector();
+  });
+
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-project-graph-zoom]");
+    if (!button || !state.projectRun?.graph) return;
+    const action = button.dataset.projectGraphZoom;
+    if (action === "fit") {
+      state.projectRunGraphAutoFit = true;
+    } else {
+      state.projectRunGraphAutoFit = false;
+      const delta = action === "in" ? 0.12 : -0.12;
+      state.projectRunGraphScale = clampNumber((state.projectRunGraphScale || 1) + delta, 0.42, 1.8);
+    }
+    renderSymbolicGraphInto("#projectRunGraphCanvas", state.projectRun.graph);
+  });
+
+  window.addEventListener("resize", () => {
+    if (!state.projectRun?.graph || !state.projectRunGraphAutoFit) return;
+    renderSymbolicGraphInto("#projectRunGraphCanvas", state.projectRun.graph);
   });
 
   document.addEventListener("click", async (event) => {

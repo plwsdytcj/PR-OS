@@ -3836,7 +3836,7 @@ body.client-session #clientPortal {
 
 .project-run-placeholder span {
   color: var(--coral);
-  font-family: var(--mono-font);
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 900;
   text-transform: uppercase;
@@ -4113,6 +4113,48 @@ body.client-session #clientPortal {
     linear-gradient(90deg, rgba(23, 18, 13, 0.04) 1px, transparent 1px),
     #f8fafc;
   background-size: 24px 24px;
+  max-height: min(72vh, 720px);
+  min-height: 480px;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+}
+
+.project-run-graph.zoomable-graph svg {
+  height: auto;
+  max-width: none;
+  min-width: 0;
+  transform-origin: top left;
+  transition: width 240ms var(--ease-out), height 240ms var(--ease-out);
+  width: auto;
+}
+
+.project-run-graph-toolbar {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin: -4px 0 12px;
+}
+
+.project-run-graph-toolbar span {
+  background: #17120d;
+  border: 2px solid #17120d;
+  color: #fffdf4;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 900;
+  min-width: 88px;
+  padding: 7px 9px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.project-run-graph-toolbar button {
+  border: 2px solid #17120d;
+  box-shadow: 3px 3px 0 #17120d;
+  min-height: 34px;
+  min-width: 42px;
+  padding: 5px 10px;
 }
 
 .graph-stage-legend {
