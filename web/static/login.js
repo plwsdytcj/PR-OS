@@ -32,8 +32,9 @@ async function checkExistingSession() {
   try {
     const data = await api("/api/auth/me");
     if (data.authenticated && data.identity) {
-      const label = data.identity.user_type === "client" ? "甲方客户" : "内部团队";
-      setFeedback(`已登录为 ${data.identity.email}（${label}），可以直接进入工作台。`, "success");
+      const user = data.identity.user || {};
+      const label = user.user_type === "client" ? "甲方客户" : "内部团队";
+      setFeedback(`已登录为 ${user.email || user.name || "当前账号"}（${label}），可以直接进入工作台。`, "success");
     }
   } catch {
     setFeedback("");

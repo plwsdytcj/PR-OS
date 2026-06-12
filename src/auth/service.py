@@ -84,6 +84,50 @@ def create_user(
     return user
 
 
+def update_user(
+    db_path: Path,
+    user_id: str,
+    name: str | None = None,
+    role: str | None = None,
+    status: str | None = None,
+    client_id: str | None = None,
+) -> AuthUser:
+    user = load_user(db_path, user_id)
+    if user is None:
+        raise ValueError("user not found")
+    if name is not None:
+        user.name = name.strip() or user.name
+    if role is not None:
+        if role not in ALL_ROLES:
+            raise ValueError("invalid role")
+        if user.user_type == "internal" and role not in INTERNAL_ROLES:
+            raise ValueError("invalid internal role")
+        if user.user_type == "client" and role not in CLIENT_ROLES:
+            raise ValueError("invalid client role")
+        user.role = role
+    if status is not None:
+        if status not in {"active", "disabled"}:
+            raise ValueError("invalid status")
+        user.status = status
+    if client_id is not None:
+        user.client_id = client_id
+    user.updated_at = now_iso()
+    upsert_user(db_path, user)
+    return user
+
+
+def reset_user_password(db_path: Path, user_id: str, password: str) -> AuthUser:
+    user = load_user(db_path, user_id)
+    if user is None:
+        raise ValueError("user not found")
+    if len(password) < 8:
+        raise ValueError("password must be at least 8 characters")
+    user.password_hash = hash_password(password)
+    user.updated_at = now_iso()
+    upsert_user(db_path, user)
+    return user
+
+
 def authenticate_user(db_path: Path, email: str, password: str) -> AuthUser | None:
     user = load_user_by_email(db_path, email)
     if not user or user.status != "active":

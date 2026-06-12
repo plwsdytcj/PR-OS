@@ -130,7 +130,7 @@ const VIEW_TITLES = {
   creatorCommercial: ["博主商业档案", "邀请博主补充报价、档期和案例。"],
   briefDistribution: ["Brief 分发", "把确认的需求推给博主并收集响应。"],
   platformOS: ["OS 总控台", "管理 Campaign、多方案、推演和投后回流。"],
-  organization: ["组织管理", "管理内部账号、甲方客户、客户成员和项目授权。"],
+  organization: ["Admin Console", "管理内部账号、甲方客户、客户成员和项目授权。"],
   dataSources: ["数据源设置", "检查达人 API、LLM、推演引擎和导入能力。"],
   symbolicOS: ["符号 OS", "维护社会符号网络、能指标签库和投后修正。"],
   symbolicCreator: ["博主符号档案", "把内容风格、受众幻想和风险变成标签。"],
@@ -1320,11 +1320,41 @@ function renderRolePill(role) {
 }
 
 function renderOrganization() {
+  renderOrgAdminNotice();
   renderOrgMetrics();
   renderInternalUsers();
   renderClientAccounts();
   renderOrgSelects();
   renderProjectAccessTable();
+}
+
+function isCurrentUserAdmin() {
+  const user = state.currentIdentity?.user;
+  return user?.user_type === "internal" && user?.role === "admin";
+}
+
+function renderOrgAdminNotice() {
+  const node = $("#orgAdminNotice");
+  const internalForm = $("#internalUserForm");
+  if (internalForm) {
+    Array.from(internalForm.querySelectorAll("input, select, button")).forEach((field) => {
+      field.disabled = !isCurrentUserAdmin();
+    });
+  }
+  if (!node) return;
+  if (isCurrentUserAdmin()) {
+    node.innerHTML = `
+      <strong>Admin mode</strong>
+      <span>你可以创建员工、甲方账号、重置密码、启用/禁用账号并分配项目访问。</span>
+    `;
+    node.dataset.tone = "ok";
+  } else {
+    node.innerHTML = `
+      <strong>Read-only</strong>
+      <span>当前账号不是 admin，只能查看部分组织信息；员工管理、重置密码和账号状态调整需要 admin。</span>
+    `;
+    node.dataset.tone = "warn";
+  }
 }
 
 function renderOrgMetrics() {
@@ -1356,6 +1386,7 @@ function renderInternalUsers() {
   const list = $("#internalUserList");
   if (!list) return;
   const users = state.authUsers.filter((user) => user.user_type === "internal");
+  const canAdmin = isCurrentUserAdmin();
   list.innerHTML = users.length
     ? users
         .map(
@@ -1368,6 +1399,14 @@ function renderInternalUsers() {
               <div class="org-card-side">
                 ${renderRolePill(user.role)}
                 <span class="meta">${escapeHTML(user.status || "active")}</span>
+                ${
+                  canAdmin
+                    ? `<div class="org-actions">
+                        <button class="secondary mini-action" data-auth-action="toggle-user" data-user-id="${escapeHTML(user.user_id)}" data-next-status="${user.status === "disabled" ? "active" : "disabled"}" type="button">${user.status === "disabled" ? "启用" : "禁用"}</button>
+                        <button class="secondary mini-action" data-auth-action="reset-password" data-user-id="${escapeHTML(user.user_id)}" type="button">重置密码</button>
+                      </div>`
+                    : ""
+                }
               </div>
             </article>
           `
@@ -1379,6 +1418,7 @@ function renderInternalUsers() {
 function renderClientAccounts() {
   const list = $("#clientAccountList");
   if (!list) return;
+  const canAdmin = isCurrentUserAdmin();
   list.innerHTML = state.authClients.length
     ? state.authClients
         .map((client) => {
@@ -1386,9 +1426,16 @@ function renderClientAccounts() {
             .map((member) => {
               const user = userById(member.user_id);
               return `
-                <span class="mini-member">
-                  ${escapeHTML(user?.name || user?.email || member.user_id)}
+                <span class="mini-member ${user?.status === "disabled" ? "disabled" : ""}">
+                  <span>${escapeHTML(user?.name || user?.email || member.user_id)}</span>
                   ${renderRolePill(member.role)}
+                  ${user ? `<em>${escapeHTML(user.status || "active")}</em>` : ""}
+                  ${
+                    canAdmin && user
+                      ? `<button class="secondary mini-action" data-auth-action="toggle-user" data-user-id="${escapeHTML(user.user_id)}" data-next-status="${user.status === "disabled" ? "active" : "disabled"}" type="button">${user.status === "disabled" ? "启用" : "禁用"}</button>
+                         <button class="secondary mini-action" data-auth-action="reset-password" data-user-id="${escapeHTML(user.user_id)}" type="button">重置密码</button>`
+                      : ""
+                  }
                 </span>
               `;
             })
@@ -4671,6 +4718,44 @@ function bindEvents() {
       toast("项目授权已保存");
     } catch (error) {
       toast(error.message, true);
+    }
+  });
+  $("#organization")?.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-auth-action]");
+    if (!button) return;
+    const action = button.dataset.authAction;
+    const userId = button.dataset.userId;
+    if (!action || !userId) return;
+    try {
+      button.disabled = true;
+      if (action === "toggle-user") {
+        const nextStatus = button.dataset.nextStatus || "disabled";
+        await api(`/api/auth/users/${encodeURIComponent(userId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: nextStatus }),
+        });
+        await loadOrganization();
+        toast(nextStatus === "active" ? "账号已启用" : "账号已禁用");
+      }
+      if (action === "reset-password") {
+        const password = window.prompt("输入新密码，至少 8 位");
+        if (password === null) return;
+        if (password.length < 8) {
+          toast("密码至少 8 位", true);
+          return;
+        }
+        await api(`/api/auth/users/${encodeURIComponent(userId)}/reset-password`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password }),
+        });
+        toast("密码已重置");
+      }
+    } catch (error) {
+      toast(error.message, true);
+    } finally {
+      button.disabled = false;
     }
   });
   $("#generateSocialReportBtn").addEventListener("click", async () => {

@@ -1947,6 +1947,35 @@ button {
   margin-bottom: 18px;
 }
 
+.admin-notice {
+  align-items: center;
+  background: #fffdf6;
+  border: 3px solid #17120d;
+  box-shadow: 5px 5px 0 var(--spark);
+  display: flex;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+}
+
+.admin-notice strong {
+  background: #17120d;
+  color: #fffdf4;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 6px 8px;
+  text-transform: uppercase;
+}
+
+.admin-notice span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.admin-notice[data-tone="warn"] {
+  box-shadow: 5px 5px 0 var(--coral);
+}
+
 .org-form {
   background: #fffdf6;
   border: 2px dashed #17120d;
@@ -2008,6 +2037,19 @@ button {
   min-width: max-content;
 }
 
+.org-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.mini-action {
+  font-size: 11px;
+  min-height: 28px;
+  padding: 4px 8px;
+}
+
 .role-pill {
   border: 2px solid #17120d;
   border-radius: 999px;
@@ -2047,6 +2089,17 @@ button {
   display: inline-flex;
   gap: 6px;
   padding: 5px 6px;
+}
+
+.mini-member.disabled {
+  opacity: 0.55;
+}
+
+.mini-member em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
 }
 
 table {

@@ -32,10 +32,12 @@ from src.auth.service import (
     link_client_user,
     logout_session,
     resolve_identity,
+    reset_user_password,
     role_can,
+    update_user,
     users_exist,
 )
-from src.auth.storage import init_auth_db, load_all_clients, load_all_project_access, load_all_users, load_client_users_for_client
+from src.auth.storage import init_auth_db, load_all_clients, load_all_project_access, load_all_users, load_client_users_for_client, load_user
 from src.agent.runtime import (
     approve_agent_run,
     cancel_agent_run,
@@ -1308,6 +1310,42 @@ async def auth_create_user(payload: dict[str, Any]) -> dict[str, Any]:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"user": user.to_dict(), "created_by": identity.user.user_id}
+
+
+@app.patch("/api/auth/users/{user_id}")
+async def auth_update_user(user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    identity = require_admin()
+    current = load_user(DB_PATH, user_id)
+    if current is None:
+        raise HTTPException(status_code=404, detail="user not found")
+    requested_status = str(payload.get("status")) if "status" in payload else None
+    requested_role = str(payload.get("role")) if "role" in payload else None
+    if identity.user.user_id == user_id and requested_status == "disabled":
+        raise HTTPException(status_code=400, detail="cannot disable current admin")
+    if identity.user.user_id == user_id and requested_role and requested_role != "admin":
+        raise HTTPException(status_code=400, detail="cannot remove current admin role")
+    try:
+        user = update_user(
+            DB_PATH,
+            user_id=user_id,
+            name=str(payload.get("name")) if "name" in payload else None,
+            role=requested_role,
+            status=requested_status,
+            client_id=str(payload.get("client_id")) if "client_id" in payload else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"user": user.to_dict(), "updated_by": identity.user.user_id}
+
+
+@app.post("/api/auth/users/{user_id}/reset-password")
+async def auth_reset_user_password(user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    identity = require_admin()
+    try:
+        user = reset_user_password(DB_PATH, user_id=user_id, password=str(payload.get("password") or ""))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"user": user.to_dict(), "updated_by": identity.user.user_id}
 
 
 @app.get("/api/auth/clients")
