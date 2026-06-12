@@ -719,6 +719,116 @@ def agent_runtime() -> dict[str, Any]:
     return agent_runtime_status()
 
 
+@app.get("/api/history/workspace")
+def workspace_history() -> dict[str, Any]:
+    require_internal("read")
+    items: list[dict[str, Any]] = []
+
+    for project in load_all_campaign_projects(DB_PATH):
+        campaign = project.campaign
+        latest_timeline = next((event for event in project.timeline if event.get("created_at")), {})
+        updated_at = campaign.updated_at or latest_timeline.get("created_at") or campaign.created_at
+        items.append(
+            {
+                "id": campaign.campaign_id,
+                "type": "campaign",
+                "label": "Campaign",
+                "title": campaign.project_name,
+                "subtitle": campaign.client_name,
+                "status": "archived" if project.archived else campaign.status,
+                "summary": campaign.raw_brief[:180],
+                "updated_at": updated_at,
+                "created_at": campaign.created_at,
+                "metrics": [
+                    {"label": "方案", "value": len(project.plans)},
+                    {"label": "事件", "value": len(project.timeline)},
+                    {"label": "复盘", "value": len(project.reviews)},
+                ],
+                "target": {"view": "platformOS", "action": "campaign", "id": campaign.campaign_id},
+            }
+        )
+
+    for payload in list_agent_threads(DB_PATH):
+        thread = payload.get("thread") or {}
+        task = payload.get("task") or {}
+        messages = payload.get("messages") or []
+        runs = payload.get("runs") or []
+        artifacts = payload.get("artifacts") or []
+        latest_run = runs[0] if runs else {}
+        items.append(
+            {
+                "id": thread.get("thread_id") or task.get("task_id") or "",
+                "type": "agent_thread",
+                "label": "Agent Chat",
+                "title": thread.get("title") or task.get("title") or "Agent Thread",
+                "subtitle": thread.get("client_name") or task.get("client_name") or "内部 Agent",
+                "status": thread.get("status") or task.get("status") or latest_run.get("status") or "active",
+                "summary": thread.get("summary") or task.get("brief") or "",
+                "updated_at": thread.get("updated_at") or task.get("updated_at") or latest_run.get("updated_at") or "",
+                "created_at": thread.get("created_at") or task.get("created_at") or "",
+                "metrics": [
+                    {"label": "消息", "value": len(messages)},
+                    {"label": "运行", "value": len(runs)},
+                    {"label": "产物", "value": len(artifacts)},
+                ],
+                "target": {"view": "agentWorkspace", "action": "agent_thread", "id": thread.get("thread_id") or task.get("task_id") or ""},
+            }
+        )
+
+    for proposal in load_all_proposals(DB_PATH):
+        versions = load_versions(DB_PATH, proposal.proposal_id)
+        feedback = load_feedback(DB_PATH, proposal.proposal_id)
+        items.append(
+            {
+                "id": proposal.proposal_id,
+                "type": "proposal",
+                "label": "Client Proposal",
+                "title": proposal.project_name,
+                "subtitle": proposal.client_name,
+                "status": proposal.status,
+                "summary": proposal.brief_summary or proposal.brief_text[:180],
+                "updated_at": proposal.updated_at or proposal.created_at,
+                "created_at": proposal.created_at,
+                "metrics": [
+                    {"label": "版本", "value": len(versions)},
+                    {"label": "反馈", "value": len(feedback)},
+                    {"label": "访问", "value": proposal.access_count},
+                ],
+                "target": {"view": "collaboration", "action": "proposal", "id": proposal.proposal_id},
+            }
+        )
+
+    for brief in load_all_distribution_briefs(DB_PATH):
+        responses = load_responses_for_brief(DB_PATH, brief.brief_id)
+        updated_at = brief.pushed_at or max([item.created_at for item in responses], default="") or brief.created_at
+        items.append(
+            {
+                "id": brief.brief_id,
+                "type": "distribution",
+                "label": "Brief Distribution",
+                "title": brief.project_name,
+                "subtitle": brief.client_name,
+                "status": brief.status,
+                "summary": brief.raw_brief[:180],
+                "updated_at": updated_at,
+                "created_at": brief.created_at,
+                "metrics": [
+                    {"label": "博主", "value": len(brief.recipients)},
+                    {"label": "响应", "value": len(responses)},
+                    {"label": "已看", "value": len([item for item in brief.recipients if item.viewed_at])},
+                ],
+                "target": {"view": "briefDistribution", "action": "distribution", "id": brief.brief_id},
+            }
+        )
+
+    items = [item for item in items if item["id"]]
+    items.sort(key=lambda item: item.get("updated_at") or item.get("created_at") or "", reverse=True)
+    summary: dict[str, int] = {}
+    for item in items:
+        summary[item["type"]] = summary.get(item["type"], 0) + 1
+    return {"items": items[:120], "summary": summary, "total": len(items)}
+
+
 def _runtime_from_payload(payload: dict[str, Any]) -> str:
     return _normalize_runtime_name(str(payload.get("runtime") or payload.get("agent_runtime") or requested_runtime_name()))
 

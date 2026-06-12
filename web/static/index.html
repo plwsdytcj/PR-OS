@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260612-3" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260612-4" />
   </head>
   <body>
     <div class="app-shell">
@@ -21,6 +21,7 @@
           <div class="nav-primary">
             <button class="nav-item active" data-view="workspace">首页</button>
             <button class="nav-item" data-view="projectRun">新建 PR 需求</button>
+            <button class="nav-item" data-view="history">历史任务</button>
             <button class="nav-item" data-view="kolIntelligence">KOL 图谱</button>
             <button class="nav-item" data-view="creators">达人库</button>
             <button class="nav-item" data-view="agentWorkspace">AI Agent</button>
@@ -185,6 +186,36 @@
                 <li>查看动态图谱和右侧推荐卡。</li>
               </ol>
             </div>
+          </div>
+        </section>
+
+        <section id="history" class="view">
+          <div class="history-command panel">
+            <div>
+              <div class="eyebrow">workspace memory</div>
+              <h2>历史任务 / 资产中心</h2>
+              <p>把 Campaign、Agent 会话、甲方方案和 Brief 分发统一成一条可追溯的工作资产时间线。</p>
+            </div>
+            <button id="refreshHistoryBtn" class="primary" type="button">刷新历史</button>
+          </div>
+
+          <div id="historyMetrics" class="metrics"></div>
+
+          <div class="panel history-filter-panel">
+            <div class="panel-header">
+              <div>
+                <h2>资产时间线</h2>
+                <p>点击任意资产，回到对应的 Campaign Room、Agent Thread、客户方案或分发详情。</p>
+              </div>
+              <div class="history-filter-tabs" role="tablist" aria-label="历史类型筛选">
+                <button class="history-filter active" data-history-type="all" type="button">全部</button>
+                <button class="history-filter" data-history-type="campaign" type="button">Campaign</button>
+                <button class="history-filter" data-history-type="agent_thread" type="button">Agent</button>
+                <button class="history-filter" data-history-type="proposal" type="button">方案</button>
+                <button class="history-filter" data-history-type="distribution" type="button">分发</button>
+              </div>
+            </div>
+            <div id="historyList" class="history-list"></div>
           </div>
         </section>
 
@@ -1641,6 +1672,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260612-3"></script>
+    <script src="/static/app.js?v=20260612-4"></script>
   </body>
 </html>

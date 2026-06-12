@@ -3,6 +3,9 @@ const state = {
   accessKey: localStorage.getItem("pr_ai_os_access_key") || "",
   authRequired: false,
   currentIdentity: null,
+  workspaceHistory: [],
+  historySummary: {},
+  historyFilter: "all",
   authUsers: [],
   authClients: [],
   projectAccess: [],
@@ -107,6 +110,7 @@ const VIEW_TITLES = {
   workspace: ["工作台", "从达人库到 Campaign OS 的五段式闭环。"],
   agentWorkspace: ["AI Agent", "让 PR 项目经理 Agent 调用工具、生成过程日志和交付产物。"],
   knowledge: ["知识库", "把公司案例、客户偏好、风险规则和方案模板变成 Agent 可检索的 RAG 记忆。"],
+  history: ["历史任务", "统一查看 Campaign、Agent 会话、方案版本和 Brief 分发记录。"],
   projectRun: ["新建 PR 项目", "输入一个需求，自动跑完 brief、符号图谱、KOL 选择和 Campaign Room。"],
   ingest: ["数据接入", "把 Excel、链接和 API 变成统一 KOL Profile。"],
   creators: ["达人库", "扫描、修正和调用你的私有 KOL 资产。"],
@@ -306,6 +310,14 @@ async function loadCollaboration() {
   const data = await api("/api/collaboration/proposals");
   state.collabProposals = data.items || [];
   renderCollaborationList();
+}
+
+async function loadWorkspaceHistory() {
+  if (state.currentIdentity?.user?.user_type === "client") return;
+  const data = await api("/api/history/workspace");
+  state.workspaceHistory = data.items || [];
+  state.historySummary = data.summary || {};
+  renderWorkspaceHistory();
 }
 
 async function loadOrganization() {
@@ -1341,6 +1353,59 @@ function renderAgentTasks() {
   renderAgentMessages();
 }
 
+const HISTORY_TYPE_LABELS = {
+  campaign: "Campaign",
+  agent_thread: "Agent",
+  proposal: "方案",
+  distribution: "分发",
+};
+
+function renderWorkspaceHistory() {
+  const metrics = $("#historyMetrics");
+  if (metrics) {
+    const summary = state.historySummary || {};
+    metrics.innerHTML = [
+      ["全部资产", state.workspaceHistory.length],
+      ["Campaign", summary.campaign || 0],
+      ["Agent 会话", summary.agent_thread || 0],
+      ["甲方方案", summary.proposal || 0],
+      ["Brief 分发", summary.distribution || 0],
+    ]
+      .map(([label, value]) => `<div class="metric"><span>${escapeHTML(label)}</span><strong>${fmtNumber(value)}</strong></div>`)
+      .join("");
+  }
+  $$(".history-filter").forEach((button) => {
+    button.classList.toggle("active", button.dataset.historyType === state.historyFilter);
+  });
+  const list = $("#historyList");
+  if (!list) return;
+  const items = state.workspaceHistory.filter((item) => state.historyFilter === "all" || item.type === state.historyFilter);
+  list.innerHTML = items.length
+    ? items
+        .map((item) => {
+          const metricsHtml = (item.metrics || [])
+            .map((metric) => `<span>${escapeHTML(metric.label)} ${fmtNumber(metric.value)}</span>`)
+            .join("");
+          return `
+            <article class="history-card ${escapeHTML(item.type || "")}">
+              <button class="history-card-main open-history-item-btn" data-history-type="${escapeHTML(item.type)}" data-history-id="${escapeHTML(item.id)}" type="button">
+                <span class="card-kicker">${escapeHTML(item.label || HISTORY_TYPE_LABELS[item.type] || item.type)}</span>
+                <h3>${escapeHTML(item.title || "未命名资产")}</h3>
+                <p>${escapeHTML(item.subtitle || "")} · ${escapeHTML(item.status || "active")}</p>
+                <div class="history-summary">${escapeHTML(item.summary || "暂无摘要。")}</div>
+              </button>
+              <div class="history-card-side">
+                <div class="history-time">${escapeHTML(item.updated_at || item.created_at || "-")}</div>
+                <div class="asset-history-stats">${metricsHtml}</div>
+                <button class="secondary open-history-item-btn" data-history-type="${escapeHTML(item.type)}" data-history-id="${escapeHTML(item.id)}" type="button">打开</button>
+              </div>
+            </article>
+          `;
+        })
+        .join("")
+    : emptyState("暂无历史资产", "跑一次 PR brief、启动 Agent 或生成甲方方案后，这里会自动出现记录。");
+}
+
 function renderAgentRuntimeControls() {
   const meta = $("#agentRuntimeMeta");
   const select = $("#agentRuntimeSelect");
@@ -1965,6 +2030,7 @@ function startAgentPolling(runId) {
         const threadId = state.activeAgentThread?.thread?.thread_id;
         if (threadId) await loadAgentThread(threadId);
         await loadAgentTasks();
+        await loadWorkspaceHistory();
       }
     });
     source.addEventListener("agent_error", (event) => {
@@ -1994,6 +2060,7 @@ function startAgentPollFallback(runId) {
         const threadId = state.activeAgentThread?.thread?.thread_id;
         if (threadId) await loadAgentThread(threadId);
         await loadAgentTasks();
+        await loadWorkspaceHistory();
       }
     } catch (error) {
       stopAgentPolling();
@@ -2035,6 +2102,7 @@ async function reloadAll() {
   await loadAgentTasks();
   await loadAgentRuntime();
   await loadKnowledge();
+  await loadWorkspaceHistory();
   await loadCollaboration();
   await loadOrganization();
   await loadCommercial();
@@ -2884,6 +2952,37 @@ async function openCampaignRoom(campaignId) {
   const data = await api(`/api/platform/campaigns/${campaignId}/room`);
   renderPlatformCampaign(data.room);
   return data.room;
+}
+
+async function openHistoryItem(type, id) {
+  if (!id) return;
+  if (type === "campaign") {
+    await openCampaignRoom(id);
+    setView("platformOS");
+    return;
+  }
+  if (type === "agent_thread") {
+    const threadData = await loadAgentThread(id);
+    const runId = threadData?.thread?.current_run_id || threadData?.runs?.[0]?.run_id;
+    if (runId) {
+      const data = await api(`/api/agent/runs/${runId}`);
+      renderAgentRun(data);
+      if (data.run?.status === "running") startAgentPolling(runId);
+    }
+    setView("agentWorkspace");
+    return;
+  }
+  if (type === "proposal") {
+    await openCollaborationProposal(id);
+    setView("collaboration");
+    return;
+  }
+  if (type === "distribution") {
+    await openDistribution(id);
+    setView("briefDistribution");
+    return;
+  }
+  toast("暂不支持打开该历史类型", true);
 }
 
 async function openDistribution(briefId) {
@@ -3930,6 +4029,13 @@ function bindEvents() {
   $("#refreshDataSourcesBtn").addEventListener("click", () => loadDataSources().then(() => toast("数据源状态已刷新")));
   $("#refreshOrganizationBtn")?.addEventListener("click", () => loadOrganization().then(() => toast("组织数据已刷新")));
   $("#refreshAgentTasksBtn")?.addEventListener("click", () => loadAgentTasks().then(() => toast("Agent 任务已刷新")));
+  $("#refreshHistoryBtn")?.addEventListener("click", () => loadWorkspaceHistory().then(() => toast("历史资产已刷新")));
+  document.addEventListener("click", (event) => {
+    const filter = event.target.closest(".history-filter");
+    if (!filter) return;
+    state.historyFilter = filter.dataset.historyType || "all";
+    renderWorkspaceHistory();
+  });
   $("#agentNewThreadBtn")?.addEventListener("click", () => {
     stopAgentPolling();
     state.activeAgentThread = null;
@@ -4014,6 +4120,7 @@ function bindEvents() {
       renderAgentRun(data);
       startAgentPolling(data.run?.run_id);
       await loadAgentTasks();
+      await loadWorkspaceHistory();
       toast("Agent 已启动，执行过程会实时刷新");
     } catch (error) {
       toast(error.message, true);
@@ -4306,6 +4413,12 @@ function bindEvents() {
     if (!button) return;
     await openCampaignRoom(button.dataset.campaignId);
     setView("platformOS");
+  });
+
+  document.addEventListener("click", async (event) => {
+    const button = event.target.closest(".open-history-item-btn");
+    if (!button) return;
+    await openHistoryItem(button.dataset.historyType, button.dataset.historyId);
   });
 
   document.addEventListener("click", async (event) => {
@@ -4811,6 +4924,7 @@ function bindEvents() {
     await loadDistribution();
     await openDistribution(data.brief.brief_id);
     await loadPlatformDashboard();
+    await loadWorkspaceHistory();
     toast("Brief 分发名单已生成");
   });
 
@@ -4823,6 +4937,7 @@ function bindEvents() {
       body: JSON.stringify(payload),
     });
     await loadPlatformDashboard();
+    await loadWorkspaceHistory();
     await openCampaignRoom(data.project.campaign.campaign_id);
     toast("Campaign 项目和 3 套方案已生成");
   });
@@ -4845,7 +4960,7 @@ function bindEvents() {
         body: JSON.stringify(payload),
       });
       renderProjectRun(data.run);
-      await Promise.all([loadPlatformDashboard(), loadSymbolicOS(), loadCreators()]);
+      await Promise.all([loadPlatformDashboard(), loadWorkspaceHistory(), loadSymbolicOS(), loadCreators()]);
       toast("完整 PR 项目链路已生成");
     } finally {
       if (button) {
