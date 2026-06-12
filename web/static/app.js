@@ -887,6 +887,11 @@ function renderKolIntakeResult(data) {
   const creators = data.creators || [];
   const tagSummary = data.tag_summary || [];
   const patchKeys = Object.keys(data.suggested_patch || data.parsed_fields || {});
+  const sourceLabel = {
+    text: "文字录入",
+    file: "Excel / CSV",
+    image: "图片识别",
+  }[data.source] || data.source || "intake";
   node.innerHTML = `
     <div class="kol-intake-summary">
       <div>
@@ -902,21 +907,45 @@ function renderKolIntakeResult(data) {
         <strong>${fmtNumber(data.graph_summary?.nodes || 0)}</strong>
       </div>
     </div>
+    <div class="kol-intake-next">
+      <div>
+        <strong>${escapeHTML(sourceLabel)}已进入达人库</strong>
+        <span>生成的画像字段和证据标签会被 PR Brief 匹配、KOL 图谱、Campaign Room 复用。</span>
+      </div>
+      <div class="button-row">
+        <button class="secondary" data-view-jump="creators" type="button">查看达人库</button>
+        <button class="secondary" data-view-jump="kolIntelligence" type="button">查看 KOL 图谱</button>
+        <button class="primary" data-view-jump="projectRun" type="button">用 Brief 匹配</button>
+      </div>
+    </div>
     <div class="kol-intake-cards">
       ${creators
         .map((creator) => {
           const summary = tagSummary.find((item) => item.creator_id === creator.creator_id) || {};
-          const tags = (summary.tags || []).slice(0, 8).map((tag) => tag.tag || tag.category || "");
+          const groupedTags = groupKolEvidenceTags(summary.tags || []);
+          const profileTags = [
+            ...(creator.industry_fit_tags || []),
+            ...(creator.content_capability_tags || []),
+            ...(creator.suitable_goals || []),
+            ...(creator.risk_tags || []),
+          ].slice(0, 10);
           return `
             <article class="creator-card kol-intake-card">
-              <div class="card-kicker">${escapeHTML(data.source || "intake")} · ${escapeHTML(creator.platform || "未知平台")}</div>
+              <div class="card-kicker">${escapeHTML(sourceLabel)} · ${escapeHTML(creator.platform || "未知平台")}</div>
               <div class="creator-card-head">
                 <h3>${escapeHTML(creator.name || "未命名 KOL")}</h3>
                 <button class="secondary open-creator-btn" data-creator-id="${escapeHTML(creator.creator_id)}" type="button">详情</button>
               </div>
               <div class="meta">粉丝 ${fmtNumber(creator.follower_count)} · 报价 ${fmtNumber(creator.listed_price)}</div>
               <p>${escapeHTML(creator.ai_summary || creator.bio || "已完成基础画像。")}</p>
-              <div class="tag-list">${tags.map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`).join("")}</div>
+              <div class="kol-intake-field-grid">
+                <div><span>行业标签</span><strong>${escapeHTML((creator.industry_fit_tags || []).slice(0, 3).join(" / ") || "-")}</strong></div>
+                <div><span>内容能力</span><strong>${escapeHTML((creator.content_capability_tags || []).slice(0, 3).join(" / ") || "-")}</strong></div>
+                <div><span>预算适配</span><strong>${escapeHTML((creator.budget_fit_tags || []).slice(0, 2).join(" / ") || "-")}</strong></div>
+                <div><span>风险</span><strong>${escapeHTML((creator.risk_tags || []).slice(0, 2).join(" / ") || "暂无")}</strong></div>
+              </div>
+              <div class="tag-list">${profileTags.map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`).join("")}</div>
+              ${groupedTags.length ? `<div class="kol-intake-evidence">${groupedTags.join("")}</div>` : ""}
             </article>
           `;
         })
@@ -928,6 +957,37 @@ function renderKolIntakeResult(data) {
         : ""
     }
   `;
+}
+
+function groupKolEvidenceTags(tags) {
+  const labels = {
+    industry: "行业",
+    content: "内容",
+    goal: "目标",
+    stage: "阶段",
+    budget: "预算",
+    risk: "风险",
+    platform: "平台",
+    symbolic: "符号",
+    persona: "人设",
+    case: "案例",
+    metric: "数据",
+  };
+  const groups = {};
+  (tags || []).forEach((tag) => {
+    const category = tag.category || "tag";
+    if (!groups[category]) groups[category] = [];
+    groups[category].push(tag);
+  });
+  return Object.entries(groups)
+    .slice(0, 6)
+    .map(([category, items]) => {
+      const chips = items
+        .slice(0, 5)
+        .map((tag) => `<span class="tag ${category === "risk" ? "risk" : ""}">${escapeHTML(tag.tag || "")}</span>`)
+        .join("");
+      return `<div class="kol-intake-evidence-row"><strong>${escapeHTML(labels[category] || category)}</strong><div>${chips}</div></div>`;
+    });
 }
 
 function renderHomeBriefResult(data) {
@@ -5259,6 +5319,12 @@ function bindEvents() {
         button.textContent = "识别并打标签";
       }
     }
+  });
+
+  $("#kolIntakeResult")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-view-jump]");
+    if (!button) return;
+    setView(button.dataset.viewJump);
   });
 
   $("#fileForm").addEventListener("submit", async (event) => {

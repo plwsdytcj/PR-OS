@@ -555,7 +555,7 @@ def _float_from_text(text: str) -> float:
 
 def _field_after_label(text: str, labels: list[str]) -> str:
     for label in labels:
-        pattern = rf"{re.escape(label)}\s*[:：]\s*([^\n|；;]+)"
+        pattern = rf"{re.escape(label)}\s*[:：]\s*([^\n|｜；;]+)"
         match = re.search(pattern, text, flags=re.IGNORECASE)
         if match:
             return match.group(1).strip()
