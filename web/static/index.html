@@ -433,6 +433,11 @@
                 <textarea name="brief" required>预算50万，新能源SUV新品上市预热，目标用户是25-40岁一二线城市年轻家庭和科技兴趣人群。希望突出科技感、智能化、高端感和城市生活方式。平台优先抖音、小红书、B站，需要选择合适KOL并做投放前风险推演。</textarea>
                 <div class="field-row">
                   <input name="top_n" type="number" value="8" min="3" max="30" />
+                  <select name="simulation_engine" aria-label="投放前推演引擎">
+                    <option value="auto">Auto：优先 MiroFish</option>
+                    <option value="mirofish">MiroFish CLI</option>
+                    <option value="llm_fallback">OS fallback</option>
+                  </select>
                   <button id="projectRunSubmitBtn" class="primary" type="submit">一键生成完整方案</button>
                 </div>
               </form>
@@ -465,7 +470,7 @@
             <div class="panel project-run-graph-panel">
               <div class="panel-header">
                 <div>
-                  <h2>MiroFish-like 分析过程图</h2>
+                  <h2>PR 推理过程图</h2>
                   <p id="projectRunGraphMeta">品牌、产品、社会语境、KOL、叙事路径和风险节点。</p>
                 </div>
                 <button id="projectRunOpenRoomBtn" class="primary" type="button">查看完整项目</button>

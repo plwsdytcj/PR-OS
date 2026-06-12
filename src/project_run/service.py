@@ -8,6 +8,8 @@ from src.intelligence.brief_parser import parse_brief
 from src.platform_os.service import campaign_room, create_campaign_project, run_campaign_plan_simulation
 from src.schemas import stable_id
 from src.simulation.llm_fallback import LlmFallbackStressTest
+from src.simulation.mirofish_adapter import MiroFishCliAdapter
+from src.simulation.schemas import SimulationReport
 from src.storage.db import load_profiles
 from src.symbolic.brand_profiler import generate_brand_symbolic_profile
 from src.symbolic.creator_profiler import generate_creator_symbolic_profile
@@ -30,6 +32,7 @@ def run_pr_project(
     project_name: str,
     raw_brief: str,
     top_n: int = 8,
+    simulation_engine: str = "auto",
 ) -> dict[str, Any]:
     raw_brief = raw_brief.strip()
     if not raw_brief:
@@ -119,14 +122,18 @@ def run_pr_project(
     )
     step("narrative", "生成内容叙事资产", detail="为首选 KOL 生成内容路径", count=len(narratives))
 
-    simulation_report = LlmFallbackStressTest().run(
-        {
-            "brand": brand.to_dict(),
-            "product": product.to_dict(),
-            "matches": result_dicts,
-            "narratives": narratives,
-        }
-    )
+    simulation_payload = {
+        "client_name": client_name,
+        "project_name": project_name,
+        "raw_brief": raw_brief,
+        "brief": asdict(brief),
+        "social_report": social_report.to_dict(),
+        "brand": brand.to_dict(),
+        "product": product.to_dict(),
+        "matches": result_dicts,
+        "narratives": narratives,
+    }
+    simulation_report = _run_stress_test(simulation_payload, simulation_engine=simulation_engine)
     step("simulation", "完成投放前压力测试", detail=simulation_report.summary, count=len(simulation_report.nodes))
 
     campaign = create_campaign_project(
@@ -159,6 +166,29 @@ def run_pr_project(
         "campaign": campaign.to_dict(),
         "campaign_room": room,
     }
+
+
+def _run_stress_test(payload: dict[str, Any], simulation_engine: str = "auto") -> SimulationReport:
+    engine = (simulation_engine or "auto").strip().lower()
+    if engine in {"auto", "mirofish", "mirofish_cli"}:
+        adapter = MiroFishCliAdapter()
+        if adapter.available():
+            try:
+                return adapter.run(payload)
+            except Exception as exc:
+                if engine in {"mirofish", "mirofish_cli"}:
+                    raise RuntimeError(f"MiroFish CLI failed: {exc}") from exc
+                report = LlmFallbackStressTest().run(payload)
+                report.engine = "llm_fallback_after_mirofish_error"
+                report.engine_status = f"mirofish_error:{type(exc).__name__}"
+                return report
+        if engine in {"mirofish", "mirofish_cli"}:
+            raise RuntimeError("MiroFish CLI is not installed or not on PATH")
+        report = LlmFallbackStressTest().run(payload)
+        report.engine = "llm_fallback_after_mirofish_unavailable"
+        report.engine_status = "mirofish_unavailable"
+        return report
+    return LlmFallbackStressTest().run(payload)
 
 
 def _ensure_creator_symbolics(db_path: Path) -> list[Any]:

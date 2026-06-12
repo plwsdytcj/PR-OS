@@ -931,6 +931,8 @@ async def agent_thread_message(thread_id: str, payload: dict[str, Any], backgrou
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     background_tasks.add_task(adapter.execute_run, db_path, started["run"]["run_id"], top_n, bool(payload.get("require_plan_approval")))
     return started
 
@@ -2821,9 +2823,12 @@ async def project_run(payload: dict[str, Any]) -> dict[str, Any]:
             project_name=str(payload.get("project_name") or "未命名项目"),
             raw_brief=raw_brief,
             top_n=int(payload.get("top_n") or 8),
+            simulation_engine=str(payload.get("simulation_engine") or "auto"),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     result["graph"] = _build_symbolic_graph(
         result.get("brand", {}),
         result.get("matches", []),

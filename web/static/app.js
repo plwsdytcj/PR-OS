@@ -3619,7 +3619,17 @@ function renderProjectRunStageLegend(graph) {
         .map((stage) => {
           const [label, cls] = GRAPH_STAGE_LABELS[stage];
           const active = state.projectRunStageFilter === stage ? " active" : "";
-          return `<button class="stage-pill ${escapeHTML(cls)}${active}" data-stage="${escapeHTML(stage)}" type="button" title="${escapeHTML(label)} · ${fmtNumber(counts[stage])} 个图谱节点"><span>${escapeHTML(label)}</span><strong>${fmtNumber(counts[stage])}</strong></button>`;
+          return `
+            <button
+              class="stage-pill ${escapeHTML(cls)}${active}"
+              data-stage="${escapeHTML(stage)}"
+              type="button"
+              title="${escapeHTML(label)} · ${fmtNumber(counts[stage])} 个图谱节点"
+            >
+              <span>${escapeHTML(label)}</span>
+              <strong>${fmtNumber(counts[stage])}<small>节点</small></strong>
+            </button>
+          `;
         })
         .join("")
     : '<div class="meta">暂无阶段数据。</div>';
@@ -3726,7 +3736,19 @@ function renderProjectRunSimulation(report) {
   if (!target) return;
   const risks = report.risk_points || [];
   const suggestions = report.optimization_suggestions || [];
+  const engine = report.engine || "simulation";
+  const engineStatus = report.engine_status || "ready";
+  const isMiroFish = engine.includes("mirofish") && !engine.includes("fallback");
+  const engineLabel = isMiroFish
+    ? "MiroFish CLI"
+    : engine.includes("after_mirofish")
+      ? "OS fallback · MiroFish 未接入"
+      : "OS fallback";
   target.innerHTML = `
+    <div class="feedback-item simulation-engine-card ${isMiroFish ? "ok" : "warn"}">
+      <strong>推演引擎：${escapeHTML(engineLabel)}</strong>
+      <p>${escapeHTML(engine)} · ${escapeHTML(engineStatus)}</p>
+    </div>
     <div class="feedback-item">
       <strong>${escapeHTML(report.summary || "等待压力测试。")}</strong>
       <p>${escapeHTML(report.final_recommendation || "")}</p>

@@ -4228,17 +4228,37 @@ body.client-session #clientPortal {
 }
 
 .stage-pill strong {
+  align-items: baseline;
   background: #17120d;
   color: #fffdf4;
+  display: inline-flex;
   flex: 0 0 auto;
-  min-width: 24px;
+  gap: 2px;
+  min-width: 44px;
   padding: 1px 6px;
   text-align: center;
+}
+
+.stage-pill small {
+  font-size: 9px;
+  font-weight: 850;
 }
 
 .stage-pill.active {
   background: var(--spark);
   box-shadow: 3px 3px 0 var(--accent);
+}
+
+.simulation-engine-card {
+  border-left: 7px solid var(--spark);
+}
+
+.simulation-engine-card.ok {
+  border-left-color: var(--accent);
+}
+
+.simulation-engine-card.warn {
+  border-left-color: var(--coral);
 }
 
 .graph-node-inspector {
