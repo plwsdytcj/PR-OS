@@ -72,6 +72,7 @@ const state = {
   projectRun: null,
   projectRunSelectedNodeId: "",
   projectRunStageFilter: "",
+  projectRunProgressTimer: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -3277,6 +3278,147 @@ const GRAPH_STAGE_LABELS = {
   analysis: ["分析节点", "analysis"],
 };
 
+const PROJECT_RUN_PROGRESS_STEPS = [
+  {
+    id: "brief_parse",
+    label: "解析 PR Brief",
+    detail: "拆解客户、项目、预算、目标人群、平台和风险要求。",
+    node: { id: "progress_brief", label: "PR Brief", type: "brand", stage: "brief_parse", detail: "正在把输入需求拆成可计算字段。", payload: { status: "running" } },
+  },
+  {
+    id: "social_context",
+    label: "生成社会符号语境",
+    detail: "识别行业语境、目标人群幻想和可借势议题。",
+    node: { id: "progress_social", label: "社会语境", type: "social_context", stage: "social_context", detail: "正在生成可传播的社会符号网络。", payload: { status: "running" } },
+  },
+  {
+    id: "brand_calibration",
+    label: "生成并校准品牌符号档案",
+    detail: "校准品牌想获得和想避开的传播符号。",
+    node: { id: "progress_brand", label: "品牌符号档案", type: "target_tag", stage: "brand_calibration", detail: "正在校准品牌标签和危险标签。", payload: { status: "running" } },
+  },
+  {
+    id: "product_profile",
+    label: "生成产品符号档案",
+    detail: "把产品卖点转成内容可表达的隐喻和场景。",
+    node: { id: "progress_product", label: "产品符号档案", type: "product", stage: "product_profile", detail: "正在提取产品卖点、场景和内容角度。", payload: { status: "running" } },
+  },
+  {
+    id: "kol_match",
+    label: "补齐达人符号档案",
+    detail: "扫描私有达人库，按标签、风险和预算生成候选池。",
+    node: { id: "progress_kol", label: "KOL 候选池", type: "creator", stage: "kol_match", detail: "正在召回达人并计算匹配关系。", payload: { status: "running" } },
+  },
+  {
+    id: "narrative_asset",
+    label: "生成内容叙事资产",
+    detail: "为首选达人生成内容路径、标题方向和避雷点。",
+    node: { id: "progress_narrative", label: "内容叙事资产", type: "narrative", stage: "narrative_asset", detail: "正在组合达人角色和内容路径。", payload: { status: "running" } },
+  },
+  {
+    id: "risk_test",
+    label: "完成投放前风险推演",
+    detail: "模拟评论区、竞品反应、履约和品牌安全风险。",
+    node: { id: "progress_risk", label: "风险推演", type: "risk_tag", stage: "risk_test", detail: "正在压力测试候选组合。", payload: { status: "running" } },
+  },
+];
+
+function stopProjectRunProgress() {
+  if (state.projectRunProgressTimer) {
+    clearInterval(state.projectRunProgressTimer);
+    state.projectRunProgressTimer = null;
+  }
+}
+
+function buildProjectRunProgressGraph(stepIndex) {
+  const visible = PROJECT_RUN_PROGRESS_STEPS.slice(0, Math.max(1, stepIndex + 1));
+  return {
+    nodes: visible.map((item, index) => ({
+      ...item.node,
+      score: index === stepIndex ? 66 : 100,
+      detail: index === stepIndex ? item.node.detail : item.detail,
+      payload: { ...item.node.payload, phase: item.label, progress: index === stepIndex ? "running" : "done" },
+    })),
+    edges: visible.slice(1).map((item, index) => ({
+      source: visible[index].node.id,
+      target: item.node.id,
+      label: "feeds",
+      type: "progress",
+    })),
+  };
+}
+
+function startProjectRunProgress(payload) {
+  stopProjectRunProgress();
+  state.projectRun = { graph: buildProjectRunProgressGraph(0), matches: [], simulation_report: {}, narratives: [] };
+  state.projectRunSelectedNodeId = "progress_brief";
+  state.projectRunStageFilter = "";
+  $("#projectRunResult")?.classList.remove("hidden");
+  $("#projectRunKolCount").textContent = "-";
+  $("#projectRunNodeCount").textContent = "1";
+  $("#projectRunSimulationCount").textContent = "-";
+  const saveNotice = $("#projectRunSaveNotice");
+  if (saveNotice) {
+    saveNotice.innerHTML = `
+      <div>
+        <span class="card-kicker">live reasoning</span>
+        <strong>正在生成 Campaign 推理流</strong>
+        <p>${escapeHTML(payload.client_name || "当前客户")} · ${escapeHTML(payload.project_name || "PR 项目")} · 后端完成后会自动保存为历史任务。</p>
+      </div>
+      <span class="project-run-live-badge">RUNNING</span>
+    `;
+  }
+  $("#projectRunGraphMeta").textContent = "推理节点会按 brief、语境、品牌、产品、KOL、叙事、风险逐步出现。";
+  renderProjectRunProgressFrame(0);
+  let index = 0;
+  state.projectRunProgressTimer = setInterval(() => {
+    index = Math.min(index + 1, PROJECT_RUN_PROGRESS_STEPS.length - 1);
+    renderProjectRunProgressFrame(index);
+    if (index >= PROJECT_RUN_PROGRESS_STEPS.length - 1) stopProjectRunProgress();
+  }, 900);
+}
+
+function renderProjectRunProgressFrame(index) {
+  const graph = buildProjectRunProgressGraph(index);
+  state.projectRun = { ...(state.projectRun || {}), graph };
+  const activeNode = graph.nodes[index] || graph.nodes[0];
+  state.projectRunSelectedNodeId = activeNode?.id || "";
+  $("#projectRunNodeCount").textContent = fmtNumber(graph.nodes.length);
+  renderProjectRunSteps(
+    PROJECT_RUN_PROGRESS_STEPS.map((step, stepIndex) => ({
+      id: step.id,
+      label: step.label,
+      detail: step.detail,
+      status: stepIndex < index ? "done" : stepIndex === index ? "active" : "pending",
+      count: stepIndex < index ? 1 : stepIndex === index ? 0 : 0,
+    }))
+  );
+  renderProjectRunStageLegend(graph);
+  renderSymbolicGraphInto("#projectRunGraphCanvas", graph);
+  renderProjectRunNodeInspector();
+  const kolList = $("#projectRunKolList");
+  if (kolList) {
+    kolList.innerHTML = `
+      <div class="project-run-placeholder">
+        <span>scanning creator memory</span>
+        <strong>正在召回 KOL 候选池</strong>
+        <p>系统会根据品牌、产品、平台、预算和风险标签，筛选可进入推荐名单的达人。</p>
+      </div>
+    `;
+  }
+  renderProjectRunSimulation({ summary: "正在等待风险推演结果。", final_recommendation: "真实候选、压力测试和内容资产会在后端完成后替换当前预演。" });
+  const narratives = $("#projectRunNarratives");
+  if (narratives) {
+    narratives.innerHTML = `
+      <div class="project-run-placeholder">
+        <span>drafting narrative assets</span>
+        <strong>正在生成达人内容路径</strong>
+        <p>首选 KOL 确认后，这里会沉淀标题方向、内容角度、避雷词和客户可读方案素材。</p>
+      </div>
+    `;
+  }
+}
+
 function renderProjectRunStageLegend(graph) {
   const target = $("#projectRunStageLegend");
   if (!target) return;
@@ -4955,7 +5097,8 @@ function bindEvents() {
     const button = $("#projectRunSubmitBtn");
     const payload = formToObject(form);
     payload.top_n = Number(payload.top_n || 8);
-    renderProjectRunSteps([{ id: "running", label: "系统正在跑完整链路", status: "active", detail: "解析 brief、生成符号图谱、选择 KOL、创建 Campaign Room。", count: 0 }]);
+    startProjectRunProgress(payload);
+    $("#projectRunResult")?.scrollIntoView({ behavior: "smooth", block: "start" });
     if (button) {
       button.disabled = true;
       button.textContent = "生成中...";
@@ -4966,9 +5109,14 @@ function bindEvents() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      stopProjectRunProgress();
       renderProjectRun(data.run);
       await Promise.all([loadPlatformDashboard(), loadWorkspaceHistory(), loadSymbolicOS(), loadCreators()]);
       toast("完整 PR 项目链路已生成");
+    } catch (error) {
+      stopProjectRunProgress();
+      renderProjectRunSteps([{ id: "failed", label: "生成失败", status: "failed", detail: error.message || "请稍后重试。", count: 0 }]);
+      toast(error.message || "完整 PR 项目链路生成失败", true);
     } finally {
       if (button) {
         button.disabled = false;
