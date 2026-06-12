@@ -164,6 +164,14 @@ const NAV_SHORT_LABELS = {
   dataSources: "源",
 };
 
+const PROJECT_RUN_DEMO_VALUES = {
+  client_name: "某新能源汽车品牌",
+  project_name: "新能源 SUV 年轻化预热",
+  brief:
+    "预算50万，新能源SUV新品上市预热，目标用户是25-40岁一二线城市年轻家庭和科技兴趣人群。希望突出科技感、智能化、高端感和城市生活方式。平台优先抖音、小红书、B站，需要选择合适KOL并做投放前风险推演。",
+  top_n: "8",
+};
+
 function toast(message, isError = false) {
   const node = $("#toast");
   node.textContent = message;
@@ -3355,6 +3363,50 @@ function stopProjectRunProgress() {
   }
 }
 
+function fillProjectRunForm(values) {
+  const form = $("#projectRunForm");
+  if (!form) return;
+  Object.entries(values || {}).forEach(([name, value]) => {
+    const field = form.elements[name];
+    if (field) field.value = value;
+  });
+}
+
+function resetProjectRunWorkspace({ demo = false } = {}) {
+  stopProjectRunProgress();
+  state.projectRun = null;
+  state.projectRunSelectedNodeId = "";
+  state.projectRunStageFilter = "";
+  state.projectRunGraphScale = 1;
+  state.projectRunGraphAutoFit = true;
+  fillProjectRunForm(
+    demo
+      ? PROJECT_RUN_DEMO_VALUES
+      : {
+          client_name: "",
+          project_name: "",
+          brief: "",
+          top_n: "8",
+        }
+  );
+  $("#projectRunResult")?.classList.add("hidden");
+  const steps = $("#projectRunSteps");
+  if (steps) steps.innerHTML = '<div class="meta">等待输入 PR 需求。</div>';
+  const legend = $("#projectRunStageLegend");
+  if (legend) legend.innerHTML = "";
+  const graph = $("#projectRunGraphCanvas");
+  if (graph) graph.innerHTML = "";
+  const inspector = $("#projectRunNodeInspector");
+  if (inspector) inspector.innerHTML = '<div class="meta">点击图谱节点查看分析依据。</div>';
+  const kolCount = $("#projectRunKolCount");
+  if (kolCount) kolCount.textContent = "0";
+  const nodeCount = $("#projectRunNodeCount");
+  if (nodeCount) nodeCount.textContent = "0";
+  const simulationCount = $("#projectRunSimulationCount");
+  if (simulationCount) simulationCount.textContent = "0";
+  updateProjectRunZoomLabel();
+}
+
 function buildProjectRunProgressGraph(stepIndex) {
   const visible = PROJECT_RUN_PROGRESS_STEPS.slice(0, Math.max(1, stepIndex + 1));
   return {
@@ -5135,6 +5187,18 @@ function bindEvents() {
     await loadWorkspaceHistory();
     await openCampaignRoom(data.project.campaign.campaign_id);
     toast("Campaign 项目和 3 套方案已生成");
+  });
+
+  $("#projectRunNewBtn")?.addEventListener("click", () => {
+    resetProjectRunWorkspace();
+    $("#projectRunForm input[name='client_name']")?.focus();
+    toast("已开启新 PR 需求");
+  });
+
+  $("#projectRunDemoBtn")?.addEventListener("click", () => {
+    resetProjectRunWorkspace({ demo: true });
+    $("#projectRunForm textarea[name='brief']")?.focus();
+    toast("已恢复示例需求");
   });
 
   $("#projectRunForm")?.addEventListener("submit", async (event) => {

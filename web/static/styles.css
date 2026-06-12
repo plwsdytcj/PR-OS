@@ -3749,6 +3749,27 @@ body.client-session #clientPortal {
   min-height: 210px;
 }
 
+.project-run-input-head {
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.project-run-input-head p {
+  max-width: 560px;
+}
+
+.project-run-input-head .button-row {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+.project-run-input-head .secondary {
+  border: 2px solid #17120d;
+  box-shadow: 3px 3px 0 #17120d;
+  min-height: 38px;
+  white-space: nowrap;
+}
+
 .project-run-steps {
   display: grid;
   gap: 10px;
