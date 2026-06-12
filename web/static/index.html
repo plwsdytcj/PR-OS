@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260612-5" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260612-6" />
   </head>
   <body>
     <div class="app-shell">
@@ -221,11 +221,11 @@
         </section>
 
         <section id="agentWorkspace" class="view">
-          <div class="agent-console">
+          <div class="agent-console agent-manus-header">
             <div>
-              <div class="eyebrow">Phase 7H / thread chat</div>
-              <h2>Vibe PR Agent</h2>
-              <p>像和 PR 项目经理聊天一样输入 brief、追加修改、查看工具调用、推理图谱和客户方案。</p>
+              <div class="eyebrow">agent task space</div>
+              <h2>PR Agent Workspace</h2>
+              <p>一个连续任务空间：左侧历史，中间对话和实时执行，右侧沉淀产物。</p>
             </div>
             <div class="agent-console-mark">
               <span>Thread</span>
@@ -246,7 +246,7 @@
             </aside>
 
             <div class="agent-main">
-              <div class="panel">
+              <div class="panel agent-chat-panel">
                 <div class="panel-header">
                   <div>
                     <h2>Agent Chat</h2>
@@ -328,7 +328,10 @@
             </div>
 
             <aside class="agent-artifacts panel">
-              <h2>产物面板</h2>
+              <div class="agent-dock-head">
+                <span class="card-kicker">deliverables</span>
+                <h2>产物面板</h2>
+              </div>
               <div id="agentArtifactList" class="agent-artifact-list"></div>
             </aside>
           </div>
@@ -1673,6 +1676,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260612-5"></script>
+    <script src="/static/app.js?v=20260612-6"></script>
   </body>
 </html>
