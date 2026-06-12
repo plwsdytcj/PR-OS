@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260612-2" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260612-3" />
   </head>
   <body>
     <div class="app-shell">
@@ -401,6 +401,7 @@
           </div>
 
           <div id="projectRunResult" class="project-run-result hidden">
+            <div id="projectRunSaveNotice" class="asset-save-notice"></div>
             <div class="metrics">
               <div class="metric">
                 <span>推荐 KOL</span>
@@ -422,7 +423,7 @@
                   <h2>MiroFish-like 分析过程图</h2>
                   <p id="projectRunGraphMeta">品牌、产品、社会语境、KOL、叙事路径和风险节点。</p>
                 </div>
-                <button id="projectRunOpenRoomBtn" class="primary" type="button">进入 Campaign Room</button>
+                <button id="projectRunOpenRoomBtn" class="primary" type="button">查看完整项目</button>
               </div>
               <div id="projectRunStageLegend" class="graph-stage-legend"></div>
               <div class="project-run-graph-layout">
@@ -448,6 +449,17 @@
               <h2>内容叙事资产</h2>
               <div id="projectRunNarratives" class="creator-grid"></div>
             </div>
+          </div>
+
+          <div class="panel project-asset-library">
+            <div class="panel-header">
+              <div>
+                <h2>历史 Campaign 资产库</h2>
+                <p>每次生成的 brief、图谱、KOL 名单、方案、分发和复盘都会沉淀在这里。</p>
+              </div>
+              <button id="refreshProjectAssetsBtn" class="secondary" type="button">刷新资产库</button>
+            </div>
+            <div id="projectRunHistoryList" class="asset-history-list"></div>
           </div>
         </section>
 
@@ -1025,7 +1037,8 @@
               </form>
             </div>
             <div class="panel">
-              <h2>Campaign 项目列表</h2>
+              <h2>历史 Campaign / 项目资产</h2>
+              <p class="meta">每个 Campaign 都会保留方案、KOL 选择、分发、复盘和归档状态。</p>
               <div id="platformCampaignList" class="template-list"></div>
             </div>
           </div>
@@ -1051,6 +1064,8 @@
                 <p id="platformCampaignMeta">等待选择项目</p>
               </div>
               <div class="decision-actions">
+                <button id="campaignRoomBackListBtn" class="secondary" type="button">返回资产库</button>
+                <button id="campaignRoomBackProjectRunBtn" class="secondary" type="button">返回生成结果</button>
                 <button id="refreshCampaignRoomBtn" class="secondary" type="button">刷新作战室</button>
                 <button id="platformArchiveBtn" class="secondary" type="button">归档项目</button>
               </div>
@@ -1624,17 +1639,8 @@
           <input name="password" type="password" placeholder="密码" autocomplete="current-password" required />
           <button class="primary" type="submit">登录</button>
         </form>
-        <details class="auth-details">
-          <summary>首次创建 admin</summary>
-          <form id="bootstrapAdminForm" class="form">
-            <input name="email" type="email" placeholder="admin 邮箱" autocomplete="username" />
-            <input name="name" placeholder="姓名" />
-            <input name="password" type="password" placeholder="至少 8 位密码" autocomplete="new-password" />
-            <button class="secondary" type="submit">创建 admin</button>
-          </form>
-        </details>
       </section>
     </div>
-    <script src="/static/app.js?v=20260612-2"></script>
+    <script src="/static/app.js?v=20260612-3"></script>
   </body>
 </html>

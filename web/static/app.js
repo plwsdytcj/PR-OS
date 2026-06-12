@@ -372,6 +372,7 @@ async function loadPlatformDashboard() {
   state.platformDashboard = data;
   state.platformCampaigns = campaigns.items || [];
   renderPlatformDashboard(data);
+  renderProjectAssetLibrary();
 }
 
 async function loadDataSources() {
@@ -2683,6 +2684,47 @@ function renderPlatformCampaignList() {
     : emptyState("暂无 Campaign 项目", "输入品牌 brief，一键生成 3 套传播方案。");
 }
 
+function campaignUpdatedAt(item) {
+  const dates = [
+    item.campaign?.updated_at,
+    item.campaign?.created_at,
+    ...(item.timeline || []).map((event) => event.created_at),
+  ].filter(Boolean);
+  return dates[0] || "";
+}
+
+function renderProjectAssetLibrary() {
+  const list = $("#projectRunHistoryList");
+  if (!list) return;
+  list.innerHTML = state.platformCampaigns.length
+    ? state.platformCampaigns
+        .slice(0, 8)
+        .map((item) => {
+          const campaign = item.campaign || {};
+          const timelineCount = item.timeline?.length || 0;
+          const planCount = item.plans?.length || 0;
+          const reviewCount = item.reviews?.length || 0;
+          const updatedAt = campaignUpdatedAt(item);
+          return `
+            <article class="asset-history-card">
+              <div class="asset-history-main">
+                <span class="card-kicker">saved campaign · ${escapeHTML(campaign.status || "active")}</span>
+                <h3>${escapeHTML(campaign.project_name || "未命名项目")}</h3>
+                <p>${escapeHTML(campaign.client_name || "未知客户")} · 预算 ${fmtNumber(campaign.budget)} · ${escapeHTML(updatedAt || "暂无更新时间")}</p>
+              </div>
+              <div class="asset-history-stats">
+                <span>${fmtNumber(planCount)} 方案</span>
+                <span>${fmtNumber(timelineCount)} 事件</span>
+                <span>${fmtNumber(reviewCount)} 复盘</span>
+              </div>
+              <button class="secondary open-platform-campaign-btn" data-campaign-id="${escapeHTML(campaign.campaign_id)}" type="button">打开资产</button>
+            </article>
+          `;
+        })
+        .join("")
+    : emptyState("还没有历史 Campaign", "从上方输入一个 PR brief，系统会自动保存为可继续分发、复盘和归档的项目资产。");
+}
+
 function renderPlatformCampaign(projectOrRoom) {
   const room = projectOrRoom.project && projectOrRoom.decision_summary ? projectOrRoom : null;
   const project = room ? room.project : projectOrRoom;
@@ -3086,6 +3128,7 @@ function renderProjectRun(run) {
   $("#projectRunKolCount").textContent = fmtNumber((run.matches || []).length);
   $("#projectRunNodeCount").textContent = fmtNumber((run.graph?.nodes || []).length);
   $("#projectRunSimulationCount").textContent = fmtNumber((run.simulation_report?.nodes || []).length);
+  renderProjectRunSaveNotice(run);
   renderProjectRunSteps(run.steps || []);
   renderProjectRunStageLegend(run.graph || {});
   renderSymbolicGraphInto("#projectRunGraphCanvas", run.graph || {});
@@ -3097,6 +3140,29 @@ function renderProjectRun(run) {
   state.lastSymbolicResults = run.matches || [];
   state.lastNarratives = run.narratives || [];
   state.lastSymbolicGraph = run.graph || null;
+}
+
+function renderProjectRunSaveNotice(run) {
+  const target = $("#projectRunSaveNotice");
+  if (!target) return;
+  const campaign = run.campaign?.campaign || {};
+  const saved = Boolean(campaign.campaign_id);
+  target.innerHTML = saved
+    ? `
+      <div>
+        <span class="card-kicker">asset saved</span>
+        <strong>已保存到 Campaign 资产库</strong>
+        <p>${escapeHTML(campaign.client_name || run.brand?.name || "当前客户")} · ${escapeHTML(campaign.project_name || "PR 项目")} · ${escapeHTML(campaign.status || "active")}</p>
+      </div>
+      <button class="secondary open-platform-campaign-btn" data-campaign-id="${escapeHTML(campaign.campaign_id)}" type="button">打开完整资产</button>
+    `
+    : `
+      <div>
+        <span class="card-kicker">local result</span>
+        <strong>当前结果已生成</strong>
+        <p>未拿到 Campaign ID，刷新资产库后可确认是否已保存。</p>
+      </div>
+    `;
 }
 
 const GRAPH_STAGE_LABELS = {
@@ -4239,6 +4305,7 @@ function bindEvents() {
     const button = event.target.closest(".open-platform-campaign-btn");
     if (!button) return;
     await openCampaignRoom(button.dataset.campaignId);
+    setView("platformOS");
   });
 
   document.addEventListener("click", async (event) => {
@@ -4795,6 +4862,11 @@ function bindEvents() {
     setView("platformOS");
   });
 
+  $("#refreshProjectAssetsBtn")?.addEventListener("click", async () => {
+    await loadPlatformDashboard();
+    toast("历史 Campaign 资产库已刷新");
+  });
+
   $("#phase8AnalyzeBtn")?.addEventListener("click", async () => {
     const button = $("#phase8AnalyzeBtn");
     if (button) {
@@ -4982,6 +5054,16 @@ function bindEvents() {
     if (!state.activePlatformCampaign?.campaign?.campaign_id) return toast("请先选择 Campaign", true);
     await openCampaignRoom(state.activePlatformCampaign.campaign.campaign_id);
     toast("作战室已刷新");
+  });
+
+  $("#campaignRoomBackListBtn")?.addEventListener("click", () => {
+    $("#platformCampaignDetail")?.classList.add("hidden");
+    $("#platformCampaignList")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+
+  $("#campaignRoomBackProjectRunBtn")?.addEventListener("click", () => {
+    setView("projectRun");
+    $("#projectRunResult")?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 
   $("#pushDistributionBtn").addEventListener("click", async () => {
