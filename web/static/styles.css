@@ -49,6 +49,7 @@ textarea {
   align-items: center;
   gap: 12px;
   margin-bottom: 32px;
+  position: relative;
 }
 
 .brand-mark {
@@ -71,6 +72,31 @@ textarea {
   color: #9fb1be;
   font-size: 13px;
   margin-top: 2px;
+}
+
+.sidebar-toggle {
+  align-items: center;
+  background: #fffdf6;
+  border: 2px solid #11100c;
+  border-radius: 3px;
+  box-shadow: 3px 3px 0 #f7d84c;
+  color: #11100c;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-family: var(--display-font, inherit);
+  font-size: 22px;
+  font-weight: 900;
+  height: 34px;
+  justify-content: center;
+  line-height: 1;
+  margin-left: auto;
+  padding: 0;
+  width: 34px;
+}
+
+.sidebar-toggle:hover {
+  transform: translate(-1px, -1px);
 }
 
 .nav {
@@ -5856,9 +5882,157 @@ textarea {
   box-shadow: 0 0 0 5px rgba(87, 224, 177, 0.15);
 }
 
+@media (min-width: 901px) {
+  .sidebar {
+    transition:
+      flex-basis 180ms ease,
+      width 180ms ease,
+      padding 180ms ease;
+  }
+
+  .main {
+    transition: padding 180ms ease;
+  }
+
+  body.sidebar-collapsed .sidebar {
+    flex-basis: 84px;
+    overflow: hidden;
+    padding: 20px 12px;
+    width: 84px;
+  }
+
+  body.sidebar-collapsed .brand {
+    gap: 0;
+    justify-content: center;
+    margin-bottom: 24px;
+    padding-top: 38px;
+  }
+
+  body.sidebar-collapsed .brand-mark {
+    height: 48px;
+    width: 48px;
+  }
+
+  body.sidebar-collapsed .brand-copy,
+  body.sidebar-collapsed .nav-item,
+  body.sidebar-collapsed .nav-group summary,
+  body.sidebar-collapsed .workspace-switcher label,
+  body.sidebar-collapsed .workspace-switcher span,
+  body.sidebar-collapsed .workspace-switcher input,
+  body.sidebar-collapsed .workspace-switcher .secondary,
+  body.sidebar-collapsed .auth-user-box,
+  body.sidebar-collapsed .sidebar-footer span {
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  body.sidebar-collapsed .brand-copy,
+  body.sidebar-collapsed .workspace-switcher label,
+  body.sidebar-collapsed .workspace-switcher span,
+  body.sidebar-collapsed .workspace-switcher input,
+  body.sidebar-collapsed .workspace-switcher .secondary,
+  body.sidebar-collapsed .auth-user-box,
+  body.sidebar-collapsed .sidebar-footer span {
+    display: none;
+  }
+
+  body.sidebar-collapsed .sidebar-toggle {
+    box-shadow: 3px 3px 0 #57e0b1;
+    position: absolute;
+    right: 50%;
+    top: 0;
+    transform: translateX(50%);
+  }
+
+  body.sidebar-collapsed .sidebar-toggle:hover {
+    transform: translateX(50%) translate(-1px, -1px);
+  }
+
+  body.sidebar-collapsed .nav {
+    gap: 8px;
+  }
+
+  body.sidebar-collapsed .nav-primary,
+  body.sidebar-collapsed .nav-group {
+    align-items: center;
+    display: grid;
+    justify-items: center;
+    padding: 6px;
+  }
+
+  body.sidebar-collapsed .nav-item,
+  body.sidebar-collapsed .nav-primary .nav-item,
+  body.sidebar-collapsed .nav-group .nav-item {
+    align-items: center;
+    display: inline-flex;
+    font-size: 0;
+    height: 46px;
+    justify-content: center;
+    min-height: 46px;
+    padding: 0;
+    position: relative;
+    width: 46px;
+  }
+
+  body.sidebar-collapsed .nav-item::before {
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  body.sidebar-collapsed .nav-item::after {
+    content: attr(data-short);
+    font-family: var(--display-font, inherit);
+    font-size: 13px;
+    font-weight: 900;
+  }
+
+  body.sidebar-collapsed .nav-group {
+    border-style: dashed;
+  }
+
+  body.sidebar-collapsed .nav-group summary {
+    font-size: 0;
+    height: 34px;
+    justify-content: center;
+    min-height: 34px;
+    padding: 0;
+    width: 46px;
+  }
+
+  body.sidebar-collapsed .nav-group summary::before {
+    content: "•••";
+    font-size: 13px;
+    letter-spacing: 1px;
+  }
+
+  body.sidebar-collapsed .nav-group summary::after {
+    display: none;
+  }
+
+  body.sidebar-collapsed .workspace-switcher {
+    justify-items: center;
+    margin: 12px 0;
+    padding: 8px;
+  }
+
+  body.sidebar-collapsed .tenant-row {
+    display: none;
+  }
+
+  body.sidebar-collapsed .sidebar-footer {
+    justify-content: center;
+    padding: 12px 0;
+  }
+}
+
 @media (max-width: 720px) {
   .sidebar {
     border-bottom: 1px solid rgba(255, 253, 246, 0.12);
     border-right: 0;
+  }
+
+  .sidebar-toggle {
+    display: none;
   }
 }

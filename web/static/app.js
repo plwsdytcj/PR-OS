@@ -1,6 +1,7 @@
 const state = {
   tenant: localStorage.getItem("pr_ai_os_tenant") || "default",
   accessKey: localStorage.getItem("pr_ai_os_access_key") || "",
+  sidebarCollapsed: localStorage.getItem("pr_ai_os_sidebar_collapsed") === "1",
   authRequired: false,
   currentIdentity: null,
   workspaceHistory: [],
@@ -133,6 +134,33 @@ const VIEW_TITLES = {
   stressTest: ["压力测试", "投放前模拟评论区、竞品和品牌安全风险。"],
 };
 
+const NAV_SHORT_LABELS = {
+  workspace: "首",
+  projectRun: "PR",
+  history: "史",
+  kolIntelligence: "KOL",
+  creators: "人",
+  agentWorkspace: "AI",
+  brief: "B",
+  platformOS: "OS",
+  symbolicOS: "符",
+  ingest: "入",
+  knowledge: "知",
+  governance: "治",
+  creatorCommercial: "商",
+  proposal: "案",
+  collaboration: "协",
+  clientPortal: "甲",
+  briefDistribution: "发",
+  symbolicCreator: "博",
+  symbolicBrand: "牌",
+  symbolicMatch: "配",
+  symbolicGraph: "图",
+  stressTest: "测",
+  organization: "组",
+  dataSources: "源",
+};
+
 function toast(message, isError = false) {
   const node = $("#toast");
   node.textContent = message;
@@ -213,6 +241,22 @@ function setView(viewId) {
   $$(".nav-group").forEach((group) => {
     group.open = Boolean(activeNav && group.contains(activeNav));
   });
+}
+
+function applySidebarState() {
+  const collapsed = Boolean(state.sidebarCollapsed);
+  document.body.classList.toggle("sidebar-collapsed", collapsed);
+  $$(".nav-item").forEach((item) => {
+    const short = NAV_SHORT_LABELS[item.dataset.view] || (item.textContent || "?").trim().slice(0, 2);
+    item.dataset.short = short;
+    item.title = item.textContent.trim();
+  });
+  const button = $("#sidebarToggleBtn");
+  if (!button) return;
+  button.setAttribute("aria-pressed", collapsed ? "true" : "false");
+  button.setAttribute("aria-label", collapsed ? "展开侧边栏" : "折叠侧边栏");
+  button.title = collapsed ? "展开侧边栏" : "折叠侧边栏";
+  button.textContent = collapsed ? "›" : "‹";
 }
 
 function decorateViews() {
@@ -3864,6 +3908,11 @@ async function copyText(value) {
 
 function bindEvents() {
   renderTenantStatus();
+  $("#sidebarToggleBtn")?.addEventListener("click", () => {
+    state.sidebarCollapsed = !state.sidebarCollapsed;
+    localStorage.setItem("pr_ai_os_sidebar_collapsed", state.sidebarCollapsed ? "1" : "0");
+    applySidebarState();
+  });
   $$(".nav-item").forEach((button) =>
     button.addEventListener("click", async () => {
       setView(button.dataset.view);
@@ -5506,6 +5555,7 @@ function bindEvents() {
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
+  applySidebarState();
   decorateViews();
   bindEvents();
   try {
