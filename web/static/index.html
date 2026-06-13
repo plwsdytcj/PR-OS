@@ -23,7 +23,7 @@
             <button class="nav-item active" data-view="workspace">首页</button>
             <button class="nav-item" data-view="projectRun">新建 PR 需求</button>
             <button class="nav-item" data-view="history">历史任务</button>
-            <button class="nav-item" data-view="kolIntelligence">KOL 图谱</button>
+            <button class="nav-item" data-view="kolIntelligence">KOL 决策图谱</button>
             <button class="nav-item" data-view="creators">达人库</button>
             <button class="nav-item" data-view="agentWorkspace">AI Agent</button>
           </div>
@@ -127,7 +127,7 @@
                 <div>
                   <span class="panel-kicker">Brief to Graph</span>
                   <h2>PR Brief Chat</h2>
-                  <p>把甲方需求丢进来，直接跑 KOL 图谱和推荐名单。</p>
+                  <p>把甲方需求丢进来，直接跑 KOL 决策图谱和推荐名单。</p>
                 </div>
               </div>
               <form id="homeBriefForm" class="form home-brief-form">
@@ -195,7 +195,7 @@
             </div>
             <div class="simple-guide">
               <div><strong>1. 导入达人</strong><span>Excel、手动录入或 API 连接。</span></div>
-              <div><strong>2. 跑 KOL 图谱</strong><span>把标签、证据和风险连成动态图。</span></div>
+              <div><strong>2. 跑决策图谱</strong><span>把标签、证据和风险连成动态图。</span></div>
               <div><strong>3. 生成推荐</strong><span>输出可解释的 KOL 名单和 brief 方案。</span></div>
             </div>
           </div>
@@ -213,7 +213,7 @@
               <h2>最短演示路径</h2>
               <ol class="plain-list">
                 <li>点击导入示例数据。</li>
-                <li>进入 KOL 图谱，输入一个 PR brief。</li>
+                <li>进入 KOL 决策图谱，输入一个 PR brief。</li>
                 <li>查看动态图谱和右侧推荐卡。</li>
               </ol>
             </div>
@@ -652,8 +652,8 @@
           <div class="panel phase8-hero">
             <div class="panel-header">
               <div>
-                <h2>KOL Intelligence Graph</h2>
-                <p>把 Excel / API 达人数据变成证据标签，观察标签如何演进成推荐路径。</p>
+                <h2>KOL 决策图谱</h2>
+                <p>把 Excel / API 达人数据变成证据标签，观察标签如何演进成 KOL 推荐路径。</p>
               </div>
               <div class="button-row">
                 <button id="phase8AnalyzeBtn" class="primary" type="button">分析达人标签</button>
@@ -674,8 +674,8 @@
             <section class="panel phase82-chat">
               <div class="panel-header">
                 <div>
-                  <h2>Conversational KOL Graph</h2>
-                  <p>像聊天一样输入需求，系统边推理边把 KOL 图谱长出来。</p>
+                  <h2>对话式决策图谱</h2>
+                  <p>像聊天一样输入需求，系统边推理边把 KOL 匹配路径长出来。</p>
                 </div>
                 <button id="phase82ResetBtn" class="secondary" type="button">清空</button>
               </div>
@@ -1723,6 +1723,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260612-17"></script>
+    <script src="/static/app.js?v=20260613-2"></script>
   </body>
 </html>

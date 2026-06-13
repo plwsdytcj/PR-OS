@@ -121,7 +121,7 @@ const VIEW_TITLES = {
   projectRun: ["新建 PR 项目", "输入一个需求，自动跑完 brief、符号图谱、KOL 选择和 Campaign Room。"],
   ingest: ["数据接入", "把 Excel、链接和 API 变成统一 KOL Profile。"],
   creators: ["达人库", "扫描、修正和调用你的私有 KOL 资产。"],
-  kolIntelligence: ["达人智能图谱", "证据标签、图谱演进和 KOL 预测推荐。"],
+  kolIntelligence: ["KOL 决策图谱", "证据标签、图谱演进和 KOL 预测推荐。"],
   governance: ["数据治理", "清理重复、补齐字段、提高推荐可信度。"],
   brief: ["Brief 推荐", "把甲方需求转成可解释的达人组合。"],
   proposal: ["方案导出", "把推荐结果打包成甲方可读方案。"],
@@ -910,11 +910,11 @@ function renderKolIntakeResult(data) {
     <div class="kol-intake-next">
       <div>
         <strong>${escapeHTML(sourceLabel)}已进入达人库</strong>
-        <span>生成的画像字段和证据标签会被 PR Brief 匹配、KOL 图谱、Campaign Room 复用。</span>
+        <span>生成的画像字段和证据标签会被 PR Brief 匹配、KOL 决策图谱、Campaign Room 复用。</span>
       </div>
       <div class="button-row">
         <button class="secondary" data-view-jump="creators" type="button">查看达人库</button>
-        <button class="secondary" data-view-jump="kolIntelligence" type="button">查看 KOL 图谱</button>
+        <button class="secondary" data-view-jump="kolIntelligence" type="button">查看决策图谱</button>
         <button class="primary" data-view-jump="projectRun" type="button">用 Brief 匹配</button>
       </div>
     </div>
@@ -1096,7 +1096,7 @@ function buildHomeBriefProposal(data) {
     "",
     "## 2. 图谱推演结论",
     "",
-    data?.summary || "系统已完成 KOL 图谱推演。",
+    data?.summary || "系统已完成 KOL 决策图谱推演。",
     "",
     "## 3. 推荐 KOL",
     "",
@@ -4202,7 +4202,7 @@ function renderCreatorEvidenceTags() {
   if (!node) return;
   const tags = state.activeCreatorEvidenceTags || [];
   if (!tags.length) {
-    node.innerHTML = emptyState("暂无证据标签", "点击达人智能图谱里的“分析达人标签”后会生成。");
+    node.innerHTML = emptyState("暂无证据标签", "点击 KOL 决策图谱里的“分析达人标签”后会生成。");
     return;
   }
   node.innerHTML = tags
