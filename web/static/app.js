@@ -23,7 +23,6 @@ const state = {
   activeAgentGraphNodeId: "",
   activeAgentToolName: "",
   agentFloatOpen: localStorage.getItem("pr_ai_os_agent_float_open") === "1",
-  agentFloatTab: "messages",
   agentPollTimer: null,
   agentEventSource: null,
   agentRuntime: null,
@@ -280,8 +279,9 @@ async function api(path, options = {}) {
 }
 
 function fmtNumber(value) {
-  const n = Number(value || 0);
-  return n ? n.toLocaleString("zh-CN") : "-";
+  if (value === null || value === undefined || value === "") return "-";
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toLocaleString("zh-CN") : "-";
 }
 
 function escapeHTML(value) {
@@ -1991,73 +1991,79 @@ function renderAgentFloatContent() {
       <span>${escapeHTML(status)} · ${fmtNumber(state.activeAgentSteps.length)} steps · ${fmtNumber(artifactCount)} assets</span>
     `;
   }
-  $$(".agent-float-tab").forEach((button) => button.classList.toggle("active", button.dataset.agentFloatTab === state.agentFloatTab));
-  ["messages", "steps", "artifacts"].forEach((name) => {
-    const node = $(`#agentFloat${name[0].toUpperCase()}${name.slice(1)}`);
-    if (node) node.classList.toggle("hidden", state.agentFloatTab !== name);
-  });
   renderAgentFloatMessages();
-  renderAgentFloatSteps();
-  renderAgentFloatArtifacts();
 }
 
 function renderAgentFloatMessages() {
   const node = $("#agentFloatMessages");
   if (!node) return;
   const messages = state.activeAgentThread?.messages || [];
-  node.innerHTML = messages.length
-    ? messages
-        .slice(-6)
-        .map(
-          (message) => `
-            <article class="agent-float-message ${escapeHTML(message.role)}">
-              <span>${escapeHTML(message.role === "user" ? "You" : "Agent")}</span>
-              <p>${escapeHTML(message.content || "")}</p>
-            </article>
-          `
-        )
-        .join("")
-    : emptyState("还没有对话", "输入一个 brief，Agent 会开始拆解需求、调用工具并沉淀产物。");
+  const run = state.activeAgentRun?.run || {};
+  const steps = state.activeAgentSteps || [];
+  const artifacts = state.activeAgentArtifacts || [];
+  const transcript = messages.slice(-8).map(
+    (message) => `
+      <article class="agent-float-message ${escapeHTML(message.role)}">
+        <span>${escapeHTML(message.role === "user" ? "You" : "Agent")}</span>
+        <p>${escapeHTML(message.content || "")}</p>
+      </article>
+    `
+  );
+  if (run.status || steps.length || artifacts.length) {
+    transcript.push(renderAgentFloatRunCard(run, steps, artifacts));
+  }
+  node.innerHTML = transcript.length ? transcript.join("") : renderAgentFloatWelcome();
   node.scrollTop = node.scrollHeight;
 }
 
-function renderAgentFloatSteps() {
-  const node = $("#agentFloatSteps");
-  if (!node) return;
-  const steps = state.activeAgentSteps || [];
-  node.innerHTML = steps.length
-    ? steps
-        .slice(-8)
-        .map(
-          (step, index) => `
-            <article class="agent-float-step ${escapeHTML(step.status || "pending")}">
-              <strong>${String(index + 1).padStart(2, "0")} · ${escapeHTML(step.title || step.tool_name || "工具步骤")}</strong>
-              <p>${escapeHTML(step.output_summary || step.input_summary || step.status || "")}</p>
-            </article>
-          `
-        )
-        .join("")
-    : emptyState("暂无步骤", "启动后这里会显示实时工具调用。");
+function renderAgentFloatWelcome() {
+  return `
+    <article class="agent-float-welcome">
+      <strong>把 brief 发给我。</strong>
+      <p>我会拆需求、查达人标签、生成 KOL 推荐、风险提示和客户可读方案。需要看完整图谱时点「全屏」。</p>
+      <div class="agent-float-suggestions">
+        <button type="button" data-agent-prompt="帮我根据这个 brief 推荐 8 个小红书/抖音 KOL，并说明风险。">推荐 KOL</button>
+        <button type="button" data-agent-prompt="把这个项目变成一份客户可看的 KOL 方案。">生成方案</button>
+        <button type="button" data-agent-prompt="检查这个 brief 的投放风险和预算风险。">查风险</button>
+      </div>
+    </article>
+  `;
 }
 
-function renderAgentFloatArtifacts() {
-  const node = $("#agentFloatArtifacts");
-  if (!node) return;
-  const artifacts = state.activeAgentArtifacts || [];
-  node.innerHTML = artifacts.length
-    ? artifacts
-        .slice(-8)
-        .map(
-          (artifact) => `
-            <article class="agent-float-artifact">
-              <span>${escapeHTML(artifact.artifact_type || "artifact")}</span>
-              <strong>${escapeHTML(artifact.title || "Agent 产物")}</strong>
-              <p>${escapeHTML(artifact.summary || "")}</p>
-            </article>
-          `
-        )
-        .join("")
-    : emptyState("暂无产物", "推荐名单、图谱、方案和记忆会在这里出现。");
+function renderAgentFloatRunCard(run, steps, artifacts) {
+  const latestSteps = steps.slice(-5);
+  const latestArtifacts = artifacts.slice(-4);
+  return `
+    <article class="agent-float-run-card ${escapeHTML(run.status || "idle")}">
+      <div class="agent-float-run-head">
+        <span>${escapeHTML(run.status || "idle")}</span>
+        <strong>${fmtNumber(steps.length)} steps · ${fmtNumber(artifacts.length)} assets</strong>
+      </div>
+      <div class="agent-float-step-stack">
+        ${
+          latestSteps.length
+            ? latestSteps
+                .map(
+                  (step, index) => `
+                    <div class="agent-float-step ${escapeHTML(step.status || "pending")}">
+                      <em>${String(index + 1).padStart(2, "0")}</em>
+                      <span>${escapeHTML(step.title || step.tool_name || "工具步骤")}</span>
+                    </div>
+                  `
+                )
+                .join("")
+            : '<div class="meta">等待工具步骤生成。</div>'
+        }
+      </div>
+      ${
+        latestArtifacts.length
+          ? `<div class="agent-float-asset-row">${latestArtifacts
+              .map((artifact) => `<span>${escapeHTML(artifact.title || artifact.artifact_type || "asset")}</span>`)
+              .join("")}</div>`
+          : ""
+      }
+    </article>
+  `;
 }
 
 async function runAgentFromPayload(payload) {
@@ -4914,7 +4920,6 @@ function bindEvents() {
         button.textContent = "跑...";
       }
       await runAgentFromPayload(payload);
-      state.agentFloatTab = "steps";
       renderAgentFloatDock();
       toast("Agent 已在浮窗启动");
     } catch (error) {
@@ -4922,15 +4927,18 @@ function bindEvents() {
     } finally {
       if (button) {
         button.disabled = false;
-        button.textContent = "启动";
+        button.textContent = "发送";
       }
     }
   });
   $("#agentFloatPanel")?.addEventListener("click", (event) => {
-    const tab = event.target.closest(".agent-float-tab");
-    if (!tab) return;
-    state.agentFloatTab = tab.dataset.agentFloatTab || "messages";
-    renderAgentFloatContent();
+    const prompt = event.target.closest("[data-agent-prompt]");
+    if (!prompt) return;
+    const textarea = $("#agentFloatForm textarea[name='message']");
+    if (textarea) {
+      textarea.value = prompt.dataset.agentPrompt || "";
+      textarea.focus();
+    }
   });
   $("#agentCompareRuntimeBtn")?.addEventListener("click", async (event) => {
     const form = $("#agentChatForm");
