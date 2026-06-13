@@ -153,7 +153,7 @@ from src.platform_os.storage import init_platform_db, load_all_campaign_projects
 from src.project_run.service import run_pr_project
 from src.report.proposal_generator import generate_markdown_proposal
 from src.rules.storage import init_rule_db, load_rule_config, reset_rule_config, save_rule_config
-from src.schemas import CreatorProfile, split_tags
+from src.schemas import CreatorProfile, split_tags, stable_id
 from src.simulation.llm_fallback import LlmFallbackStressTest
 from src.simulation.mirofish_adapter import MiroFishCliAdapter
 from src.llm.glm_client import GlmClient
@@ -830,6 +830,163 @@ def openclaw_run_events(run_id: str) -> dict[str, Any]:
     if not payload:
         raise HTTPException(status_code=404, detail="openclaw run not found")
     return payload
+
+
+def _require_openclaw_tool_access(request: Request) -> Any:
+    config = load_openclaw_config(DB_PATH)
+    auth = request.headers.get("Authorization", "")
+    token = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else ""
+    if config.admin_token and token and secrets.compare_digest(token, config.admin_token):
+        return _open_mode_identity()
+    return require_internal("project_run")
+
+
+def _match_result_payload(result: Any) -> dict[str, Any]:
+    data = asdict(result)
+    data["creator"] = profile_payload(result.creator)
+    data["table_row"] = result.to_table_row()
+    return data
+
+
+def _openclaw_tool_manifest() -> list[dict[str, Any]]:
+    return [
+        {
+            "name": "kolness.analyze_brief",
+            "description": "解析 PR brief，返回行业、产品、预算、阶段、目标用户和平台偏好。",
+            "input_schema": {"brief": "string"},
+        },
+        {
+            "name": "kolness.search_kol",
+            "description": "按关键词、平台、标签检索 Kolness 达人库。",
+            "input_schema": {"query": "string", "platform": "string optional", "limit": "number optional"},
+        },
+        {
+            "name": "kolness.match_kol",
+            "description": "根据 brief 对达人库做 KOL 匹配排序。",
+            "input_schema": {"brief": "string", "top_n": "number optional"},
+        },
+        {
+            "name": "kolness.generate_kol_graph",
+            "description": "根据 brief 和候选达人生成 KOL 决策图谱。",
+            "input_schema": {"brief": "string", "creator_ids": "array optional", "limit": "number optional"},
+        },
+        {
+            "name": "kolness.generate_proposal",
+            "description": "根据 brief 和 KOL 匹配结果生成客户可读 Markdown 方案。",
+            "input_schema": {"brief": "string", "top_n": "number optional"},
+        },
+        {
+            "name": "kolness.save_campaign_asset",
+            "description": "把 OpenClaw 产物保存为 Kolness Agent artifact，后续可沉淀到 Campaign 资产库。",
+            "input_schema": {"title": "string", "artifact_type": "string", "payload": "object"},
+        },
+    ]
+
+
+@app.get("/api/openclaw/tools")
+def openclaw_tools(request: Request) -> dict[str, Any]:
+    _require_openclaw_tool_access(request)
+    return {"items": _openclaw_tool_manifest()}
+
+
+@app.post("/api/openclaw/tools/{tool_name:path}")
+async def openclaw_call_tool(tool_name: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    identity = _require_openclaw_tool_access(request)
+    name = tool_name.strip().replace("/", ".")
+    if not name.startswith("kolness."):
+        name = f"kolness.{name}"
+
+    if name == "kolness.analyze_brief":
+        brief_text = str(payload.get("brief") or payload.get("message") or "").strip()
+        if not brief_text:
+            raise HTTPException(status_code=400, detail="brief is required")
+        brief = parse_brief(brief_text)
+        return {"tool": name, "brief": asdict(brief)}
+
+    if name == "kolness.search_kol":
+        query = str(payload.get("query") or "").strip().lower()
+        platform = str(payload.get("platform") or "").strip()
+        limit = int(payload.get("limit") or 12)
+        profiles = load_profiles(DB_PATH)
+        scored: list[tuple[int, CreatorProfile]] = []
+        for profile in profiles:
+            text = " ".join(
+                [
+                    profile.name,
+                    profile.platform,
+                    profile.bio,
+                    profile.ai_summary,
+                    profile.manual_notes,
+                    " ".join(profile.industry_fit_tags + profile.content_capability_tags + profile.suitable_goals + profile.risk_tags),
+                ]
+            ).lower()
+            if platform and profile.platform != platform:
+                continue
+            score = 1
+            if query:
+                score = sum(1 for token in split_tags(query.replace(" ", ",")) if token.lower() in text) or (1 if query in text else 0)
+            if score:
+                scored.append((score, profile))
+        scored.sort(key=lambda item: (item[0], item[1].follower_count), reverse=True)
+        return {"tool": name, "items": [profile_payload(profile) for _, profile in scored[:limit]], "total": len(scored)}
+
+    if name == "kolness.match_kol":
+        brief_text = str(payload.get("brief") or payload.get("message") or "").strip()
+        if not brief_text:
+            raise HTTPException(status_code=400, detail="brief is required")
+        top_n = int(payload.get("top_n") or 8)
+        brief = parse_brief(brief_text)
+        results = rank_creators(brief, load_profiles(DB_PATH))[:top_n]
+        return {"tool": name, "brief": asdict(brief), "items": [_match_result_payload(result) for result in results], "total": len(results)}
+
+    if name == "kolness.generate_kol_graph":
+        brief_text = str(payload.get("brief") or payload.get("message") or "").strip()
+        if not brief_text:
+            raise HTTPException(status_code=400, detail="brief is required")
+        creator_ids = payload.get("creator_ids") if isinstance(payload.get("creator_ids"), list) else []
+        graph = build_kol_knowledge_graph(DB_PATH, brief=brief_text, creator_ids=[str(item) for item in creator_ids], limit=int(payload.get("limit") or 80))
+        return {"tool": name, "graph": graph.to_dict()}
+
+    if name == "kolness.generate_proposal":
+        brief_text = str(payload.get("brief") or payload.get("message") or "").strip()
+        if not brief_text:
+            raise HTTPException(status_code=400, detail="brief is required")
+        top_n = int(payload.get("top_n") or 8)
+        brief = parse_brief(brief_text)
+        results = rank_creators(brief, load_profiles(DB_PATH))[:top_n]
+        markdown = generate_markdown_proposal(brief, results)
+        return {
+            "tool": name,
+            "brief": asdict(brief),
+            "markdown": markdown,
+            "items": [_match_result_payload(result) for result in results],
+        }
+
+    if name == "kolness.save_campaign_asset":
+        title = str(payload.get("title") or "OpenClaw 产物").strip()
+        artifact_type = str(payload.get("artifact_type") or "openclaw_asset").strip()
+        campaign_id = str(payload.get("campaign_id") or "").strip()
+        task_id = str(payload.get("task_id") or stable_id("openclaw", campaign_id, identity.user.user_id, prefix="agent_task"))
+        run_id = str(payload.get("run_id") or stable_id("openclaw", task_id, title, prefix="agent_run"))
+        artifact = AgentArtifact(
+            artifact_id=artifact_id_for(task_id, artifact_type, title),
+            task_id=task_id,
+            run_id=run_id,
+            artifact_type=artifact_type,
+            title=title,
+            summary=str(payload.get("summary") or "OpenClaw 回写到 Kolness 的产物。"),
+            payload={
+                "campaign_id": campaign_id,
+                "source": "openclaw",
+                "content": payload.get("content") or "",
+                "payload": payload.get("payload") or {},
+                "created_by": identity.user.user_id,
+            },
+        )
+        upsert_artifact(DB_PATH, artifact)
+        return {"tool": name, "artifact": artifact.to_dict()}
+
+    raise HTTPException(status_code=404, detail="unknown OpenClaw tool")
 
 
 @app.get("/openclaw", response_class=HTMLResponse)

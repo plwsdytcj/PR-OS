@@ -111,7 +111,20 @@ class OpenClawAdapter:
             "agent_id": run.openclaw_agent_id or config.default_agent_id,
             "session_id": run.openclaw_session_id,
             "message": message,
-            "metadata": {"source": "kolness", "run_id": run.run_id, "campaign_id": run.campaign_id},
+            "metadata": {
+                "source": "kolness",
+                "run_id": run.run_id,
+                "campaign_id": run.campaign_id,
+                "tool_base_path": "/api/openclaw/tools",
+                "tool_names": [
+                    "kolness.analyze_brief",
+                    "kolness.search_kol",
+                    "kolness.match_kol",
+                    "kolness.generate_kol_graph",
+                    "kolness.generate_proposal",
+                    "kolness.save_campaign_asset",
+                ],
+            },
         }
         headers = {"Content-Type": "application/json"}
         if config.admin_token:
@@ -143,4 +156,3 @@ class OpenClawAdapter:
                 payload=payload,
             ),
         )
-
