@@ -107,7 +107,7 @@ class OpenClawAdapter:
 
     def _send_message(self, config: OpenClawConfig, run: OpenClawRun, message: str) -> dict[str, Any]:
         url = config.gateway_url.rstrip("/")
-        payload = {
+        bridge_payload = {
             "agent_id": run.openclaw_agent_id or config.default_agent_id,
             "session_id": run.openclaw_session_id,
             "message": message,
@@ -134,11 +134,28 @@ class OpenClawAdapter:
         if config.admin_token:
             headers["Authorization"] = f"Bearer {config.admin_token}"
         # OpenClaw deployments can expose different HTTP facades. Try the explicit Kolness bridge first,
-        # then common chat/message paths before surfacing a clear failure.
+        # then the official OpenAI-compatible Gateway endpoint, then common chat/message paths.
         errors: list[str] = []
-        for path in ("/api/kolness/chat", "/api/chat", "/chat", "/message"):
+        for path in ("/api/kolness/chat",):
             try:
-                response = requests.post(f"{url}{path}", json=payload, headers=headers, timeout=self.timeout)
+                response = requests.post(f"{url}{path}", json=bridge_payload, headers=headers, timeout=self.timeout)
+                if response.status_code == 404:
+                    errors.append(f"{path}: 404")
+                    continue
+                response.raise_for_status()
+                data = response.json() if response.content else {}
+                return data if isinstance(data, dict) else {"response": str(data)}
+            except requests.RequestException as exc:
+                errors.append(f"{path}: {exc}")
+        try:
+            return self._send_chat_completions(url, headers, run, message)
+        except requests.RequestException as exc:
+            errors.append(f"/v1/chat/completions: {exc}")
+        except RuntimeError as exc:
+            errors.append(f"/v1/chat/completions: {exc}")
+        for path in ("/api/chat", "/chat", "/message"):
+            try:
+                response = requests.post(f"{url}{path}", json=bridge_payload, headers=headers, timeout=self.timeout)
                 if response.status_code == 404:
                     errors.append(f"{path}: 404")
                     continue
@@ -148,6 +165,39 @@ class OpenClawAdapter:
             except requests.RequestException as exc:
                 errors.append(f"{path}: {exc}")
         raise RuntimeError("OpenClaw Gateway 调用失败：" + " | ".join(errors[-3:]))
+
+    def _send_chat_completions(self, url: str, headers: dict[str, str], run: OpenClawRun, message: str) -> dict[str, Any]:
+        payload = {
+            "model": f"openclaw/{run.openclaw_agent_id}" if run.openclaw_agent_id else "openclaw/default",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are Kolness PR Agent. Help PR teams turn briefs into KOL recommendations, "
+                        "risk notes, and client-readable next steps. Use Kolness context from the user message."
+                    ),
+                },
+                {"role": "user", "content": message},
+            ],
+            "user": run.openclaw_session_id or run.run_id,
+            "stream": False,
+        }
+        request_headers = dict(headers)
+        if run.openclaw_session_id:
+            request_headers["x-openclaw-session-key"] = run.openclaw_session_id
+        if run.openclaw_agent_id:
+            request_headers["x-openclaw-agent-id"] = run.openclaw_agent_id
+        response = requests.post(f"{url}/v1/chat/completions", json=payload, headers=request_headers, timeout=max(self.timeout, 60))
+        if response.status_code == 404:
+            raise RuntimeError("404")
+        response.raise_for_status()
+        data = response.json() if response.content else {}
+        choices = data.get("choices") if isinstance(data, dict) else []
+        first = choices[0] if choices else {}
+        message_payload = first.get("message") or {}
+        content = message_payload.get("content") if isinstance(message_payload, dict) else ""
+        session_id = response.headers.get("x-openclaw-session-key") or run.openclaw_session_id
+        return {"response": content or "OpenClaw 已完成任务。", "session_id": session_id, "raw": data}
 
     def _event(self, db_path: Path, run_id: str, sequence: int, event_type: str, payload: dict[str, Any]) -> None:
         save_event(
