@@ -398,6 +398,17 @@ def _auth_bypass_for_access_key(request: Request) -> bool:
     return _access_key_valid(request)
 
 
+def _auth_bypass_for_openclaw_tool_token(request: Request, db_path: Path) -> bool:
+    if not request.url.path.startswith("/api/openclaw/tools"):
+        return False
+    auth = request.headers.get("Authorization", "")
+    token = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else ""
+    if not token:
+        return False
+    config = load_openclaw_config(db_path)
+    return bool(config.admin_token and secrets.compare_digest(token, config.admin_token))
+
+
 def _auth_mode_active(db_path: Path) -> bool:
     return AUTH_ENABLED or users_exist(db_path)
 
@@ -435,7 +446,8 @@ async def tenant_context_middleware(request: Request, call_next):
         identity_token = _identity_ctx.set(identity)
         if _legacy_access_key_required_for(request.url.path) and not _auth_mode_active(db_path) and not _access_key_valid(request):
             return JSONResponse({"detail": "access key required"}, status_code=401)
-        if _auth_required_for(request.url.path, db_path) and not _auth_bypass_for_access_key(request):
+        service_token_bypass = _auth_bypass_for_openclaw_tool_token(request, db_path)
+        if _auth_required_for(request.url.path, db_path) and not _auth_bypass_for_access_key(request) and not service_token_bypass:
             if identity is None:
                 return JSONResponse({"detail": _auth_required_message(db_path)}, status_code=401)
             if not _path_allowed_for_identity(request.url.path, request.method.upper(), identity):
