@@ -20,39 +20,41 @@
         </div>
         <nav class="nav" aria-label="主导航">
           <div class="nav-primary">
-            <div class="nav-section">
-              <div class="nav-section-title">项目工作流</div>
-              <button class="nav-item active" data-view="workspace">首页</button>
-              <button class="nav-item" data-view="projectRun">新建 PR 需求</button>
-              <button class="nav-item" data-view="history">历史任务</button>
-            </div>
-            <div class="nav-section">
-              <div class="nav-section-title">KOL 资产</div>
-              <button class="nav-item" data-view="creators">达人库</button>
-              <button class="nav-item" data-view="kolIntelligence">KOL 决策图谱</button>
-            </div>
-            <div class="nav-section">
-              <div class="nav-section-title">AI 助手</div>
-              <button class="nav-item" data-view="agentWorkspace">AI Agent</button>
-            </div>
+            <div class="nav-section-title">日常入口</div>
+            <button class="nav-item active" data-view="workspace">工作台</button>
+            <button class="nav-item" data-view="projectRun">新建 PR 需求</button>
+            <button class="nav-item" data-view="history">Campaign 资产</button>
+            <button class="nav-item" data-view="creators">达人库</button>
+            <button class="nav-item" data-view="agentWorkspace">AI Agent</button>
           </div>
 
-          <div class="nav-secondary-label">高级模块</div>
+          <div class="nav-secondary-label">工具箱</div>
           <details class="nav-group">
             <summary>
-              <span>执行流</span>
-              <em>brief / campaign</em>
+              <span>决策推演</span>
+              <em>graph / risk</em>
             </summary>
+            <button class="nav-item" data-view="kolIntelligence">KOL 决策图谱</button>
             <button class="nav-item" data-view="brief">Brief 推荐</button>
-            <button class="nav-item" data-view="platformOS">Campaign OS</button>
-            <button class="nav-item" data-view="proposal">方案导出</button>
-            <button class="nav-item" data-view="briefDistribution">Brief 分发</button>
             <button class="nav-item" data-view="stressTest">压力测试</button>
+            <button class="nav-item" data-view="symbolicMatch">符号匹配</button>
           </details>
 
           <details class="nav-group">
             <summary>
-              <span>数据资产</span>
+              <span>交付协作</span>
+              <em>client / delivery</em>
+            </summary>
+            <button class="nav-item" data-view="platformOS">Campaign OS</button>
+            <button class="nav-item" data-view="proposal">方案导出</button>
+            <button class="nav-item" data-view="briefDistribution">Brief 分发</button>
+            <button class="nav-item" data-view="collaboration">客户协作</button>
+            <button class="nav-item" data-view="clientPortal">甲方方案页</button>
+          </details>
+
+          <details class="nav-group">
+            <summary>
+              <span>数据系统</span>
               <em>kol / knowledge</em>
             </summary>
             <button class="nav-item" data-view="ingest">数据接入</button>
@@ -64,23 +66,20 @@
 
           <details class="nav-group">
             <summary>
-              <span>符号引擎</span>
-              <em>symbolic os</em>
+              <span>符号实验室</span>
+              <em>symbolic lab</em>
             </summary>
             <button class="nav-item" data-view="symbolicOS">符号 OS</button>
             <button class="nav-item" data-view="symbolicCreator">博主符号档案</button>
             <button class="nav-item" data-view="symbolicBrand">品牌符号分析</button>
-            <button class="nav-item" data-view="symbolicMatch">符号匹配</button>
             <button class="nav-item" data-view="symbolicGraph">符号图谱</button>
           </details>
 
           <details class="nav-group">
             <summary>
-              <span>协作管理</span>
-              <em>client / admin</em>
+              <span>管理设置</span>
+              <em>admin</em>
             </summary>
-            <button class="nav-item" data-view="collaboration">客户协作</button>
-            <button class="nav-item" data-view="clientPortal">甲方方案页</button>
             <button class="nav-item" data-view="organization">Admin Console</button>
           </details>
         </nav>

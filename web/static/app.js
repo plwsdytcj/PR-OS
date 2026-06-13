@@ -117,7 +117,7 @@ const VIEW_TITLES = {
   workspace: ["工作台", "从达人库到 Campaign OS 的五段式闭环。"],
   agentWorkspace: ["AI Agent", "让 PR 项目经理 Agent 调用工具、生成过程日志和交付产物。"],
   knowledge: ["知识库", "把公司案例、客户偏好、风险规则和方案模板变成 Agent 可检索的 RAG 记忆。"],
-  history: ["历史任务", "统一查看 Campaign、Agent 会话、方案版本和 Brief 分发记录。"],
+  history: ["Campaign 资产", "统一查看 Campaign、Agent 会话、方案版本和 Brief 分发记录。"],
   projectRun: ["新建 PR 项目", "输入一个需求，自动跑完 brief、符号图谱、KOL 选择和 Campaign Room。"],
   ingest: ["数据接入", "把 Excel、链接和 API 变成统一 KOL Profile。"],
   creators: ["达人库", "扫描、修正和调用你的私有 KOL 资产。"],
