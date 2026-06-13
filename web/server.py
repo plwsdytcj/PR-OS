@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextvars
 import asyncio
+import html
 import json
 import os
 import re
@@ -136,6 +137,9 @@ from src.kol_intelligence.service import (
 )
 from src.kol_intelligence.storage import init_kol_intelligence_db
 from src.normalize.mapper import infer_column_mapping, map_dataframe_to_profiles
+from src.openclaw.adapter import OpenClawAdapter
+from src.openclaw.schemas import OpenClawConfig, OpenClawUserBinding, binding_id_for, now_iso as openclaw_now_iso
+from src.openclaw.storage import init_openclaw_db, load_all_bindings, load_config as load_openclaw_config, save_binding as save_openclaw_binding, save_config as save_openclaw_config
 from src.platform_os.service import (
     add_post_campaign_review,
     campaign_room,
@@ -272,6 +276,7 @@ def _init_db_bundle(path: Path | PathLike[str]) -> None:
     init_creator_commercial_db(path)
     init_distribution_db(path)
     init_platform_db(path)
+    init_openclaw_db(path)
 
 
 _init_db_bundle(DB_PATH)
@@ -726,6 +731,126 @@ def agent_threads() -> dict[str, Any]:
 def agent_runtime() -> dict[str, Any]:
     require_internal("read")
     return agent_runtime_status()
+
+
+@app.get("/api/openclaw/status")
+def openclaw_status() -> dict[str, Any]:
+    require_internal("read")
+    adapter = OpenClawAdapter()
+    config = load_openclaw_config(DB_PATH)
+    return {"status": adapter.status(DB_PATH), "config": config.to_dict(mask_secret=True)}
+
+
+@app.get("/api/openclaw/me")
+def openclaw_me() -> dict[str, Any]:
+    identity = require_internal("read")
+    adapter = OpenClawAdapter()
+    binding = adapter.binding_for_user(DB_PATH, identity.user.user_id)
+    return {"binding": binding.to_dict(), "status": adapter.status(DB_PATH)}
+
+
+@app.get("/api/openclaw/config")
+def openclaw_config() -> dict[str, Any]:
+    require_admin()
+    return {"config": load_openclaw_config(DB_PATH).to_dict(mask_secret=True), "bindings": [item.to_dict() for item in load_all_bindings(DB_PATH)]}
+
+
+@app.post("/api/openclaw/config")
+async def openclaw_save_config(payload: dict[str, Any]) -> dict[str, Any]:
+    identity = require_admin()
+    current = load_openclaw_config(DB_PATH)
+    token_value = str(payload.get("admin_token") or "").strip()
+    if not token_value:
+        token_value = current.admin_token
+    elif token_value and set(token_value) == {"*"}:
+        token_value = current.admin_token
+    elif "..." in token_value and token_value == current.to_dict(mask_secret=True).get("admin_token"):
+        token_value = current.admin_token
+    config = OpenClawConfig(
+        enabled=bool(payload.get("enabled")),
+        gateway_url=str(payload.get("gateway_url") or "").strip(),
+        control_ui_url=str(payload.get("control_ui_url") or "").strip(),
+        admin_token=token_value,
+        default_agent_id=str(payload.get("default_agent_id") or "kolness_default").strip() or "kolness_default",
+        proxy_base_path=str(payload.get("proxy_base_path") or "/openclaw").strip() or "/openclaw",
+        updated_by=identity.user.user_id,
+        updated_at=openclaw_now_iso(),
+    )
+    save_openclaw_config(DB_PATH, config)
+    return {"config": config.to_dict(mask_secret=True), "status": OpenClawAdapter().status(DB_PATH)}
+
+
+@app.post("/api/openclaw/bindings")
+async def openclaw_save_binding(payload: dict[str, Any]) -> dict[str, Any]:
+    require_admin()
+    user_id = str(payload.get("user_id") or "").strip()
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
+    user = load_user(DB_PATH, user_id)
+    if user is None or user.user_type != "internal":
+        raise HTTPException(status_code=404, detail="internal user not found")
+    config = load_openclaw_config(DB_PATH)
+    existing = OpenClawAdapter().binding_for_user(DB_PATH, user_id)
+    binding = OpenClawUserBinding(
+        binding_id=binding_id_for(user_id),
+        user_id=user_id,
+        openclaw_gateway_url=str(payload.get("openclaw_gateway_url") or config.gateway_url or existing.openclaw_gateway_url).strip(),
+        openclaw_agent_id=str(payload.get("openclaw_agent_id") or existing.openclaw_agent_id or config.default_agent_id).strip(),
+        openclaw_session_id=str(payload.get("openclaw_session_id") or existing.openclaw_session_id).strip(),
+        status=str(payload.get("status") or existing.status or "active"),
+        created_at=existing.created_at,
+        updated_at=openclaw_now_iso(),
+    )
+    save_openclaw_binding(DB_PATH, binding)
+    return {"binding": binding.to_dict(), "bindings": [item.to_dict() for item in load_all_bindings(DB_PATH)]}
+
+
+@app.post("/api/openclaw/chat")
+async def openclaw_chat(payload: dict[str, Any]) -> dict[str, Any]:
+    identity = require_internal("project_run")
+    if identity.user.user_type == "client":
+        raise HTTPException(status_code=403, detail="client cannot use OpenClaw")
+    message = str(payload.get("message") or payload.get("brief") or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
+    adapter = OpenClawAdapter()
+    return adapter.start_chat(
+        DB_PATH,
+        user_id=identity.user.user_id,
+        message=message,
+        campaign_id=str(payload.get("campaign_id") or ""),
+        session_id=str(payload.get("openclaw_session_id") or payload.get("session_id") or ""),
+    )
+
+
+@app.get("/api/openclaw/runs/{run_id}/events")
+def openclaw_run_events(run_id: str) -> dict[str, Any]:
+    require_internal("read")
+    payload = OpenClawAdapter().payload(DB_PATH, run_id)
+    if not payload:
+        raise HTTPException(status_code=404, detail="openclaw run not found")
+    return payload
+
+
+@app.get("/openclaw", response_class=HTMLResponse)
+def openclaw_workspace() -> HTMLResponse:
+    require_internal("read")
+    config = load_openclaw_config(DB_PATH)
+    url = config.control_ui_url or config.gateway_url
+    if not config.enabled or not url:
+        return HTMLResponse(
+            "<!doctype html><meta charset='utf-8'><title>OpenClaw</title>"
+            "<body style='font-family:system-ui;padding:32px'>"
+            "<h1>OpenClaw 未配置</h1><p>请先在 Kolness Admin Console 配置 OpenClaw Gateway / Control UI。</p>"
+            "</body>",
+            status_code=200,
+        )
+    safe_url = html.escape(url, quote=True)
+    return HTMLResponse(
+        f"<!doctype html><meta charset='utf-8'><title>Kolness OpenClaw</title>"
+        f"<style>html,body,iframe{{margin:0;width:100%;height:100%;border:0;background:#11100c}}</style>"
+        f"<iframe src='{safe_url}' title='OpenClaw Control UI'></iframe>"
+    )
 
 
 @app.get("/api/history/workspace")
@@ -1564,6 +1689,7 @@ def data_sources_status() -> dict[str, Any]:
     oneapi_base = os.getenv("ONEAPI_BASE_URL", "https://api.getoneapi.com")
     storage_status = storage_runtime_status(DB_PATH)
     agent_status = agent_runtime_status()
+    openclaw_status = OpenClawAdapter().status(DB_PATH)
     return {
         "items": [
             {
@@ -1617,6 +1743,20 @@ def data_sources_status() -> dict[str, Any]:
                 "runtimes": agent_status["available_runtimes"],
             },
             {
+                "id": "openclaw",
+                "label": "OpenClaw Sidecar",
+                "type": "agent",
+                "configured": openclaw_status["configured"],
+                "available": openclaw_status["available"],
+                "status": "enabled" if openclaw_status["enabled"] else "disabled",
+                "detail": openclaw_status["message"],
+                "env": {
+                    "OPENCLAW_GATEWAY_URL": openclaw_status["gateway_url"],
+                    "OPENCLAW_CONTROL_UI_URL": openclaw_status.get("control_ui_url", ""),
+                    "OPENCLAW_DEFAULT_AGENT_ID": openclaw_status["default_agent_id"],
+                },
+            },
+            {
                 "id": "mirofish",
                 "label": "MiroFish CLI",
                 "type": "simulation",
@@ -1656,6 +1796,9 @@ async def test_data_source(payload: dict[str, Any]) -> dict[str, Any]:
     if source_id == "agent_runtime":
         status = agent_runtime_status()
         return {"source_id": source_id, "ok": True, "message": status["active"]["message"], "runtime": status}
+    if source_id == "openclaw":
+        status = OpenClawAdapter().status(DB_PATH)
+        return {"source_id": source_id, "ok": bool(status["available"]), "message": status["message"], "status": status}
     if source_id == "oneapi":
         api_key = str(payload.get("api_key") or os.getenv("ONEAPI_API_KEY", ""))
         base_url = str(payload.get("base_url") or os.getenv("ONEAPI_BASE_URL", "https://api.getoneapi.com"))

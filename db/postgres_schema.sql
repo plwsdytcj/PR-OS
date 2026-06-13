@@ -26,6 +26,46 @@ CREATE TABLE IF NOT EXISTS rule_configs (
     PRIMARY KEY (tenant_id, config_id)
 );
 
+CREATE TABLE IF NOT EXISTS openclaw_configs (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    config_id TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, config_id)
+);
+
+CREATE TABLE IF NOT EXISTS openclaw_user_bindings (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    binding_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, binding_id)
+);
+
+CREATE TABLE IF NOT EXISTS openclaw_runs (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    run_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    openclaw_agent_id TEXT NOT NULL DEFAULT '',
+    openclaw_session_id TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, run_id)
+);
+
+CREATE TABLE IF NOT EXISTS openclaw_events (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    event_id TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, event_id)
+);
+
 CREATE TABLE IF NOT EXISTS auth_users (
     tenant_id TEXT NOT NULL DEFAULT 'default',
     user_id TEXT NOT NULL,

@@ -27,6 +27,8 @@ const state = {
   agentEventSource: null,
   agentRuntime: null,
   agentRuntimeComparison: null,
+  openClaw: null,
+  activeOpenClawRun: null,
   knowledgeDocuments: [],
   knowledgeStats: null,
   knowledgeSearchResults: [],
@@ -476,6 +478,11 @@ async function loadOrganization() {
   } catch (error) {
     state.ruleConfig = null;
   }
+  try {
+    state.openClaw = await api("/api/openclaw/config");
+  } catch (error) {
+    state.openClaw = null;
+  }
   state.authUsers = users.items || [];
   state.authClients = clients.items || [];
   state.collabProposals = proposals.items || [];
@@ -503,8 +510,9 @@ async function loadAgentTasks() {
 
 async function loadAgentRuntime() {
   if (state.currentIdentity?.user?.user_type === "client") return;
-  const data = await api("/api/agent/runtime");
+  const [data, openClaw] = await Promise.all([api("/api/agent/runtime"), api("/api/openclaw/status").catch(() => null)]);
   state.agentRuntime = data;
+  if (openClaw) state.openClaw = { ...(state.openClaw || {}), ...openClaw };
   renderAgentRuntimeControls();
 }
 
@@ -1461,6 +1469,7 @@ function renderOrganization() {
   renderOrgSelects();
   renderProjectAccessTable();
   renderRuleConfig();
+  renderOpenClawAdmin();
 }
 
 function isCurrentUserAdmin() {
@@ -1673,6 +1682,72 @@ function renderRuleConfig() {
   meta.textContent = `已加载 ${creatorPatterns} 组达人符号规则 · ${briefKeywords} 组 Brief 激活词 · ${categoryLabels} 个分类名称 · ${brandArchetypes} 组品牌 archetype`;
 }
 
+function renderOpenClawAdmin() {
+  const form = $("#openClawConfigForm");
+  const meta = $("#openClawConfigMeta");
+  const bindingSelect = $("#openClawBindingUserSelect");
+  const bindingList = $("#openClawBindingList");
+  const canAdmin = isCurrentUserAdmin();
+  const config = state.openClaw?.config || {};
+  const status = state.openClaw?.status || {};
+  if (form) {
+    form.elements.enabled.checked = Boolean(config.enabled);
+    form.elements.gateway_url.value = config.gateway_url || "";
+    form.elements.control_ui_url.value = config.control_ui_url || "";
+    form.elements.default_agent_id.value = config.default_agent_id || "kolness_default";
+    form.elements.proxy_base_path.value = config.proxy_base_path || "/openclaw";
+    form.elements.admin_token.value = "";
+    Array.from(form.querySelectorAll("input, select, button")).forEach((field) => {
+      field.disabled = !canAdmin;
+    });
+  }
+  ["reloadOpenClawConfigBtn", "saveOpenClawConfigBtn"].forEach((id) => {
+    const button = $(`#${id}`);
+    if (button) button.disabled = !canAdmin;
+  });
+  const bindingForm = $("#openClawBindingForm");
+  if (bindingForm) {
+    Array.from(bindingForm.querySelectorAll("input, select, button")).forEach((field) => {
+      field.disabled = !canAdmin;
+    });
+  }
+  if (bindingSelect) {
+    const internalUsers = state.authUsers.filter((user) => user.user_type === "internal");
+    bindingSelect.innerHTML = internalUsers
+      .map((user) => `<option value="${escapeHTML(user.user_id)}">${escapeHTML(user.name || user.email)} · ${escapeHTML(user.role)}</option>`)
+      .join("");
+  }
+  if (meta) {
+    if (!canAdmin) {
+      meta.textContent = "当前账号不是 admin，不能修改 OpenClaw 配置。";
+    } else {
+      meta.textContent = `${status.enabled ? "已启用" : "未启用"} · ${status.configured ? "Gateway 已配置" : "缺 Gateway"} · 默认 Agent ${escapeHTML(config.default_agent_id || "kolness_default")}`;
+    }
+  }
+  if (bindingList) {
+    const bindings = state.openClaw?.bindings || [];
+    bindingList.innerHTML = bindings.length
+      ? bindings
+          .map((binding) => {
+            const user = userById(binding.user_id);
+            return `
+              <article class="org-card">
+                <div>
+                  <strong>${escapeHTML(user?.name || user?.email || binding.user_id)}</strong>
+                  <span>${escapeHTML(binding.openclaw_agent_id || "-")}</span>
+                </div>
+                <div class="org-card-side">
+                  ${renderRolePill(binding.status || "active")}
+                  <span class="meta">${escapeHTML(binding.openclaw_session_id || "no session")}</span>
+                </div>
+              </article>
+            `;
+          })
+          .join("")
+      : emptyState("暂无 OpenClaw 绑定", "保存配置后，可以给每个内部员工绑定自己的 OpenClaw agent。");
+  }
+}
+
 function renderAgentTasks() {
   const list = $("#agentTaskList");
   if (!list) return;
@@ -1766,10 +1841,13 @@ function renderAgentRuntimeControls() {
   }
   const sdk = (runtime.available_runtimes || []).find((item) => item.name === "openai_agents");
   const active = runtime.active || {};
+  const openClawAvailable = Boolean(state.openClaw?.status?.available);
   meta.textContent = `当前默认 ${runtime.active_runtime || "custom"} · ${active.mode || "native"} · SDK ${sdk?.mode || "unknown"}`;
   select.querySelector('option[value="openai_agents"]').disabled = !(sdk?.available);
+  select.querySelector('option[value="openclaw"]').disabled = !openClawAvailable;
   if (floatSelect) {
     floatSelect.querySelector('option[value="openai_agents"]').disabled = !(sdk?.available);
+    floatSelect.querySelector('option[value="openclaw"]').disabled = !openClawAvailable;
   }
 }
 
@@ -1979,6 +2057,10 @@ function setAgentFloatOpen(open) {
 
 function renderAgentFloatContent() {
   const summary = $("#agentFloatSummary");
+  if (activeFloatRuntime() === "openclaw") {
+    renderOpenClawFloatContent(summary);
+    return;
+  }
   const run = state.activeAgentRun?.run || {};
   const task = state.activeAgentRun?.task || state.activeAgentThread?.task || {};
   const thread = state.activeAgentThread?.thread || {};
@@ -1992,6 +2074,76 @@ function renderAgentFloatContent() {
     `;
   }
   renderAgentFloatMessages();
+}
+
+function activeFloatRuntime() {
+  return $("#agentFloatRuntimeSelect")?.value || "auto";
+}
+
+function renderOpenClawFloatContent(summary) {
+  const run = state.activeOpenClawRun?.run || {};
+  const events = state.activeOpenClawRun?.events || [];
+  if (summary) {
+    summary.innerHTML = `
+      <strong>OpenClaw 深度任务</strong>
+      <span>${escapeHTML(run.status || "idle")} · ${fmtNumber(events.length)} events</span>
+    `;
+  }
+  renderOpenClawFloatMessages();
+}
+
+function renderOpenClawFloatMessages() {
+  const node = $("#agentFloatMessages");
+  if (!node) return;
+  const run = state.activeOpenClawRun?.run || {};
+  const events = state.activeOpenClawRun?.events || [];
+  if (!run.run_id) {
+    node.innerHTML = `
+      <article class="agent-float-welcome">
+        <strong>OpenClaw 深度任务</strong>
+        <p>这个模式会把 brief 发给绑定的 OpenClaw agent。OpenClaw 负责长任务、流式执行和工具调用，Kolness 负责权限和 KOL 数据。</p>
+        <div class="agent-float-suggestions">
+          <button type="button" data-agent-prompt="帮我把这个 PR brief 跑成一条深度任务，先推荐 KOL，再解释推荐理由和风险。">深度跑 brief</button>
+          <button type="button" data-agent-prompt="用 Kolness 的达人库帮我查适合这个项目的 KOL，并生成客户可读解释。">查达人库</button>
+        </div>
+      </article>
+    `;
+    return;
+  }
+  const userMessage = run.message
+    ? `<article class="agent-float-message user"><span>You</span><p>${escapeHTML(run.message)}</p></article>`
+    : "";
+  const assistantMessage =
+    run.response || run.error
+      ? `<article class="agent-float-message assistant"><span>OpenClaw</span><p>${escapeHTML(run.response || run.error)}</p></article>`
+      : "";
+  const eventCard = `
+    <article class="agent-float-run-card ${escapeHTML(run.status || "running")}">
+      <div class="agent-float-run-head">
+        <span>${escapeHTML(run.status || "running")}</span>
+        <strong>${fmtNumber(events.length)} events</strong>
+      </div>
+      <div class="agent-float-step-stack">
+        ${
+          events.length
+            ? events
+                .slice(-5)
+                .map(
+                  (event, index) => `
+                    <div class="agent-float-step">
+                      <em>${String(index + 1).padStart(2, "0")}</em>
+                      <span>${escapeHTML(event.event_type || "event")}</span>
+                    </div>
+                  `
+                )
+                .join("")
+            : '<div class="meta">等待 OpenClaw 事件。</div>'
+        }
+      </div>
+    </article>
+  `;
+  node.innerHTML = `${userMessage}${eventCard}${assistantMessage}`;
+  node.scrollTop = node.scrollHeight;
 }
 
 function renderAgentFloatMessages() {
@@ -2093,6 +2245,17 @@ async function runAgentFromPayload(payload) {
   startAgentPolling(data.run?.run_id);
   await loadAgentTasks();
   await refreshWorkspaceHistoryIfVisible();
+  renderAgentFloatDock();
+  return data;
+}
+
+async function runOpenClawFromPayload(payload) {
+  const data = await api("/api/openclaw/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  state.activeOpenClawRun = data;
   renderAgentFloatDock();
   return data;
 }
@@ -4883,6 +5046,51 @@ function bindEvents() {
       toast(error.message, true);
     }
   });
+  $("#reloadOpenClawConfigBtn")?.addEventListener("click", async () => {
+    try {
+      state.openClaw = await api("/api/openclaw/config");
+      renderOpenClawAdmin();
+      toast("OpenClaw 配置已重新加载");
+    } catch (error) {
+      toast(error.message, true);
+    }
+  });
+  $("#saveOpenClawConfigBtn")?.addEventListener("click", async () => {
+    const form = $("#openClawConfigForm");
+    if (!form) return;
+    const payload = formToObject(form);
+    payload.enabled = Boolean(form.elements.enabled.checked);
+    try {
+      const data = await api("/api/openclaw/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      state.openClaw = { ...(state.openClaw || {}), ...data };
+      state.openClaw = await api("/api/openclaw/config");
+      renderOpenClawAdmin();
+      renderAgentRuntimeControls();
+      toast("OpenClaw 配置已保存");
+    } catch (error) {
+      toast(error.message, true);
+    }
+  });
+  $("#openClawBindingForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const payload = formToObject(event.currentTarget);
+    try {
+      await api("/api/openclaw/bindings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      state.openClaw = await api("/api/openclaw/config");
+      renderOpenClawAdmin();
+      toast("员工 OpenClaw Agent 已绑定");
+    } catch (error) {
+      toast(error.message, true);
+    }
+  });
   $("#agentChatForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const payload = formToObject(event.currentTarget);
@@ -4892,7 +5100,11 @@ function bindEvents() {
         button.disabled = true;
         button.textContent = "执行中...";
       }
-      await runAgentFromPayload(payload);
+      if (payload.runtime === "openclaw") {
+        await runOpenClawFromPayload(payload);
+      } else {
+        await runAgentFromPayload(payload);
+      }
       toast("Agent 已启动，执行过程会实时刷新");
     } catch (error) {
       toast(error.message, true);
@@ -4919,7 +5131,11 @@ function bindEvents() {
         button.disabled = true;
         button.textContent = "跑...";
       }
-      await runAgentFromPayload(payload);
+      if (payload.runtime === "openclaw") {
+        await runOpenClawFromPayload(payload);
+      } else {
+        await runAgentFromPayload(payload);
+      }
       renderAgentFloatDock();
       toast("Agent 已在浮窗启动");
     } catch (error) {
@@ -4931,6 +5147,7 @@ function bindEvents() {
       }
     }
   });
+  $("#agentFloatRuntimeSelect")?.addEventListener("change", () => renderAgentFloatContent());
   $("#agentFloatPanel")?.addEventListener("click", (event) => {
     const prompt = event.target.closest("[data-agent-prompt]");
     if (!prompt) return;

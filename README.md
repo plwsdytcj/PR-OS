@@ -26,6 +26,7 @@ PR AI OS is a local-first MVP for media agencies managing KOL resources, brand b
 - Phase 7I-B: OpenAI Agents SDK POC runtime with PR OS tool calling and native runtime fallback.
 - Phase 7I-C: per-run runtime override and Custom vs Agents SDK A/B comparison.
 - Phase 7J: Manus-like Agent task space with SSE live updates, editable/retryable tool steps, multi-agent handoff artifacts, memory recall display, and live graph highlighting.
+- OpenClaw Agent Dock PRD: see `OpenClaw_Agent_Dock_PRD.md` for the sidecar plan to embed an OpenClaw-backed Manus-like floating chat/workspace for internal staff.
 - Phase 8: KOL Intelligence Graph with evidence-based creator tags, graph evolution, and brief-driven prediction recommendations.
 - Phase 8.1: KOL Evidence Review with tag confirmation, rejection, reviewer notes, weight adjustments, and creator detail evidence tags.
 - Phase 8.2: Conversational KOL Graph Workspace with chat-driven graph frames and final KOL decision cards.
@@ -85,6 +86,13 @@ AGENT_SDK_MAX_TURNS=8
 AGENT_SDK_TRACING=false
 OPENAI_DEFAULT_MODEL=
 
+OPENCLAW_ENABLED=false
+OPENCLAW_GATEWAY_URL=
+OPENCLAW_CONTROL_UI_URL=
+OPENCLAW_ADMIN_TOKEN=
+OPENCLAW_DEFAULT_AGENT_ID=kolness_default
+OPENCLAW_PROXY_BASE_PATH=/openclaw
+
 PR_AI_OS_ACCESS_KEY=
 PR_AI_OS_AUTH_ENABLED=false
 PR_AI_OS_COOKIE_SECURE=false
@@ -117,6 +125,8 @@ Behavior:
 - `AGENT_RUNTIME=openai_agents` is the production primary runtime. It uses OpenAI Agents SDK when `openai-agents` and a compatible API key are configured; missing SDK config or SDK failures automatically fall back to the native `custom` runtime. Set `AGENT_RUNTIME=custom` only when you want to force the native fallback path.
 - `AGENT_SDK_API_KEY`, `AGENT_SDK_MODEL`, and `AGENT_SDK_BASE_URL` configure the SDK runtime. For GLM/OpenAI-compatible providers, set `AGENT_SDK_BASE_URL` to the API root, for example `https://open.bigmodel.cn/api/paas/v4`; if omitted, the app also derives it from `AGENT_BASE_URL` or `GLM_BASE_URL`.
 - `AGENT_SDK_TRACING=false` disables OpenAI trace export by default, which avoids noisy logs when running the SDK against GLM or another OpenAI-compatible provider.
+- `OPENCLAW_ENABLED=true` enables the OpenClaw sidecar runtime for the Agent Dock. One Gateway can serve multiple internal users through per-user `openclaw_agent_id` bindings managed in Admin Console.
+- `OPENCLAW_GATEWAY_URL` points to the OpenClaw Gateway. `OPENCLAW_CONTROL_UI_URL` optionally points to the OpenClaw Control UI for `/openclaw` embedding.
 - If `ONEAPI_API_KEY` is missing, OneAPI status is shown as not configured; Mock API and Excel remain usable.
 - If MiroFish CLI is not installed or times out, Campaign stress tests use the OS fallback Simulation Layer in Auto mode.
 - `MIROFISH_COMMAND` points to the external MiroFish runtime. For the current CLI-only fork, prefer a source checkout command such as `uv --directory /opt/mirofish run mirofish`, because the wheel install does not include the OASIS `scripts/` directory needed by the simulation subprocess.

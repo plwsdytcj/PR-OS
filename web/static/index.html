@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260613-7" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260613-8" />
   </head>
   <body>
     <div class="app-shell">
@@ -304,6 +304,7 @@
                     <input name="top_n" type="number" value="8" min="3" max="30" />
                     <select id="agentRuntimeSelect" name="runtime" aria-label="Agent runtime">
                       <option value="auto">Runtime: Auto</option>
+                      <option value="openclaw">OpenClaw 深度任务</option>
                       <option value="custom">Custom Native</option>
                       <option value="openai_agents">Agents SDK</option>
                     </select>
@@ -1335,6 +1336,39 @@
             <div id="ruleConfigMeta" class="meta">等待加载。</div>
             <textarea id="ruleConfigEditor" class="json-editor rule-config-editor" spellcheck="false"></textarea>
           </div>
+
+          <div class="panel openclaw-admin">
+            <div class="panel-header">
+              <div>
+                <h2>OpenClaw Sidecar</h2>
+                <p>一个 Gateway 可绑定多个内部员工 Agent；Kolness 负责权限和 PR/KOL 工具。</p>
+              </div>
+              <div class="button-row">
+                <button id="reloadOpenClawConfigBtn" class="secondary" type="button">重新加载</button>
+                <button id="saveOpenClawConfigBtn" class="primary" type="button">保存配置</button>
+              </div>
+            </div>
+            <div id="openClawConfigMeta" class="meta">等待加载。</div>
+            <form id="openClawConfigForm" class="form">
+              <label class="checkline"><input name="enabled" type="checkbox" /> 启用 OpenClaw 深度任务</label>
+              <div class="field-row">
+                <input name="gateway_url" placeholder="Gateway URL，例如 http://127.0.0.1:18789" />
+                <input name="control_ui_url" placeholder="Control UI URL，可选" />
+              </div>
+              <div class="field-row">
+                <input name="default_agent_id" placeholder="默认 Agent ID" />
+                <input name="proxy_base_path" placeholder="代理路径，例如 /openclaw" />
+              </div>
+              <input name="admin_token" placeholder="Admin Token，留空则不覆盖" />
+            </form>
+            <form id="openClawBindingForm" class="form org-access-form">
+              <select id="openClawBindingUserSelect" name="user_id" required></select>
+              <input name="openclaw_agent_id" placeholder="OpenClaw Agent ID，例如 kolness_alice" required />
+              <input name="openclaw_session_id" placeholder="Session ID，可选" />
+              <button class="secondary" type="submit">绑定员工 Agent</button>
+            </form>
+            <div id="openClawBindingList" class="org-list"></div>
+          </div>
         </section>
 
         <section id="dataSources" class="view">
@@ -1356,6 +1390,7 @@
                   <option value="mock_api">Mock API</option>
                   <option value="oneapi">OneAPI</option>
                   <option value="glm">GLM</option>
+                  <option value="openclaw">OpenClaw</option>
                   <option value="mirofish">MiroFish CLI</option>
                   <option value="excel">Excel / CSV</option>
                 </select>
@@ -1858,6 +1893,7 @@
               <input name="top_n" type="number" value="8" min="3" max="30" aria-label="推荐数量" />
               <select id="agentFloatRuntimeSelect" name="runtime" aria-label="Agent runtime">
                 <option value="auto">Auto</option>
+                <option value="openclaw">OpenClaw 深度任务</option>
                 <option value="custom">Custom</option>
                 <option value="openai_agents">SDK</option>
               </select>
@@ -1884,6 +1920,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260613-7"></script>
+    <script src="/static/app.js?v=20260613-8"></script>
   </body>
 </html>
