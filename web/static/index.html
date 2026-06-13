@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260613-5" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260613-6" />
   </head>
   <body>
     <div class="app-shell">
@@ -263,7 +263,7 @@
             <div>
               <div class="eyebrow">agent task space</div>
               <h2>PR Agent Workspace</h2>
-              <p>一个连续任务空间：左侧历史，中间对话和实时执行，右侧沉淀产物。</p>
+              <p>全屏任务详情页：日常可以用右下角 Agent 浮窗发起需求，这里查看完整 Thread、执行过程和交付产物。</p>
             </div>
             <div class="agent-console-mark">
               <span>Thread</span>
@@ -272,6 +272,7 @@
               <strong>→</strong>
               <span>OS</span>
             </div>
+            <button id="openAgentFloatFromWorkspaceBtn" class="primary" type="button">打开浮窗</button>
           </div>
 
           <div class="agent-layout">
@@ -1829,6 +1830,50 @@
         </form>
       </section>
     </div>
+    <div id="agentFloatDock" class="agent-float-dock hidden" aria-live="polite">
+      <button id="agentFloatToggle" class="agent-float-toggle" type="button" aria-expanded="false" aria-controls="agentFloatPanel">
+        <span>AI</span>
+        <strong>Ask Agent</strong>
+      </button>
+      <section id="agentFloatPanel" class="agent-float-panel hidden" aria-label="PR Agent 浮窗">
+        <div class="agent-float-head">
+          <div>
+            <span class="card-kicker">PR Copilot</span>
+            <h2>问 Agent</h2>
+            <p>丢 brief，生成推荐、图谱、风险和可交付产物。</p>
+          </div>
+          <div class="agent-float-actions">
+            <button id="agentFloatOpenFullBtn" class="secondary" type="button">全屏</button>
+            <button id="agentFloatCloseBtn" class="icon-btn" type="button" aria-label="关闭 Agent 浮窗">×</button>
+          </div>
+        </div>
+        <div id="agentFloatSummary" class="agent-float-summary">等待输入 PR brief。</div>
+        <form id="agentFloatForm" class="form agent-float-form">
+          <div class="field-row">
+            <input name="client_name" value="Demo 新能源品牌" placeholder="客户 / 品牌" required />
+            <input name="project_name" value="KOL 推荐" placeholder="项目" required />
+          </div>
+          <textarea name="message" required>预算50万，新能源SUV上市预热，目标年轻用户，平台优先小红书和抖音。需要推荐KOL、生成客户可看的方案，并说明主要风险。</textarea>
+          <div class="field-row">
+            <input name="top_n" type="number" value="8" min="3" max="30" />
+            <select id="agentFloatRuntimeSelect" name="runtime" aria-label="Agent runtime">
+              <option value="auto">Auto</option>
+              <option value="custom">Custom</option>
+              <option value="openai_agents">SDK</option>
+            </select>
+            <button id="agentFloatRunBtn" class="primary" type="submit">启动</button>
+          </div>
+        </form>
+        <div class="agent-float-tabs">
+          <button class="agent-float-tab active" data-agent-float-tab="messages" type="button">Chat</button>
+          <button class="agent-float-tab" data-agent-float-tab="steps" type="button">Steps</button>
+          <button class="agent-float-tab" data-agent-float-tab="artifacts" type="button">Assets</button>
+        </div>
+        <div id="agentFloatMessages" class="agent-float-feed"></div>
+        <div id="agentFloatSteps" class="agent-float-feed hidden"></div>
+        <div id="agentFloatArtifacts" class="agent-float-feed hidden"></div>
+      </section>
+    </div>
     <div id="toast" class="toast"></div>
     <div id="accessGate" class="access-gate hidden">
       <section class="access-gate-panel">
@@ -1843,6 +1888,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260613-5"></script>
+    <script src="/static/app.js?v=20260613-6"></script>
   </body>
 </html>

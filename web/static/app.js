@@ -22,6 +22,8 @@ const state = {
   activeArtifactDetail: null,
   activeAgentGraphNodeId: "",
   activeAgentToolName: "",
+  agentFloatOpen: localStorage.getItem("pr_ai_os_agent_float_open") === "1",
+  agentFloatTab: "messages",
   agentPollTimer: null,
   agentEventSource: null,
   agentRuntime: null,
@@ -366,6 +368,7 @@ function renderAuthUser() {
   const user = state.currentIdentity?.user;
   document.body.classList.toggle("client-session", user?.user_type === "client");
   document.body.classList.toggle("internal-session", user?.user_type === "internal");
+  renderAgentFloatDock();
   if (!user) {
     document.body.classList.remove("client-session", "internal-session");
     if (state.authRequired) $("#serverStatus").textContent = "需要登录";
@@ -1754,6 +1757,7 @@ function renderWorkspaceHistory() {
 function renderAgentRuntimeControls() {
   const meta = $("#agentRuntimeMeta");
   const select = $("#agentRuntimeSelect");
+  const floatSelect = $("#agentFloatRuntimeSelect");
   if (!meta || !select) return;
   const runtime = state.agentRuntime;
   if (!runtime) {
@@ -1764,6 +1768,9 @@ function renderAgentRuntimeControls() {
   const active = runtime.active || {};
   meta.textContent = `当前默认 ${runtime.active_runtime || "custom"} · ${active.mode || "native"} · SDK ${sdk?.mode || "unknown"}`;
   select.querySelector('option[value="openai_agents"]').disabled = !(sdk?.available);
+  if (floatSelect) {
+    floatSelect.querySelector('option[value="openai_agents"]').disabled = !(sdk?.available);
+  }
 }
 
 function renderAgentRuntimeComparison() {
@@ -1866,6 +1873,7 @@ function renderAgentRun(data) {
   renderAgentSteps();
   renderAgentReasoningGraph();
   renderAgentMessages();
+  renderAgentFloatDock();
 }
 
 function renderAgentSteps() {
@@ -1947,6 +1955,140 @@ function renderAgentArtifacts() {
   list.innerHTML = state.activeAgentArtifacts.length
     ? state.activeAgentArtifacts.map((artifact) => renderAgentArtifact(artifact)).join("")
     : emptyState("暂无产物", "Agent 会在这里沉淀知识检索、PR 运行结果和甲方方案。");
+}
+
+function renderAgentFloatDock() {
+  const dock = $("#agentFloatDock");
+  if (!dock) return;
+  const user = state.currentIdentity?.user;
+  const visible = user?.user_type === "internal";
+  dock.classList.toggle("hidden", !visible);
+  if (!visible) return;
+  const panel = $("#agentFloatPanel");
+  const toggle = $("#agentFloatToggle");
+  if (panel) panel.classList.toggle("hidden", !state.agentFloatOpen);
+  if (toggle) toggle.setAttribute("aria-expanded", state.agentFloatOpen ? "true" : "false");
+  renderAgentFloatContent();
+}
+
+function setAgentFloatOpen(open) {
+  state.agentFloatOpen = Boolean(open);
+  localStorage.setItem("pr_ai_os_agent_float_open", state.agentFloatOpen ? "1" : "0");
+  renderAgentFloatDock();
+}
+
+function renderAgentFloatContent() {
+  const summary = $("#agentFloatSummary");
+  const run = state.activeAgentRun?.run || {};
+  const task = state.activeAgentRun?.task || state.activeAgentThread?.task || {};
+  const thread = state.activeAgentThread?.thread || {};
+  if (summary) {
+    const status = run.status || thread.status || "idle";
+    const title = task.title || thread.title || "新 PR Agent 任务";
+    const artifactCount = state.activeAgentArtifacts.length;
+    summary.innerHTML = `
+      <strong>${escapeHTML(title)}</strong>
+      <span>${escapeHTML(status)} · ${fmtNumber(state.activeAgentSteps.length)} steps · ${fmtNumber(artifactCount)} assets</span>
+    `;
+  }
+  $$(".agent-float-tab").forEach((button) => button.classList.toggle("active", button.dataset.agentFloatTab === state.agentFloatTab));
+  ["messages", "steps", "artifacts"].forEach((name) => {
+    const node = $(`#agentFloat${name[0].toUpperCase()}${name.slice(1)}`);
+    if (node) node.classList.toggle("hidden", state.agentFloatTab !== name);
+  });
+  renderAgentFloatMessages();
+  renderAgentFloatSteps();
+  renderAgentFloatArtifacts();
+}
+
+function renderAgentFloatMessages() {
+  const node = $("#agentFloatMessages");
+  if (!node) return;
+  const messages = state.activeAgentThread?.messages || [];
+  node.innerHTML = messages.length
+    ? messages
+        .slice(-6)
+        .map(
+          (message) => `
+            <article class="agent-float-message ${escapeHTML(message.role)}">
+              <span>${escapeHTML(message.role === "user" ? "You" : "Agent")}</span>
+              <p>${escapeHTML(message.content || "")}</p>
+            </article>
+          `
+        )
+        .join("")
+    : emptyState("还没有对话", "输入一个 brief，Agent 会开始拆解需求、调用工具并沉淀产物。");
+  node.scrollTop = node.scrollHeight;
+}
+
+function renderAgentFloatSteps() {
+  const node = $("#agentFloatSteps");
+  if (!node) return;
+  const steps = state.activeAgentSteps || [];
+  node.innerHTML = steps.length
+    ? steps
+        .slice(-8)
+        .map(
+          (step, index) => `
+            <article class="agent-float-step ${escapeHTML(step.status || "pending")}">
+              <strong>${String(index + 1).padStart(2, "0")} · ${escapeHTML(step.title || step.tool_name || "工具步骤")}</strong>
+              <p>${escapeHTML(step.output_summary || step.input_summary || step.status || "")}</p>
+            </article>
+          `
+        )
+        .join("")
+    : emptyState("暂无步骤", "启动后这里会显示实时工具调用。");
+}
+
+function renderAgentFloatArtifacts() {
+  const node = $("#agentFloatArtifacts");
+  if (!node) return;
+  const artifacts = state.activeAgentArtifacts || [];
+  node.innerHTML = artifacts.length
+    ? artifacts
+        .slice(-8)
+        .map(
+          (artifact) => `
+            <article class="agent-float-artifact">
+              <span>${escapeHTML(artifact.artifact_type || "artifact")}</span>
+              <strong>${escapeHTML(artifact.title || "Agent 产物")}</strong>
+              <p>${escapeHTML(artifact.summary || "")}</p>
+            </article>
+          `
+        )
+        .join("")
+    : emptyState("暂无产物", "推荐名单、图谱、方案和记忆会在这里出现。");
+}
+
+async function runAgentFromPayload(payload) {
+  let data;
+  if (state.activeAgentThread?.thread?.thread_id && !state.activeAgentThread.thread.metadata?.legacy_task) {
+    data = await api(`/api/agent/threads/${state.activeAgentThread.thread.thread_id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    state.activeAgentThread = data;
+  } else {
+    const thread = await api("/api/agent/threads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    state.activeAgentThread = thread;
+    renderAgentMessages();
+    data = await api("/api/agent/chat/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...payload, task_id: thread.task?.task_id || thread.thread?.task_id || "" }),
+    });
+  }
+  renderAgentRun(data);
+  startAgentPolling(data.run?.run_id);
+  await loadAgentTasks();
+  await refreshWorkspaceHistoryIfVisible();
+  renderAgentFloatDock();
+  return data;
 }
 
 function activeReasoningGraphArtifact() {
@@ -2356,6 +2498,7 @@ async function loadAgentThread(threadId) {
   renderAgentMessages();
   renderAgentArtifacts();
   renderAgentReasoningGraph();
+  renderAgentFloatDock();
   return data;
 }
 
@@ -4692,6 +4835,7 @@ function bindEvents() {
     renderAgentTasks();
     renderAgentRun({ events: [], artifacts: [], run: {}, task: {} });
     renderAgentRuntimeComparison();
+    renderAgentFloatDock();
     toast("已准备新 Agent 会话");
   });
   $("#refreshKnowledgeBtn")?.addEventListener("click", () => loadKnowledge().then(() => toast("知识库已刷新")));
@@ -4742,32 +4886,7 @@ function bindEvents() {
         button.disabled = true;
         button.textContent = "执行中...";
       }
-      let data;
-      if (state.activeAgentThread?.thread?.thread_id && !state.activeAgentThread.thread.metadata?.legacy_task) {
-        data = await api(`/api/agent/threads/${state.activeAgentThread.thread.thread_id}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        state.activeAgentThread = data;
-      } else {
-        const thread = await api("/api/agent/threads", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        state.activeAgentThread = thread;
-        renderAgentMessages();
-        data = await api("/api/agent/chat/start", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...payload, task_id: thread.task?.task_id || thread.thread?.task_id || "" }),
-        });
-      }
-      renderAgentRun(data);
-      startAgentPolling(data.run?.run_id);
-      await loadAgentTasks();
-      await refreshWorkspaceHistoryIfVisible();
+      await runAgentFromPayload(payload);
       toast("Agent 已启动，执行过程会实时刷新");
     } catch (error) {
       toast(error.message, true);
@@ -4777,6 +4896,41 @@ function bindEvents() {
         button.textContent = "启动 Agent";
       }
     }
+  });
+  $("#agentFloatToggle")?.addEventListener("click", () => setAgentFloatOpen(!state.agentFloatOpen));
+  $("#agentFloatCloseBtn")?.addEventListener("click", () => setAgentFloatOpen(false));
+  $("#openAgentFloatFromWorkspaceBtn")?.addEventListener("click", () => setAgentFloatOpen(true));
+  $("#agentFloatOpenFullBtn")?.addEventListener("click", () => {
+    setAgentFloatOpen(false);
+    setView("agentWorkspace");
+  });
+  $("#agentFloatForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const payload = formToObject(event.currentTarget);
+    const button = $("#agentFloatRunBtn");
+    try {
+      if (button) {
+        button.disabled = true;
+        button.textContent = "跑...";
+      }
+      await runAgentFromPayload(payload);
+      state.agentFloatTab = "steps";
+      renderAgentFloatDock();
+      toast("Agent 已在浮窗启动");
+    } catch (error) {
+      toast(error.message, true);
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = "启动";
+      }
+    }
+  });
+  $("#agentFloatPanel")?.addEventListener("click", (event) => {
+    const tab = event.target.closest(".agent-float-tab");
+    if (!tab) return;
+    state.agentFloatTab = tab.dataset.agentFloatTab || "messages";
+    renderAgentFloatContent();
   });
   $("#agentCompareRuntimeBtn")?.addEventListener("click", async (event) => {
     const form = $("#agentChatForm");

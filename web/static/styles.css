@@ -969,6 +969,230 @@ button {
   cursor: not-allowed;
 }
 
+.agent-float-dock {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 70;
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.agent-float-dock.hidden {
+  display: none;
+}
+
+.agent-float-toggle,
+.agent-float-panel {
+  pointer-events: auto;
+}
+
+.agent-float-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 10px 16px 10px 10px;
+  border: 3px solid var(--ink);
+  background: var(--spark);
+  color: var(--ink);
+  box-shadow: 6px 6px 0 var(--ink);
+  font-weight: 900;
+  letter-spacing: 0;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.agent-float-toggle:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 8px 8px 0 var(--ink);
+}
+
+.agent-float-toggle span {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 999px;
+  font-size: 14px;
+}
+
+.agent-float-panel {
+  width: min(460px, calc(100vw - 28px));
+  max-height: min(760px, calc(100vh - 110px));
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  gap: 12px;
+  padding: 18px;
+  border: 4px solid var(--ink);
+  background: var(--paper);
+  box-shadow: 10px 10px 0 #57e0b1, 14px 14px 0 var(--ink);
+}
+
+.agent-float-panel.hidden {
+  display: none;
+}
+
+.agent-float-head,
+.agent-float-actions,
+.agent-float-tabs {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agent-float-head h2 {
+  margin: 2px 0 4px;
+  font-size: 30px;
+}
+
+.agent-float-head p {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.agent-float-actions {
+  flex-shrink: 0;
+}
+
+.agent-float-summary {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 3px solid var(--ink);
+  background: #b9ffea;
+  box-shadow: 4px 4px 0 var(--spark);
+}
+
+.agent-float-summary strong,
+.agent-float-summary span {
+  display: block;
+}
+
+.agent-float-summary span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.agent-float-form textarea {
+  min-height: 120px;
+}
+
+.agent-float-form .field-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.agent-float-form .field-row:last-child {
+  grid-template-columns: 72px minmax(90px, 0.8fr) minmax(86px, 0.8fr);
+}
+
+.agent-float-tabs {
+  justify-content: stretch;
+  align-items: stretch;
+}
+
+.agent-float-tab {
+  flex: 1;
+  border: 3px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 10px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.agent-float-tab.active {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.agent-float-feed {
+  min-height: 180px;
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding-right: 4px;
+}
+
+.agent-float-feed.hidden {
+  display: none;
+}
+
+.agent-float-message,
+.agent-float-step,
+.agent-float-artifact {
+  border: 3px solid var(--ink);
+  background: var(--paper);
+  padding: 10px;
+  box-shadow: 4px 4px 0 var(--shadow);
+}
+
+.agent-float-message.user {
+  background: #b9ffea;
+}
+
+.agent-float-message span,
+.agent-float-artifact span {
+  display: inline-block;
+  margin-bottom: 6px;
+  color: var(--red);
+  font-family: var(--mono);
+  font-weight: 900;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.agent-float-message p,
+.agent-float-step p,
+.agent-float-artifact p {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.agent-float-step.running {
+  background: var(--spark);
+}
+
+.agent-float-step.completed,
+.agent-float-step.done {
+  background: #b9ffea;
+}
+
+@media (max-width: 760px) {
+  .agent-float-dock {
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    justify-items: stretch;
+  }
+
+  .agent-float-toggle {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .agent-float-panel {
+    width: 100%;
+    max-height: calc(100vh - 84px);
+    padding: 14px;
+    box-shadow: 6px 6px 0 #57e0b1, 10px 10px 0 var(--ink);
+  }
+
+  .agent-float-form .field-row,
+  .agent-float-form .field-row:last-child {
+    grid-template-columns: 1fr;
+  }
+}
+
 .symbolic-editor {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
