@@ -3809,6 +3809,181 @@ body.client-session #clientPortal {
   white-space: nowrap;
 }
 
+.kol-profile-card {
+  display: grid;
+  gap: 14px;
+}
+
+.kol-card-top {
+  align-items: flex-start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+}
+
+.kol-card-avatar,
+.creator-profile-avatar {
+  align-items: center;
+  background: var(--spark);
+  border: 3px solid #17120d;
+  box-shadow: 4px 4px 0 #17120d;
+  color: #17120d;
+  display: flex;
+  font-family: var(--display-font, inherit);
+  font-weight: 900;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.kol-card-avatar {
+  border-radius: 8px;
+  height: 56px;
+  width: 56px;
+}
+
+.kol-card-avatar img,
+.creator-profile-avatar img {
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.kol-card-metrics,
+.creator-profile-scoreboard {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.kol-card-metrics div,
+.creator-profile-scoreboard div {
+  background: #fffdf4;
+  border: 2px solid #17120d;
+  box-shadow: 3px 3px 0 rgba(23, 18, 13, 0.28);
+  padding: 8px;
+}
+
+.kol-card-metrics span,
+.creator-profile-scoreboard span {
+  color: var(--muted);
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.kol-card-metrics strong,
+.creator-profile-scoreboard strong {
+  display: block;
+  font-family: var(--display-font, inherit);
+  font-size: 18px;
+  line-height: 1.05;
+  margin-top: 4px;
+}
+
+.kol-card-links,
+.creator-profile-links {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.creator-profile-modal {
+  max-width: min(1120px, calc(100vw - 36px));
+}
+
+.creator-profile-hero {
+  align-items: stretch;
+  background:
+    linear-gradient(135deg, rgba(185, 255, 234, 0.92), rgba(255, 210, 63, 0.78)),
+    #fffdf4;
+  border: 3px solid #17120d;
+  box-shadow: 6px 6px 0 #17120d;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: 112px minmax(0, 1fr) minmax(220px, 0.45fr);
+  margin-bottom: 18px;
+  padding: 18px;
+}
+
+.creator-profile-avatar {
+  border-radius: 14px;
+  font-size: 28px;
+  min-height: 112px;
+}
+
+.creator-profile-hero h3 {
+  font-size: clamp(28px, 4vw, 44px);
+  line-height: 0.95;
+  margin: 8px 0 0;
+}
+
+.creator-profile-hero p {
+  color: #5f584d;
+  font-size: 16px;
+  line-height: 1.6;
+  max-width: 760px;
+}
+
+.creator-profile-scoreboard {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.creator-profile-sections {
+  display: grid;
+  gap: 16px;
+}
+
+.creator-profile-section {
+  background: #fffdf4;
+  border: 3px solid #17120d;
+  box-shadow: 5px 5px 0 rgba(23, 18, 13, 0.9);
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.creator-profile-section .detail-heading {
+  margin: 0 0 8px;
+}
+
+.creator-ai-summary {
+  background: #101820;
+  border: 3px solid #17120d;
+  color: #fffdf4;
+  font-size: 16px;
+  line-height: 1.7;
+  margin: 8px 0 0;
+  padding: 14px;
+}
+
+@media (max-width: 760px) {
+  .kol-card-top,
+  .creator-profile-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .kol-card-avatar {
+    height: 52px;
+    width: 52px;
+  }
+
+  .kol-card-metrics,
+  .creator-profile-scoreboard {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .creator-profile-avatar {
+    min-height: 96px;
+    width: 96px;
+  }
+
+  .creator-profile-hero h3 {
+    font-size: 32px;
+  }
+}
+
 .campaign-room {
   margin-top: 18px;
 }

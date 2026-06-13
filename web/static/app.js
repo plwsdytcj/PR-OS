@@ -1330,26 +1330,80 @@ function renderCreators() {
     .map((creator) => {
       const tags = [...(creator.industry_fit_tags || []), ...(creator.content_capability_tags || [])]
         .slice(0, 6)
-        .map((tag) => `<span class="tag">${tag}</span>`)
+        .map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`)
         .join("");
       const risks = (creator.risk_tags || [])
         .slice(0, 2)
-        .map((tag) => `<span class="tag risk">${tag}</span>`)
+        .map((tag) => `<span class="tag risk">${escapeHTML(tag)}</span>`)
         .join("");
+      const initials = creator.name ? creator.name.slice(0, 2).toUpperCase() : "KOL";
+      const avatar = creator.avatar_url
+        ? `<img src="${escapeHTML(creator.avatar_url)}" alt="${escapeHTML(creator.name || "达人")}头像" loading="lazy" />`
+        : `<span>${escapeHTML(initials)}</span>`;
       return `
-        <article class="creator-card">
-          <div class="card-kicker">${escapeHTML(creator.platform || "未知平台")}</div>
-          <div class="creator-card-head">
-            <h3>${creator.name}</h3>
-            <button class="secondary open-creator-btn" data-creator-id="${creator.creator_id}" type="button">详情</button>
+        <article class="creator-card kol-profile-card">
+          <div class="kol-card-top">
+            <div class="kol-card-avatar">${avatar}</div>
+            <div>
+              <div class="card-kicker">${escapeHTML(creator.platform || "未知平台")}</div>
+              <h3>${escapeHTML(creator.name || "未命名达人")}</h3>
+              <div class="meta">${escapeHTML(creator.region || creator.platform_user_id || "未补充地区 / ID")}</div>
+            </div>
+            <button class="secondary open-creator-btn" data-creator-id="${escapeHTML(creator.creator_id)}" type="button">详情</button>
           </div>
-          <div class="meta">${creator.platform} · 粉丝 ${fmtNumber(creator.follower_count)} · 报价 ${fmtNumber(creator.listed_price)}</div>
-          <p>${creator.ai_summary || "待生成画像"}</p>
+          <div class="kol-card-metrics">
+            <div><span>粉丝</span><strong>${fmtNumber(creator.follower_count)}</strong></div>
+            <div><span>报价</span><strong>${fmtNumber(creator.listed_price)}</strong></div>
+            <div><span>互动率</span><strong>${creator.engagement_rate ? `${Math.round(Number(creator.engagement_rate) * 1000) / 10}%` : "-"}</strong></div>
+          </div>
+          <p>${escapeHTML(creator.ai_summary || creator.bio || "待生成画像")}</p>
+          <div class="kol-card-links">
+            ${creator.homepage_url ? `<a class="text-btn" href="${escapeHTML(creator.homepage_url)}" target="_blank" rel="noreferrer">主页</a>` : '<span class="meta">未填主页</span>'}
+            ${creator.contact ? `<span class="meta">${escapeHTML(creator.contact)}</span>` : ""}
+          </div>
           <div class="tag-list">${tags}${risks}</div>
         </article>
       `;
     })
     .join("");
+}
+
+function renderCreatorProfileHeader(creator) {
+  const avatar = $("#creatorProfileAvatar");
+  const name = $("#creatorProfileName");
+  const kicker = $("#creatorProfileKicker");
+  const summary = $("#creatorProfileSummary");
+  const links = $("#creatorProfileLinks");
+  const scoreboard = $("#creatorProfileScoreboard");
+  if (avatar) {
+    avatar.innerHTML = creator.avatar_url
+      ? `<img src="${escapeHTML(creator.avatar_url)}" alt="${escapeHTML(creator.name || "达人")}头像" />`
+      : `<span>${escapeHTML((creator.name || "KOL").slice(0, 2).toUpperCase())}</span>`;
+  }
+  if (name) name.textContent = creator.name || "未命名达人";
+  if (kicker) kicker.textContent = `${creator.platform || "未知平台"} · ${creator.creator_id || ""}`;
+  if (summary) summary.textContent = creator.ai_summary || creator.bio || "暂无 AI 摘要，补充主页、案例、截图或内部备注后可重新画像。";
+  if (links) {
+    links.innerHTML = [
+      creator.homepage_url ? `<a class="secondary" href="${escapeHTML(creator.homepage_url)}" target="_blank" rel="noreferrer">打开主页</a>` : "",
+      creator.avatar_url ? `<a class="secondary" href="${escapeHTML(creator.avatar_url)}" target="_blank" rel="noreferrer">查看头像</a>` : "",
+      creator.contact ? `<span>${escapeHTML(creator.contact)}</span>` : "",
+    ]
+      .filter(Boolean)
+      .join("");
+  }
+  if (scoreboard) {
+    scoreboard.innerHTML = [
+      ["粉丝", fmtNumber(creator.follower_count)],
+      ["报价", fmtNumber(creator.listed_price)],
+      ["互动率", creator.engagement_rate ? `${Math.round(Number(creator.engagement_rate) * 1000) / 10}%` : "-"],
+      ["平均点赞", fmtNumber(creator.avg_likes)],
+    ]
+      .map(([label, value]) => `<div><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></div>`)
+      .join("");
+  }
+  const aiSummary = $("#creatorAiSummary");
+  if (aiSummary) aiSummary.textContent = creator.ai_summary || "暂无 AI 摘要。保存字段并重新画像后，这里会变成可用于 Brief 匹配的判断。";
 }
 
 function emptyState(title, detail = "") {
@@ -4155,6 +4209,7 @@ function renderCreatorModal(creator) {
   const fields = form.elements;
   $("#creatorModalTitle").textContent = creator.name;
   $("#creatorModalMeta").textContent = `${creator.platform} · ${creator.creator_id}`;
+  renderCreatorProfileHeader(creator);
   fields.creator_id.value = creator.creator_id;
   fields.name.value = creator.name || "";
   fields.platform.value = creator.platform || "未知";

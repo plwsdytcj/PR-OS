@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260613-1" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260613-3" />
   </head>
   <body>
     <div class="app-shell">
@@ -1631,7 +1631,7 @@
     </div>
     <div id="creatorModal" class="modal hidden">
       <div class="modal-backdrop" data-close-modal="true"></div>
-      <section class="modal-panel">
+      <section class="modal-panel creator-profile-modal">
         <div class="panel-header">
           <div>
             <h2 id="creatorModalTitle">达人详情</h2>
@@ -1639,79 +1639,125 @@
           </div>
           <button id="closeCreatorModalBtn" class="icon-btn" type="button" title="关闭">×</button>
         </div>
+        <div class="creator-profile-hero">
+          <div id="creatorProfileAvatar" class="creator-profile-avatar">KOL</div>
+          <div>
+            <div id="creatorProfileKicker" class="card-kicker">creator profile</div>
+            <h3 id="creatorProfileName">未命名达人</h3>
+            <p id="creatorProfileSummary">等待加载画像。</p>
+            <div id="creatorProfileLinks" class="creator-profile-links"></div>
+          </div>
+          <div id="creatorProfileScoreboard" class="creator-profile-scoreboard"></div>
+        </div>
         <form id="creatorEditForm" class="form">
           <input name="creator_id" type="hidden" />
-          <div class="field-row">
-            <input name="name" placeholder="达人名称" required />
-            <select name="platform">
-              <option>抖音</option>
-              <option>小红书</option>
-              <option>B站</option>
-              <option>快手</option>
-              <option>微博</option>
-              <option>视频号</option>
-              <option>公众号</option>
-              <option>懂车帝</option>
-              <option>未知</option>
-            </select>
-          </div>
-          <div class="field-row">
-            <input name="platform_user_id" placeholder="平台 ID" />
-            <input name="homepage_url" placeholder="主页链接" />
-          </div>
-          <input name="avatar_url" placeholder="头像 / 封面图片 URL" />
-          <div class="field-row">
-            <input name="follower_count" type="number" min="0" placeholder="粉丝数" />
-            <input name="listed_price" type="number" min="0" placeholder="报价" />
-          </div>
-          <div class="field-row">
-            <input name="total_likes" type="number" min="0" placeholder="总获赞 / 收藏" />
-            <input name="engagement_rate" type="number" min="0" step="0.0001" placeholder="互动率，如 0.035" />
-          </div>
-          <div class="field-row">
-            <input name="avg_likes" type="number" min="0" placeholder="平均点赞" />
-            <input name="avg_comments" type="number" min="0" placeholder="平均评论" />
-            <input name="avg_shares" type="number" min="0" placeholder="平均分享" />
-          </div>
-          <div class="field-row">
-            <input name="region" placeholder="地区" />
-            <input name="contact" placeholder="联系方式" />
-          </div>
-          <input name="cooperation_brands" placeholder="合作品牌，逗号分隔" />
-          <input name="cooperation_formats" placeholder="合作形式 / 标签，逗号分隔" />
-          <input name="industry_fit_tags" placeholder="行业标签，逗号分隔" />
-          <input name="content_capability_tags" placeholder="内容能力标签，逗号分隔" />
-          <input name="suitable_goals" placeholder="适合目标，逗号分隔" />
-          <input name="risk_tags" placeholder="风险标签，逗号分隔" />
-          <textarea name="bio" placeholder="简介 / 内容方向"></textarea>
-          <textarea name="manual_notes" placeholder="媒介备注 / 履约反馈 / 风险"></textarea>
-          <div class="creator-media-builder">
-            <div>
-              <h3 class="detail-heading">图片 / 截图识别</h3>
-              <p class="meta">上传达人主页截图、报价单、案例截图或头像。系统会先识别字段，确认后再保存。</p>
-            </div>
-            <div class="field-row">
-              <input id="creatorImageInput" name="creator_image" type="file" accept="image/*" />
-              <button id="creatorImageAnalyzeBtn" class="secondary" type="button">识别图片</button>
-            </div>
-            <div id="creatorImageAnalysis" class="image-analysis-output hidden"></div>
-            <button id="creatorImageApplyBtn" class="secondary hidden" type="button">填入识别结果</button>
-          </div>
-          <div>
-            <h3 class="detail-heading">图片资产</h3>
-            <div id="creatorMediaAssets" class="media-asset-list"></div>
-          </div>
-          <div>
-            <h3 class="detail-heading">数据来源</h3>
-            <div id="creatorDataSources" class="tag-list"></div>
-          </div>
-          <div>
-            <h3 class="detail-heading">当前画像标签</h3>
-            <div id="creatorTags" class="tag-list"></div>
-          </div>
-          <div>
-            <h3 class="detail-heading">证据标签审核</h3>
-            <div id="creatorEvidenceTags" class="creator-evidence-tags"></div>
+          <div class="creator-profile-sections">
+            <section class="creator-profile-section">
+              <div>
+                <h3 class="detail-heading">身份卡</h3>
+                <p class="meta">头像、账号、主页和联系方式，用来识别达人和回溯来源。</p>
+              </div>
+              <div class="field-row">
+                <input name="name" placeholder="达人名称" required />
+                <select name="platform">
+                  <option>抖音</option>
+                  <option>小红书</option>
+                  <option>B站</option>
+                  <option>快手</option>
+                  <option>微博</option>
+                  <option>视频号</option>
+                  <option>公众号</option>
+                  <option>懂车帝</option>
+                  <option>未知</option>
+                </select>
+              </div>
+              <div class="field-row">
+                <input name="platform_user_id" placeholder="平台 ID" />
+                <input name="homepage_url" placeholder="主页链接" />
+              </div>
+              <input name="avatar_url" placeholder="头像 / 封面图片 URL" />
+              <div class="field-row">
+                <input name="region" placeholder="地区" />
+                <input name="contact" placeholder="联系方式" />
+              </div>
+              <textarea name="bio" placeholder="简介 / 内容方向"></textarea>
+            </section>
+
+            <section class="creator-profile-section">
+              <div>
+                <h3 class="detail-heading">数据卡</h3>
+                <p class="meta">粉丝、互动和内容表现，用来做预算和平台适配判断。</p>
+              </div>
+              <div class="field-row">
+                <input name="follower_count" type="number" min="0" placeholder="粉丝数" />
+                <input name="total_likes" type="number" min="0" placeholder="总获赞 / 收藏" />
+                <input name="engagement_rate" type="number" min="0" step="0.0001" placeholder="互动率，如 0.035" />
+              </div>
+              <div class="field-row">
+                <input name="avg_likes" type="number" min="0" placeholder="平均点赞" />
+                <input name="avg_comments" type="number" min="0" placeholder="平均评论" />
+                <input name="avg_shares" type="number" min="0" placeholder="平均分享" />
+              </div>
+            </section>
+
+            <section class="creator-profile-section">
+              <div>
+                <h3 class="detail-heading">商业卡</h3>
+                <p class="meta">报价、合作历史和内部履约判断，用来决定能不能推荐给甲方。</p>
+              </div>
+              <div class="field-row">
+                <input name="listed_price" type="number" min="0" placeholder="报价" />
+                <input name="cooperation_formats" placeholder="合作形式 / 标签，逗号分隔" />
+              </div>
+              <input name="cooperation_brands" placeholder="合作品牌，逗号分隔" />
+              <textarea name="manual_notes" placeholder="媒介备注 / 履约反馈 / 风险"></textarea>
+            </section>
+
+            <section class="creator-profile-section">
+              <div>
+                <h3 class="detail-heading">标签卡</h3>
+                <p class="meta">这些标签会进入 Brief 匹配、KOL 决策图谱和风险推演。</p>
+              </div>
+              <input name="industry_fit_tags" placeholder="行业标签，逗号分隔" />
+              <input name="content_capability_tags" placeholder="内容能力标签，逗号分隔" />
+              <input name="suitable_goals" placeholder="适合目标，逗号分隔" />
+              <input name="risk_tags" placeholder="风险标签，逗号分隔" />
+              <div id="creatorTags" class="tag-list"></div>
+            </section>
+
+            <section class="creator-profile-section">
+              <div class="creator-media-builder">
+                <div>
+                  <h3 class="detail-heading">证据资产</h3>
+                  <p class="meta">上传达人主页截图、报价单、案例截图或头像。系统会先识别字段，确认后再保存。</p>
+                </div>
+                <div class="field-row">
+                  <input id="creatorImageInput" name="creator_image" type="file" accept="image/*" />
+                  <button id="creatorImageAnalyzeBtn" class="secondary" type="button">识别图片</button>
+                </div>
+                <div id="creatorImageAnalysis" class="image-analysis-output hidden"></div>
+                <button id="creatorImageApplyBtn" class="secondary hidden" type="button">填入识别结果</button>
+              </div>
+              <div>
+                <h3 class="detail-heading">图片资产</h3>
+                <div id="creatorMediaAssets" class="media-asset-list"></div>
+              </div>
+              <div>
+                <h3 class="detail-heading">数据来源</h3>
+                <div id="creatorDataSources" class="tag-list"></div>
+              </div>
+            </section>
+
+            <section class="creator-profile-section">
+              <div>
+                <h3 class="detail-heading">AI 判断</h3>
+                <p id="creatorAiSummary" class="creator-ai-summary">暂无 AI 摘要。</p>
+              </div>
+              <div>
+                <h3 class="detail-heading">证据标签审核</h3>
+                <div id="creatorEvidenceTags" class="creator-evidence-tags"></div>
+              </div>
+            </section>
           </div>
           <button class="primary" type="submit">保存并重新画像</button>
         </form>
@@ -1731,6 +1777,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260613-2"></script>
+    <script src="/static/app.js?v=20260613-3"></script>
   </body>
 </html>
