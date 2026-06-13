@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260613-3" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260613-4" />
   </head>
   <body>
     <div class="app-shell">
@@ -649,8 +649,14 @@
         <section id="creators" class="view">
           <div class="panel">
             <div class="panel-header">
-              <h2>达人库</h2>
-              <input id="creatorSearch" class="search" placeholder="搜索名称、平台、标签、摘要" />
+              <div>
+                <h2>达人库</h2>
+                <p>日常新增、查看和修正 KOL Profile。批量表格/API 仍在数据接入里。</p>
+              </div>
+              <div class="button-row">
+                <button id="openQuickCreatorBtn" class="primary" type="button">+ 新增达人</button>
+                <input id="creatorSearch" class="search" placeholder="搜索名称、平台、标签、摘要" />
+              </div>
             </div>
             <div id="creatorList" class="creator-grid"></div>
           </div>
@@ -1763,6 +1769,50 @@
         </form>
       </section>
     </div>
+    <div id="quickCreatorModal" class="modal hidden">
+      <div class="modal-backdrop" data-close-quick-creator="true"></div>
+      <section class="modal-panel quick-creator-modal">
+        <div class="panel-header">
+          <div>
+            <span class="card-kicker">new kol profile</span>
+            <h2>新增达人</h2>
+            <p>先录入最小可用资料，保存后自动进入达人库，后续可以补头像、截图和证据标签。</p>
+          </div>
+          <button id="closeQuickCreatorBtn" class="icon-btn" type="button" title="关闭">×</button>
+        </div>
+        <form id="quickCreatorForm" class="form quick-creator-form">
+          <div class="field-row">
+            <input name="name" placeholder="达人名称" required />
+            <select name="platform">
+              <option>抖音</option>
+              <option>小红书</option>
+              <option>B站</option>
+              <option>快手</option>
+              <option>微博</option>
+              <option>视频号</option>
+              <option>公众号</option>
+              <option>懂车帝</option>
+              <option>未知</option>
+            </select>
+          </div>
+          <input name="homepage_url" placeholder="主页链接 / 账号链接" />
+          <input name="avatar_url" placeholder="头像 URL，可选" />
+          <div class="field-row">
+            <input name="follower_count" type="number" min="0" placeholder="粉丝数" />
+            <input name="listed_price" type="number" min="0" placeholder="报价" />
+          </div>
+          <input name="cooperation_brands" placeholder="合作品牌，逗号分隔" />
+          <input name="industry_fit_tags" placeholder="行业标签，逗号分隔" />
+          <input name="content_capability_tags" placeholder="内容能力标签，逗号分隔" />
+          <textarea name="bio" placeholder="简介 / 内容方向"></textarea>
+          <textarea name="manual_notes" placeholder="媒介备注 / 履约反馈 / 风险"></textarea>
+          <div class="decision-actions">
+            <button class="primary" type="submit">保存并打开档案</button>
+            <button class="secondary" data-close-quick-creator="true" type="button">取消</button>
+          </div>
+        </form>
+      </section>
+    </div>
     <div id="toast" class="toast"></div>
     <div id="accessGate" class="access-gate hidden">
       <section class="access-gate-panel">
@@ -1777,6 +1827,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260613-3"></script>
+    <script src="/static/app.js?v=20260613-4"></script>
   </body>
 </html>

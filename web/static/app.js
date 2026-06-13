@@ -4204,6 +4204,36 @@ function closeCreatorModal() {
   state.activeCreatorImageSuggestion = null;
 }
 
+function openQuickCreatorModal() {
+  const modal = $("#quickCreatorModal");
+  const form = $("#quickCreatorForm");
+  if (!modal || !form) return;
+  form.reset();
+  modal.classList.remove("hidden");
+  form.elements.name?.focus();
+}
+
+function closeQuickCreatorModal() {
+  $("#quickCreatorModal")?.classList.add("hidden");
+}
+
+async function saveManualCreator(form, { openDetail = false } = {}) {
+  const payload = formToObject(form);
+  const data = await api("/api/import/manual", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  form.reset();
+  await reloadAll();
+  toast(`已保存：${data.creator.name}`);
+  if (openDetail && data.creator?.creator_id) {
+    setView("creators");
+    await openCreatorModal(data.creator.creator_id);
+  }
+  return data;
+}
+
 function renderCreatorModal(creator) {
   const form = $("#creatorEditForm");
   const fields = form.elements;
@@ -4973,12 +5003,36 @@ function bindEvents() {
   $("#creatorSearch").addEventListener("input", renderCreators);
   $("#downloadProposalBtn").addEventListener("click", downloadProposal);
   $("#closeCreatorModalBtn").addEventListener("click", closeCreatorModal);
+  $("#openQuickCreatorBtn")?.addEventListener("click", openQuickCreatorModal);
+  $("#closeQuickCreatorBtn")?.addEventListener("click", closeQuickCreatorModal);
   $("#closeArtifactModalBtn")?.addEventListener("click", closeArtifactModal);
   $("#artifactModal")?.addEventListener("click", (event) => {
     if (event.target.dataset.closeArtifactModal) closeArtifactModal();
   });
   $("#creatorModal").addEventListener("click", (event) => {
     if (event.target.dataset.closeModal) closeCreatorModal();
+  });
+  $("#quickCreatorModal")?.addEventListener("click", (event) => {
+    if (event.target.dataset.closeQuickCreator) closeQuickCreatorModal();
+  });
+  $("#quickCreatorForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = event.currentTarget.querySelector("button[type='submit']");
+    if (button) {
+      button.disabled = true;
+      button.textContent = "保存中...";
+    }
+    try {
+      await saveManualCreator(event.currentTarget, { openDetail: true });
+      closeQuickCreatorModal();
+    } catch (error) {
+      toast(error.message || "保存达人失败", true);
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = "保存并打开档案";
+      }
+    }
   });
 
   document.addEventListener("click", async (event) => {
@@ -5498,15 +5552,7 @@ function bindEvents() {
 
   $("#manualForm").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const payload = formToObject(event.currentTarget);
-    const data = await api("/api/import/manual", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    event.currentTarget.reset();
-    await reloadAll();
-    toast(`已保存：${data.creator.name}`);
+    await saveManualCreator(event.currentTarget);
   });
 
   $("#linksForm").addEventListener("submit", async (event) => {

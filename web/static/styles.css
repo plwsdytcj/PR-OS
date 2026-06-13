@@ -3958,6 +3958,23 @@ body.client-session #clientPortal {
   padding: 14px;
 }
 
+.quick-creator-modal {
+  max-width: min(760px, calc(100vw - 36px));
+}
+
+.quick-creator-form {
+  margin-top: 14px;
+}
+
+#creators .panel-header .button-row {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+#creators .search {
+  min-width: min(360px, 100%);
+}
+
 @media (max-width: 760px) {
   .kol-card-top,
   .creator-profile-hero {
