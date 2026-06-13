@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 import sys
 import urllib.error
 import urllib.request
@@ -10,7 +11,20 @@ from typing import Any
 
 
 API_BASE = os.getenv("KOLNESS_API_BASE", "http://pr-ai-os-app:8601").rstrip("/")
-API_TOKEN = os.getenv("OPENCLAW_ADMIN_TOKEN", "").strip()
+
+
+def _load_api_token() -> str:
+    token = os.getenv("OPENCLAW_ADMIN_TOKEN", "").strip()
+    if token:
+        return token
+    token_file = Path(os.getenv("KOLNESS_API_TOKEN_FILE", "/home/node/.openclaw/gateway-token"))
+    try:
+        return token_file.read_text().strip()
+    except OSError:
+        return ""
+
+
+API_TOKEN = _load_api_token()
 
 
 TOOLS: dict[str, dict[str, Any]] = {
