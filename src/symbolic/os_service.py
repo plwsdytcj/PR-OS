@@ -7,6 +7,7 @@ from typing import Any
 
 from src.platform_os.schemas import CampaignProject, PostCampaignReview
 from src.schemas import CreatorProfile, split_tags
+from src.rules.storage import load_rule_config
 from src.storage.db import load_profile
 from src.symbolic.creator_profiler import generate_creator_symbolic_profile
 from src.symbolic.schemas import BrandSymbolicProfile, Evidence
@@ -493,7 +494,7 @@ def create_feedback_correction(
     creator = load_profile(db_path, review.creator_id)
     creator_symbolic = load_creator_symbolic(db_path, review.creator_id)
     if creator and creator_symbolic is None:
-        creator_symbolic = generate_creator_symbolic_profile(creator)
+        creator_symbolic = generate_creator_symbolic_profile(creator, rule_config=load_rule_config(db_path))
     assumed = _assumed_tags(project, creator, creator_symbolic)
     feedback_text = " ".join([review.brand_feedback, review.comment_feedback])
     activated = _extract_activated_tags(feedback_text, project)

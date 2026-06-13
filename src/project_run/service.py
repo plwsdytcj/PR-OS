@@ -7,6 +7,7 @@ from typing import Any
 from src.intelligence.brief_parser import parse_brief
 from src.platform_os.service import campaign_room, create_campaign_project, run_campaign_plan_simulation
 from src.schemas import stable_id
+from src.rules.storage import load_rule_config
 from src.simulation.llm_fallback import LlmFallbackStressTest
 from src.simulation.mirofish_adapter import MiroFishCliAdapter
 from src.simulation.schemas import SimulationReport
@@ -42,6 +43,7 @@ def run_pr_project(
         raise ValueError("creator profiles are required before running a PR project")
 
     brief = parse_brief(raw_brief)
+    rule_config = load_rule_config(db_path)
     run_id = stable_id(client_name, project_name, raw_brief, prefix="run")
     steps: list[dict[str, Any]] = []
 
@@ -69,6 +71,7 @@ def run_pr_project(
             "target_audience": brief.target_audience,
             "platforms": brief.platform_preference,
             "content_preferences": brief.content_preference,
+            "rule_config": rule_config,
         }
     )
     brand, calibration = calibrate_brand_with_symbolic_context(db_path, brand, report_id=social_report.report_id)
@@ -90,7 +93,7 @@ def run_pr_project(
     )
     step("product", "生成产品符号档案", detail=product.product_name, count=len(product.metaphors))
 
-    creator_symbolics = _ensure_creator_symbolics(db_path)
+    creator_symbolics = _ensure_creator_symbolics(db_path, rule_config=rule_config)
     step("creators", "补齐达人符号档案", detail=f"{len(creators)} 个达人进入候选池", count=len(creator_symbolics))
 
     results = rank_symbolic_creators(brand, creator_symbolics)[: max(1, top_n)]
@@ -191,13 +194,13 @@ def _run_stress_test(payload: dict[str, Any], simulation_engine: str = "auto") -
     return LlmFallbackStressTest().run(payload)
 
 
-def _ensure_creator_symbolics(db_path: Path) -> list[Any]:
+def _ensure_creator_symbolics(db_path: Path, rule_config: dict | None = None) -> list[Any]:
     creator_symbolics = load_all_creator_symbolic(db_path)
     existing_ids = {item.creator_id for item in creator_symbolics}
     for creator in load_profiles(db_path):
         if creator.creator_id in existing_ids:
             continue
-        symbolic = generate_creator_symbolic_profile(creator)
+        symbolic = generate_creator_symbolic_profile(creator, rule_config=rule_config)
         upsert_creator_symbolic(db_path, symbolic)
         creator_symbolics.append(symbolic)
         existing_ids.add(symbolic.creator_id)

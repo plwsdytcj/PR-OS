@@ -51,11 +51,14 @@ BRAND_ARCHETYPES = {
 
 
 def generate_brand_symbolic_profile(payload: dict, use_llm: bool = True) -> BrandSymbolicProfile:
+    rule_config = payload.get("rule_config") if isinstance(payload.get("rule_config"), dict) else {}
+    brand_archetypes = rule_config.get("brand_archetypes") if isinstance(rule_config, dict) else None
+    brand_archetypes = brand_archetypes if isinstance(brand_archetypes, dict) and brand_archetypes else BRAND_ARCHETYPES
     brand_name = str(payload.get("brand_name") or payload.get("brand") or "未命名品牌").strip()
     product = str(payload.get("product") or "").strip()
     industry = str(payload.get("industry") or _infer_industry(" ".join(map(str, payload.values())))).strip()
-    raw = "\n".join(f"{key}: {value}" for key, value in payload.items() if value)
-    archetype = BRAND_ARCHETYPES.get(industry, BRAND_ARCHETYPES["AI软件"])
+    raw = "\n".join(f"{key}: {value}" for key, value in payload.items() if value and key != "rule_config")
+    archetype = brand_archetypes.get(industry) or brand_archetypes.get("AI软件") or next(iter(brand_archetypes.values()))
 
     target_extra = _splitish(payload.get("target_tags"))
     danger_extra = _splitish(payload.get("danger_tags"))

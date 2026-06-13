@@ -18,6 +18,14 @@ CREATE TABLE IF NOT EXISTS creator_embeddings (
     PRIMARY KEY (tenant_id, creator_id, source)
 );
 
+CREATE TABLE IF NOT EXISTS rule_configs (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    config_id TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, config_id)
+);
+
 CREATE TABLE IF NOT EXISTS auth_users (
     tenant_id TEXT NOT NULL DEFAULT 'default',
     user_id TEXT NOT NULL,

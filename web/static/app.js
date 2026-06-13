@@ -12,6 +12,7 @@ const state = {
   authUsers: [],
   authClients: [],
   projectAccess: [],
+  ruleConfig: null,
   agentTasks: [],
   agentThreads: [],
   activeAgentThread: null,
@@ -466,11 +467,27 @@ async function loadOrganization() {
   } catch (error) {
     users = { items: state.currentIdentity?.user ? [state.currentIdentity.user] : [] };
   }
+  try {
+    const rules = await api("/api/rules/config");
+    state.ruleConfig = rules.config || null;
+  } catch (error) {
+    state.ruleConfig = null;
+  }
   state.authUsers = users.items || [];
   state.authClients = clients.items || [];
   state.collabProposals = proposals.items || [];
   state.projectAccess = access.items || [];
   renderOrganization();
+}
+
+async function loadRuleConfig() {
+  if (!isCurrentUserAdmin()) {
+    renderRuleConfig();
+    return;
+  }
+  const data = await api("/api/rules/config");
+  state.ruleConfig = data.config || null;
+  renderRuleConfig();
 }
 
 async function loadAgentTasks() {
@@ -1440,6 +1457,7 @@ function renderOrganization() {
   renderClientAccounts();
   renderOrgSelects();
   renderProjectAccessTable();
+  renderRuleConfig();
 }
 
 function isCurrentUserAdmin() {
@@ -1624,6 +1642,32 @@ function renderProjectAccessTable() {
         })
         .join("")
     : `<tr><td colspan="5">${emptyState("暂无项目授权", "选择甲方账号和协作方案后即可授权。")}</td></tr>`;
+}
+
+function renderRuleConfig() {
+  const editor = $("#ruleConfigEditor");
+  const meta = $("#ruleConfigMeta");
+  const canAdmin = isCurrentUserAdmin();
+  if (editor) {
+    editor.disabled = !canAdmin;
+    editor.value = state.ruleConfig ? JSON.stringify(state.ruleConfig, null, 2) : "";
+    editor.placeholder = canAdmin ? "规则配置加载中..." : "只有 admin 可以查看和编辑规则配置。";
+  }
+  ["reloadRuleConfigBtn", "resetRuleConfigBtn", "saveRuleConfigBtn"].forEach((id) => {
+    const button = $(`#${id}`);
+    if (button) button.disabled = !canAdmin;
+  });
+  if (!meta) return;
+  if (!canAdmin) {
+    meta.textContent = "当前账号不是 admin，规则工作台不可编辑。";
+    return;
+  }
+  const config = state.ruleConfig || {};
+  const creatorPatterns = Object.keys(config.creator_symbolic_patterns || {}).length;
+  const briefKeywords = Object.keys(config.brief_keywords || {}).length;
+  const categoryLabels = Object.keys(config.category_labels || {}).length;
+  const brandArchetypes = Object.keys(config.brand_archetypes || {}).length;
+  meta.textContent = `已加载 ${creatorPatterns} 组达人符号规则 · ${briefKeywords} 组 Brief 激活词 · ${categoryLabels} 个分类名称 · ${brandArchetypes} 组品牌 archetype`;
 }
 
 function renderAgentTasks() {
@@ -4915,6 +4959,48 @@ function bindEvents() {
       });
       await loadOrganization();
       toast("项目授权已保存");
+    } catch (error) {
+      toast(error.message, true);
+    }
+  });
+  $("#reloadRuleConfigBtn")?.addEventListener("click", async () => {
+    try {
+      await loadRuleConfig();
+      toast("规则配置已重新加载");
+    } catch (error) {
+      toast(error.message, true);
+    }
+  });
+  $("#saveRuleConfigBtn")?.addEventListener("click", async () => {
+    const editor = $("#ruleConfigEditor");
+    if (!editor) return;
+    let payload;
+    try {
+      payload = JSON.parse(editor.value || "{}");
+    } catch (error) {
+      toast("规则 JSON 格式不正确", true);
+      return;
+    }
+    try {
+      const data = await api("/api/rules/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      state.ruleConfig = data.config || null;
+      renderRuleConfig();
+      toast("规则已保存，新的 Agent 运行会读取这版配置");
+    } catch (error) {
+      toast(error.message, true);
+    }
+  });
+  $("#resetRuleConfigBtn")?.addEventListener("click", async () => {
+    if (!window.confirm("确认恢复默认规则？当前编辑内容会被覆盖。")) return;
+    try {
+      const data = await api("/api/rules/config/reset", { method: "POST" });
+      state.ruleConfig = data.config || null;
+      renderRuleConfig();
+      toast("规则已恢复默认");
     } catch (error) {
       toast(error.message, true);
     }

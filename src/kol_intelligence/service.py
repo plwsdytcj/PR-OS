@@ -20,6 +20,7 @@ from src.schemas import CreatorProfile, split_tags
 from src.storage.db import load_profile, load_profiles
 from src.symbolic.creator_profiler import generate_creator_symbolic_profile
 from src.symbolic.storage import load_creator_symbolic, upsert_creator_symbolic
+from src.rules.storage import load_rule_config
 
 
 CATEGORY_LABELS = {
@@ -54,13 +55,14 @@ BRIEF_KEYWORDS = {
 
 
 def analyze_creator_evidence_tags(db_path: Path, creator_id: str = "", limit: int = 200) -> dict[str, Any]:
+    rule_config = load_rule_config(db_path)
     creators = [load_profile(db_path, creator_id)] if creator_id else load_profiles(db_path)[: max(1, limit)]
     creators = [creator for creator in creators if creator is not None]
     saved: list[KolEvidenceTag] = []
     for creator in creators:
         symbolic = load_creator_symbolic(db_path, creator.creator_id)
         if symbolic is None:
-            symbolic = generate_creator_symbolic_profile(creator)
+            symbolic = generate_creator_symbolic_profile(creator, rule_config=rule_config)
             upsert_creator_symbolic(db_path, symbolic)
         for tag in _derive_tags(creator, symbolic):
             upsert_evidence_tag(db_path, tag)
@@ -156,6 +158,8 @@ def bulk_review_evidence_tags(db_path: Path, payload: dict[str, Any], reviewer: 
 
 
 def build_kol_knowledge_graph(db_path: Path, brief: str = "", creator_ids: list[str] | None = None, limit: int = 80) -> KolGraphSnapshot:
+    rule_config = load_rule_config(db_path)
+    category_labels = _category_labels(rule_config)
     tags = _usable_tags(load_evidence_tags(db_path))
     if not tags:
         analyze_creator_evidence_tags(db_path, limit=limit)
@@ -164,7 +168,7 @@ def build_kol_knowledge_graph(db_path: Path, brief: str = "", creator_ids: list[
         allowed = set(creator_ids)
         tags = [tag for tag in tags if tag.creator_id in allowed]
     creators = {creator.creator_id: creator for creator in load_profiles(db_path)}
-    brief_terms = _brief_terms(brief)
+    brief_terms = _brief_terms(brief, rule_config.get("brief_keywords"))
     creator_scores = _score_creators(tags, brief_terms)
     selected_ids = [creator_id for creator_id, _ in creator_scores.most_common(limit)] or list({tag.creator_id for tag in tags})[:limit]
     selected_tags = [tag for tag in tags if tag.creator_id in selected_ids]
@@ -202,7 +206,7 @@ def build_kol_knowledge_graph(db_path: Path, brief: str = "", creator_ids: list[
             {
                 "id": category_node_id,
                 "type": "product",
-                "label": CATEGORY_LABELS.get(tag.category, tag.category),
+                "label": category_labels.get(tag.category, tag.category),
                 "stage": "ontology",
                 "score": 72,
             },
@@ -227,7 +231,7 @@ def build_kol_knowledge_graph(db_path: Path, brief: str = "", creator_ids: list[
         elif brief:
             edges.append({"source": "brief", "target": category_node_id, "label": "推理", "type": "context", "weight": 0.3})
 
-    evolution = _graph_evolution(selected_tags, creator_scores, brief_terms)
+    evolution = _graph_evolution(selected_tags, creator_scores, brief_terms, category_labels)
     snapshot = KolGraphSnapshot(
         snapshot_id=graph_snapshot_id(brief, len(nodes)),
         brief=brief,
@@ -248,11 +252,13 @@ def build_kol_knowledge_graph(db_path: Path, brief: str = "", creator_ids: list[
 def predict_kol_fit(db_path: Path, brief: str, top_n: int = 8) -> KolPrediction:
     if not brief.strip():
         raise ValueError("brief is required")
+    rule_config = load_rule_config(db_path)
+    category_labels = _category_labels(rule_config)
     tags = _usable_tags(load_evidence_tags(db_path))
     if not tags:
         analyze_creator_evidence_tags(db_path)
         tags = _usable_tags(load_evidence_tags(db_path))
-    terms = _brief_terms(brief)
+    terms = _brief_terms(brief, rule_config.get("brief_keywords"))
     graph = build_kol_knowledge_graph(db_path, brief=brief, limit=max(30, top_n * 6))
     creators = {creator.creator_id: creator for creator in load_profiles(db_path)}
     grouped: dict[str, list[KolEvidenceTag]] = defaultdict(list)
@@ -262,7 +268,7 @@ def predict_kol_fit(db_path: Path, brief: str, top_n: int = 8) -> KolPrediction:
     scored = []
     activated_tags = Counter()
     for creator_id, creator_tags in grouped.items():
-        score, reasons, risks, path = _score_prediction(creator_tags, terms)
+        score, reasons, risks, path = _score_prediction(creator_tags, terms, category_labels)
         if score <= 0:
             continue
         creator = creators.get(creator_id)
@@ -278,7 +284,7 @@ def predict_kol_fit(db_path: Path, brief: str, top_n: int = 8) -> KolPrediction:
                 "reasons": reasons[:6],
                 "risk_points": risks[:4],
                 "path": path[:6],
-                "evidence": _best_evidence(creator_tags, terms),
+                "evidence": _best_evidence(creator_tags, terms, category_labels),
             }
         )
     scored.sort(key=lambda item: item["score"], reverse=True)
@@ -404,11 +410,14 @@ def _derive_tags(creator: CreatorProfile, symbolic: Any) -> list[KolEvidenceTag]
     return list(merged.values())
 
 
-def _brief_terms(brief: str) -> set[str]:
+def _brief_terms(brief: str, brief_keywords: dict[str, Any] | None = None) -> set[str]:
     text = brief.lower()
     terms = set()
-    for canonical, keywords in BRIEF_KEYWORDS.items():
-        if any(keyword.lower() in text for keyword in keywords):
+    keywords_map = brief_keywords if isinstance(brief_keywords, dict) and brief_keywords else BRIEF_KEYWORDS
+    for canonical, keywords in keywords_map.items():
+        if isinstance(keywords, str):
+            keywords = [keywords]
+        if any(str(keyword).lower() in text for keyword in keywords or []):
             terms.add(canonical)
     for token in re.findall(r"[\w\u4e00-\u9fff]{2,}", text):
         if len(token) <= 24:
@@ -428,7 +437,8 @@ def _score_creators(tags: list[KolEvidenceTag], terms: set[str]) -> Counter:
     return scores
 
 
-def _score_prediction(tags: list[KolEvidenceTag], terms: set[str]) -> tuple[float, list[str], list[str], list[str]]:
+def _score_prediction(tags: list[KolEvidenceTag], terms: set[str], category_labels: dict[str, str] | None = None) -> tuple[float, list[str], list[str], list[str]]:
+    labels = category_labels or CATEGORY_LABELS
     score = 0.0
     reasons: list[str] = []
     risks: list[str] = []
@@ -440,7 +450,7 @@ def _score_prediction(tags: list[KolEvidenceTag], terms: set[str]) -> tuple[floa
         if hit:
             contribution *= 2.1
             reasons.append(tag.tag)
-            path.append(f"{CATEGORY_LABELS.get(tag.category, tag.category)} -> {tag.tag} -> {tag.creator_name}")
+            path.append(f"{labels.get(tag.category, tag.category)} -> {tag.tag} -> {tag.creator_name}")
         elif tag.category in {"content", "symbolic"}:
             contribution *= 0.45
         else:
@@ -457,7 +467,8 @@ def _tag_hits_brief(tag: KolEvidenceTag, terms: set[str]) -> bool:
     return any(term.lower() in haystack for term in terms)
 
 
-def _graph_evolution(tags: list[KolEvidenceTag], scores: Counter, terms: set[str]) -> list[dict[str, Any]]:
+def _graph_evolution(tags: list[KolEvidenceTag], scores: Counter, terms: set[str], category_labels: dict[str, str] | None = None) -> list[dict[str, Any]]:
+    labels = category_labels or CATEGORY_LABELS
     category_counts = Counter(tag.category for tag in tags)
     activated = [tag for tag in tags if _tag_hits_brief(tag, terms)]
     risks = [tag for tag in tags if tag.category == "risk"]
@@ -465,19 +476,27 @@ def _graph_evolution(tags: list[KolEvidenceTag], scores: Counter, terms: set[str
     top_creator_name = next((tag.creator_name for tag in tags if tag.creator_id == top_creator), "")
     return [
         {"step": 1, "title": "接入达人数据", "detail": f"读取 {len({tag.creator_id for tag in tags})} 个达人，统一为证据标签。"},
-        {"step": 2, "title": "形成标签本体", "detail": " / ".join(f"{CATEGORY_LABELS.get(k, k)} {v}" for k, v in category_counts.most_common(5))},
+        {"step": 2, "title": "形成标签本体", "detail": " / ".join(f"{labels.get(k, k)} {v}" for k, v in category_counts.most_common(5))},
         {"step": 3, "title": "Brief 激活路径", "detail": f"{len(activated)} 个标签被需求命中。"},
         {"step": 4, "title": "风险抑制", "detail": f"{len(risks)} 个风险标签参与降权和人工核验。"},
         {"step": 5, "title": "预测推荐", "detail": f"当前最强路径指向 {top_creator_name or top_creator or '待补充达人'}。"},
     ]
 
 
-def _best_evidence(tags: list[KolEvidenceTag], terms: set[str]) -> list[str]:
+def _best_evidence(tags: list[KolEvidenceTag], terms: set[str], category_labels: dict[str, str] | None = None) -> list[str]:
+    labels = category_labels or CATEGORY_LABELS
     ranked = sorted(tags, key=lambda tag: (_tag_hits_brief(tag, terms), tag.confidence, tag.score), reverse=True)
     evidence: list[str] = []
     for tag in ranked[:6]:
-        evidence.append(f"{CATEGORY_LABELS.get(tag.category, tag.category)}:{tag.tag} - {'；'.join(tag.evidence[:2])}")
+        evidence.append(f"{labels.get(tag.category, tag.category)}:{tag.tag} - {'；'.join(tag.evidence[:2])}")
     return evidence[:5]
+
+
+def _category_labels(rule_config: dict[str, Any] | None = None) -> dict[str, str]:
+    labels = (rule_config or {}).get("category_labels") if isinstance(rule_config, dict) else None
+    if not isinstance(labels, dict):
+        return CATEGORY_LABELS
+    return {str(key): str(value) for key, value in labels.items() if str(key).strip() and str(value).strip()} or CATEGORY_LABELS
 
 
 def _symbolic_evidence(symbolic: Any) -> list[str]:

@@ -148,6 +148,7 @@ from src.platform_os.service import (
 from src.platform_os.storage import init_platform_db, load_all_campaign_projects, load_campaign_project, upsert_campaign_project
 from src.project_run.service import run_pr_project
 from src.report.proposal_generator import generate_markdown_proposal
+from src.rules.storage import init_rule_db, load_rule_config, reset_rule_config, save_rule_config
 from src.schemas import CreatorProfile, split_tags
 from src.simulation.llm_fallback import LlmFallbackStressTest
 from src.simulation.mirofish_adapter import MiroFishCliAdapter
@@ -260,6 +261,7 @@ def _tenant_paths(tenant: str) -> tuple[Path, Path]:
 
 def _init_db_bundle(path: Path | PathLike[str]) -> None:
     init_db(path)
+    init_rule_db(path)
     init_agent_db(path)
     init_knowledge_db(path)
     init_kol_intelligence_db(path)
@@ -1300,6 +1302,28 @@ def auth_me() -> dict[str, Any]:
 def auth_users() -> dict[str, Any]:
     require_admin()
     return {"items": [user.to_dict() for user in load_all_users(DB_PATH)]}
+
+
+@app.get("/api/rules/config")
+def rules_config() -> dict[str, Any]:
+    require_admin()
+    return {"config": load_rule_config(DB_PATH)}
+
+
+@app.put("/api/rules/config")
+async def rules_save_config(payload: dict[str, Any]) -> dict[str, Any]:
+    identity = require_admin()
+    try:
+        config = save_rule_config(DB_PATH, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"config": config, "updated_by": identity.user.user_id}
+
+
+@app.post("/api/rules/config/reset")
+async def rules_reset_config() -> dict[str, Any]:
+    identity = require_admin()
+    return {"config": reset_rule_config(DB_PATH), "updated_by": identity.user.user_id}
 
 
 @app.post("/api/auth/users")
@@ -2969,6 +2993,7 @@ async def create_creator_symbolic_profile(payload: dict[str, Any]) -> dict[str, 
         content_sample=str(payload.get("content_sample") or ""),
         comment_sample=str(payload.get("comment_sample") or ""),
         case_sample=str(payload.get("case_sample") or ""),
+        rule_config=load_rule_config(DB_PATH),
     )
     upsert_creator_symbolic(DB_PATH, symbolic)
     return {"profile": symbolic.to_dict()}
@@ -2978,7 +3003,7 @@ async def create_creator_symbolic_profile(payload: dict[str, Any]) -> dict[str, 
 async def update_creator_symbolic_profile(creator_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     symbolic = load_creator_symbolic(DB_PATH, creator_id)
     if symbolic is None:
-        symbolic = generate_creator_symbolic_profile(_find_creator(creator_id))
+        symbolic = generate_creator_symbolic_profile(_find_creator(creator_id), rule_config=load_rule_config(DB_PATH))
     data = symbolic.to_dict()
     editable = {
         "primary_tags",
@@ -3009,6 +3034,8 @@ async def update_creator_symbolic_profile(creator_id: str, payload: dict[str, An
 
 @app.post("/api/symbolic/brand-profile")
 async def create_brand_symbolic_profile(payload: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(payload)
+    payload["rule_config"] = load_rule_config(DB_PATH)
     profile = generate_brand_symbolic_profile(payload)
     upsert_brand_symbolic(DB_PATH, profile)
     return {"profile": profile.to_dict()}
@@ -3062,7 +3089,10 @@ async def symbolic_match(payload: dict[str, Any]) -> dict[str, Any]:
     brand_id = str(payload.get("brand_id") or "").strip()
     brand = load_brand_symbolic(DB_PATH, brand_id) if brand_id else None
     if brand is None:
-        brand = generate_brand_symbolic_profile(payload.get("brand") or payload)
+        brand_payload = payload.get("brand") if isinstance(payload.get("brand"), dict) else payload
+        brand_payload = dict(brand_payload)
+        brand_payload["rule_config"] = load_rule_config(DB_PATH)
+        brand = generate_brand_symbolic_profile(brand_payload)
         upsert_brand_symbolic(DB_PATH, brand)
     if payload.get("use_social_context"):
         brand, calibration = calibrate_brand_with_symbolic_context(DB_PATH, brand, report_id=str(payload.get("report_id") or ""))
@@ -3075,7 +3105,7 @@ async def symbolic_match(payload: dict[str, Any]) -> dict[str, Any]:
     existing_ids = {item.creator_id for item in creator_symbolics}
     for creator in load_profiles(DB_PATH):
         if creator.creator_id not in existing_ids:
-            symbolic = generate_creator_symbolic_profile(creator)
+            symbolic = generate_creator_symbolic_profile(creator, rule_config=load_rule_config(DB_PATH))
             upsert_creator_symbolic(DB_PATH, symbolic)
             creator_symbolics.append(symbolic)
     results = rank_symbolic_creators(brand, creator_symbolics)
@@ -3098,7 +3128,7 @@ async def symbolic_narrative(payload: dict[str, Any]) -> dict[str, Any]:
     if brand is None:
         raise HTTPException(status_code=404, detail="brand symbolic profile not found")
     if creator is None:
-        creator = generate_creator_symbolic_profile(_find_creator(creator_id))
+        creator = generate_creator_symbolic_profile(_find_creator(creator_id), rule_config=load_rule_config(DB_PATH))
         upsert_creator_symbolic(DB_PATH, creator)
     path = generate_narrative_path(brand, creator, project_name=str(payload.get("project") or ""))
     return {"narrative": path.to_dict()}

@@ -74,11 +74,13 @@ def _source_text(profile: CreatorProfile, content_sample: str, comment_sample: s
     )
 
 
-def _match_patterns(text: str) -> list[tuple[str, int]]:
+def _match_patterns(text: str, patterns: dict | None = None) -> list[tuple[str, int]]:
+    patterns = patterns or SYMBOLIC_PATTERNS
     lowered = text.lower()
     scored: list[tuple[str, int]] = []
-    for tag, pattern in SYMBOLIC_PATTERNS.items():
-        score = sum(1 for keyword in pattern["keywords"] if keyword.lower() in lowered)
+    for tag, pattern in patterns.items():
+        keywords = pattern.get("keywords") if isinstance(pattern, dict) else []
+        score = sum(1 for keyword in keywords if str(keyword).lower() in lowered)
         if score:
             scored.append((tag, score))
     return sorted(scored, key=lambda item: item[1], reverse=True)
@@ -90,12 +92,15 @@ def generate_creator_symbolic_profile(
     comment_sample: str = "",
     case_sample: str = "",
     use_llm: bool = True,
+    rule_config: dict | None = None,
 ) -> CreatorSymbolicProfile:
+    patterns = (rule_config or {}).get("creator_symbolic_patterns") if isinstance(rule_config, dict) else None
+    patterns = patterns if isinstance(patterns, dict) and patterns else SYMBOLIC_PATTERNS
     text = _source_text(profile, content_sample, comment_sample, case_sample)
-    matches = _match_patterns(text)
+    matches = _match_patterns(text, patterns)
     primary = [item[0] for item in matches[:2]] or profile.industry_fit_tags[:1] or ["通用传播节点"]
     secondary = [item[0] for item in matches[2:5]]
-    top = SYMBOLIC_PATTERNS.get(primary[0], SYMBOLIC_PATTERNS["审美生活"])
+    top = patterns.get(primary[0]) or patterns.get("审美生活") or next(iter(patterns.values())) or SYMBOLIC_PATTERNS["审美生活"]
 
     capabilities = set(profile.content_capability_tags)
     if "专业科普" in capabilities or "口播解释" in capabilities:
