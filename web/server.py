@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import pandas as pd
+import requests
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
@@ -139,7 +140,15 @@ from src.kol_intelligence.storage import init_kol_intelligence_db
 from src.normalize.mapper import infer_column_mapping, map_dataframe_to_profiles
 from src.openclaw.adapter import OpenClawAdapter
 from src.openclaw.schemas import OpenClawConfig, OpenClawUserBinding, binding_id_for, now_iso as openclaw_now_iso
-from src.openclaw.storage import init_openclaw_db, load_all_bindings, load_config as load_openclaw_config, save_binding as save_openclaw_binding, save_config as save_openclaw_config
+from src.openclaw.storage import (
+    init_openclaw_db,
+    load_all_bindings,
+    load_config as load_openclaw_config,
+    load_events_for_run as load_openclaw_events_for_run,
+    load_run as load_openclaw_run,
+    save_binding as save_openclaw_binding,
+    save_config as save_openclaw_config,
+)
 from src.platform_os.service import (
     add_post_campaign_review,
     campaign_room,
@@ -805,6 +814,23 @@ async def openclaw_save_binding(payload: dict[str, Any]) -> dict[str, Any]:
     return {"binding": binding.to_dict(), "bindings": [item.to_dict() for item in load_all_bindings(DB_PATH)]}
 
 
+@app.post("/api/openclaw/sessions")
+async def openclaw_session_create(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    identity = require_internal("project_run")
+    if identity.user.user_type == "client":
+        raise HTTPException(status_code=403, detail="client cannot use OpenClaw")
+    payload = payload or {}
+    binding = OpenClawAdapter().binding_for_user(DB_PATH, identity.user.user_id)
+    session_id = str(payload.get("session_id") or payload.get("openclaw_session_id") or "").strip()
+    if not session_id:
+        session_id = stable_id("openclaw_session", identity.user.user_id, openclaw_now_iso(), prefix="openclaw_session")
+    binding.openclaw_session_id = session_id
+    binding.status = "active"
+    binding.updated_at = openclaw_now_iso()
+    save_openclaw_binding(DB_PATH, binding)
+    return {"binding": binding.to_dict(), "session_id": session_id, "status": OpenClawAdapter().status(DB_PATH)}
+
+
 @app.post("/api/openclaw/chat")
 async def openclaw_chat(payload: dict[str, Any]) -> dict[str, Any]:
     identity = require_internal("project_run")
@@ -832,6 +858,63 @@ def openclaw_run_events(run_id: str) -> dict[str, Any]:
     return payload
 
 
+@app.get("/api/openclaw/runs/{run_id}/stream")
+async def openclaw_run_stream(run_id: str) -> StreamingResponse:
+    require_internal("read")
+    db_path = _db_path_ctx.get()
+    if load_openclaw_run(db_path, run_id) is None:
+        raise HTTPException(status_code=404, detail="openclaw run not found")
+
+    async def event_stream():
+        last_signature = ""
+        while True:
+            payload = OpenClawAdapter().payload(db_path, run_id)
+            run = payload.get("run") or {}
+            events = payload.get("events") or []
+            signature = json.dumps({"status": run.get("status"), "events": len(events), "response": run.get("response"), "error": run.get("error")}, ensure_ascii=False, sort_keys=True)
+            if signature != last_signature:
+                last_signature = signature
+                yield f"event: openclaw_run\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            if run.get("status") not in {"running"}:
+                break
+            await asyncio.sleep(1)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.post("/api/openclaw/runs/{run_id}/save-to-campaign")
+async def openclaw_save_run_to_campaign(run_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    identity = require_internal("project_run")
+    run = load_openclaw_run(DB_PATH, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="openclaw run not found")
+    payload = payload or {}
+    client_name = str(payload.get("client_name") or "OpenClaw").strip()
+    project_name = str(payload.get("project_name") or (run.message[:36] if run.message else "OpenClaw Campaign")).strip()
+    top_n = int(payload.get("top_n") or 8)
+    project = create_campaign_project(DB_PATH, client_name=client_name, project_name=project_name, raw_brief=run.message, top_n=top_n)
+    project.timeline.append(
+        {
+            "event_type": "openclaw_run_saved",
+            "title": "OpenClaw 深度任务已沉淀为 Campaign",
+            "payload": {
+                "run_id": run.run_id,
+                "openclaw_agent_id": run.openclaw_agent_id,
+                "openclaw_session_id": run.openclaw_session_id,
+                "status": run.status,
+                "response": run.response,
+                "events": [event.to_dict() for event in load_openclaw_events_for_run(DB_PATH, run_id)],
+                "saved_by": identity.user.user_id,
+            },
+            "created_at": openclaw_now_iso(),
+        }
+    )
+    project.campaign.status = "openclaw_saved"
+    project.campaign.updated_at = openclaw_now_iso()
+    upsert_campaign_project(DB_PATH, project)
+    return {"campaign": project.campaign.to_dict(), "project": project.to_dict(), "target": {"view": "platformOS", "action": "campaign", "id": project.campaign.campaign_id}}
+
+
 def _require_openclaw_tool_access(request: Request) -> Any:
     config = load_openclaw_config(DB_PATH)
     auth = request.headers.get("Authorization", "")
@@ -848,6 +931,39 @@ def _match_result_payload(result: Any) -> dict[str, Any]:
     return data
 
 
+def _find_creator_for_openclaw(payload: dict[str, Any]) -> CreatorProfile | None:
+    creator_id = str(payload.get("creator_id") or "").strip()
+    if creator_id:
+        found = load_profile(DB_PATH, creator_id)
+        if found:
+            return found
+    name = str(payload.get("name") or payload.get("creator_name") or "").strip().lower()
+    platform_user_id = str(payload.get("platform_user_id") or "").strip().lower()
+    platform = str(payload.get("platform") or "").strip().lower()
+    for profile in load_profiles(DB_PATH):
+        if platform and profile.platform.lower() != platform:
+            continue
+        if platform_user_id and profile.platform_user_id.lower() == platform_user_id:
+            return profile
+        if name and profile.name.lower() == name:
+            return profile
+    return None
+
+
+def _evidence_tags_payload(creator_id: str) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for item in list_creator_evidence_tags(DB_PATH, creator_id):
+        if hasattr(item, "to_dict"):
+            items.append(item.to_dict())
+        elif hasattr(item, "__dataclass_fields__"):
+            items.append(asdict(item))
+        elif isinstance(item, dict):
+            items.append(item)
+        else:
+            items.append({"value": str(item)})
+    return items
+
+
 def _openclaw_tool_manifest() -> list[dict[str, Any]]:
     return [
         {
@@ -859,6 +975,16 @@ def _openclaw_tool_manifest() -> list[dict[str, Any]]:
             "name": "kolness.search_kol",
             "description": "按关键词、平台、标签检索 Kolness 达人库。",
             "input_schema": {"query": "string", "platform": "string optional", "limit": "number optional"},
+        },
+        {
+            "name": "kolness.get_creator_profile",
+            "description": "按 creator_id、昵称或平台 ID 读取达人完整档案、标签和证据。",
+            "input_schema": {"creator_id": "string optional", "name": "string optional", "platform_user_id": "string optional"},
+        },
+        {
+            "name": "kolness.tag_creator",
+            "description": "根据 OpenClaw 分析结果更新达人标签、AI 摘要、备注和风险标签。",
+            "input_schema": {"creator_id": "string", "industry_fit_tags": "array optional", "content_capability_tags": "array optional", "risk_tags": "array optional"},
         },
         {
             "name": "kolness.match_kol",
@@ -874,6 +1000,16 @@ def _openclaw_tool_manifest() -> list[dict[str, Any]]:
             "name": "kolness.generate_proposal",
             "description": "根据 brief 和 KOL 匹配结果生成客户可读 Markdown 方案。",
             "input_schema": {"brief": "string", "top_n": "number optional"},
+        },
+        {
+            "name": "kolness.get_campaign_history",
+            "description": "读取历史 Campaign、Agent Thread、客户方案和 Brief 分发沉淀。",
+            "input_schema": {"limit": "number optional", "type": "string optional"},
+        },
+        {
+            "name": "kolness.create_client_share_page",
+            "description": "根据 brief 和 KOL 推荐生成甲方可访问的方案页。",
+            "input_schema": {"client_name": "string", "project_name": "string", "brief": "string", "top_n": "number optional"},
         },
         {
             "name": "kolness.save_campaign_asset",
@@ -930,6 +1066,45 @@ async def openclaw_call_tool(tool_name: str, payload: dict[str, Any], request: R
         scored.sort(key=lambda item: (item[0], item[1].follower_count), reverse=True)
         return {"tool": name, "items": [profile_payload(profile) for _, profile in scored[:limit]], "total": len(scored)}
 
+    if name == "kolness.get_creator_profile":
+        profile = _find_creator_for_openclaw(payload)
+        if profile is None:
+            raise HTTPException(status_code=404, detail="creator not found")
+        return {
+            "tool": name,
+            "creator": profile_payload(profile),
+            "evidence_tags": _evidence_tags_payload(profile.creator_id),
+        }
+
+    if name == "kolness.tag_creator":
+        profile = _find_creator_for_openclaw(payload)
+        if profile is None:
+            raise HTTPException(status_code=404, detail="creator not found")
+        data = asdict(profile)
+        tag_fields = ["industry_fit_tags", "content_capability_tags", "suitable_goals", "suitable_stages", "budget_fit_tags", "risk_tags", "cooperation_brands", "cooperation_formats"]
+        for field in tag_fields:
+            incoming = split_tags(payload.get(field))
+            if incoming:
+                data[field] = list(dict.fromkeys([*data.get(field, []), *incoming]))[:40]
+        for field in ["ai_summary", "manual_notes", "bio", "homepage_url", "avatar_url", "contact"]:
+            value = str(payload.get(field) or "").strip()
+            if value:
+                if field == "manual_notes" and data.get(field):
+                    data[field] = f"{data[field]}\nOpenClaw：{value}".strip()
+                else:
+                    data[field] = value
+        sources = data.get("data_sources") or []
+        if "openclaw" not in sources:
+            sources.append("openclaw")
+        data["data_sources"] = sources
+        tagged = CreatorProfile(**data)
+        save_profile(DB_PATH, tagged)
+        try:
+            analyze_creator_evidence_tags(DB_PATH, tagged.creator_id)
+        except Exception:
+            pass
+        return {"tool": name, "creator": profile_payload(tagged), "evidence_tags": _evidence_tags_payload(tagged.creator_id)}
+
     if name == "kolness.match_kol":
         brief_text = str(payload.get("brief") or payload.get("message") or "").strip()
         if not brief_text:
@@ -962,6 +1137,82 @@ async def openclaw_call_tool(tool_name: str, payload: dict[str, Any], request: R
             "items": [_match_result_payload(result) for result in results],
         }
 
+    if name == "kolness.get_campaign_history":
+        limit = int(payload.get("limit") or 20)
+        type_filter = str(payload.get("type") or "").strip()
+        items: list[dict[str, Any]] = []
+        for project in load_all_campaign_projects(DB_PATH):
+            campaign = project.campaign
+            items.append(
+                {
+                    "id": campaign.campaign_id,
+                    "type": "campaign",
+                    "title": campaign.project_name,
+                    "client_name": campaign.client_name,
+                    "status": campaign.status,
+                    "brief": campaign.raw_brief,
+                    "plans": len(project.plans),
+                    "timeline": project.timeline[-8:],
+                    "updated_at": campaign.updated_at,
+                }
+            )
+        for proposal in load_all_proposals(DB_PATH):
+            items.append(
+                {
+                    "id": proposal.proposal_id,
+                    "type": "proposal",
+                    "title": proposal.project_name,
+                    "client_name": proposal.client_name,
+                    "status": proposal.status,
+                    "brief": proposal.brief_summary or proposal.brief_text[:180],
+                    "share_url": proposal.public_url(),
+                    "updated_at": proposal.updated_at or proposal.created_at,
+                }
+            )
+        for thread_payload in list_agent_threads(DB_PATH):
+            thread = thread_payload.get("thread") or {}
+            task = thread_payload.get("task") or {}
+            items.append(
+                {
+                    "id": thread.get("thread_id") or task.get("task_id") or "",
+                    "type": "agent_thread",
+                    "title": thread.get("title") or task.get("title") or "Agent Thread",
+                    "client_name": thread.get("client_name") or task.get("client_name") or "",
+                    "status": thread.get("status") or task.get("status") or "",
+                    "brief": thread.get("summary") or task.get("brief") or "",
+                    "updated_at": thread.get("updated_at") or task.get("updated_at") or "",
+                }
+            )
+        if type_filter:
+            items = [item for item in items if item.get("type") == type_filter]
+        items.sort(key=lambda item: item.get("updated_at") or "", reverse=True)
+        return {"tool": name, "items": items[:limit], "total": len(items)}
+
+    if name == "kolness.create_client_share_page":
+        brief_text = str(payload.get("brief") or payload.get("message") or "").strip()
+        if not brief_text:
+            raise HTTPException(status_code=400, detail="brief is required")
+        client_name = str(payload.get("client_name") or "Demo Client").strip()
+        project_name = str(payload.get("project_name") or "KOL 推荐方案").strip()
+        top_n = int(payload.get("top_n") or 8)
+        proposal, version, markdown = create_proposal_from_brief(
+            DB_PATH,
+            client_name=client_name,
+            project_name=project_name,
+            brief_text=brief_text,
+            creators=load_profiles(DB_PATH),
+            top_n=top_n,
+            created_by=identity.user.user_id,
+        )
+        upsert_proposal(DB_PATH, proposal)
+        upsert_version(DB_PATH, version)
+        return {
+            "tool": name,
+            "proposal": asdict(proposal) | {"share_url": proposal.public_url()},
+            "version": version.to_dict(),
+            "markdown": markdown,
+        }
+
     if name == "kolness.save_campaign_asset":
         title = str(payload.get("title") or "OpenClaw 产物").strip()
         artifact_type = str(payload.get("artifact_type") or "openclaw_asset").strip()
@@ -989,6 +1240,33 @@ async def openclaw_call_tool(tool_name: str, payload: dict[str, Any], request: R
     raise HTTPException(status_code=404, detail="unknown OpenClaw tool")
 
 
+@app.api_route("/openclaw/proxy", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
+@app.api_route("/openclaw/proxy/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
+async def openclaw_proxy(request: Request, path: str = "") -> StreamingResponse:
+    require_internal("read")
+    config = load_openclaw_config(DB_PATH)
+    upstream = (config.control_ui_url or config.gateway_url).rstrip("/")
+    if not config.enabled or not upstream:
+        raise HTTPException(status_code=503, detail="OpenClaw is not configured")
+    query = request.url.query
+    target = f"{upstream}/{path.lstrip('/')}"
+    if query:
+        target = f"{target}?{query}"
+    headers = {key: value for key, value in request.headers.items() if key.lower() not in {"host", "content-length", "cookie", "connection", "accept-encoding"}}
+    if config.admin_token and "authorization" not in {key.lower() for key in headers}:
+        headers["Authorization"] = f"Bearer {config.admin_token}"
+    try:
+        response = requests.request(request.method, target, data=await request.body(), headers=headers, timeout=30, allow_redirects=False)
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"OpenClaw proxy failed: {exc}") from exc
+    response_headers = {
+        key: value
+        for key, value in response.headers.items()
+        if key.lower() not in {"content-encoding", "transfer-encoding", "connection", "content-length", "x-frame-options"}
+    }
+    return StreamingResponse(BytesIO(response.content), status_code=response.status_code, headers=response_headers, media_type=response.headers.get("content-type"))
+
+
 @app.get("/openclaw", response_class=HTMLResponse)
 def openclaw_workspace() -> HTMLResponse:
     require_internal("read")
@@ -1002,7 +1280,7 @@ def openclaw_workspace() -> HTMLResponse:
             "</body>",
             status_code=200,
         )
-    safe_url = html.escape(url, quote=True)
+    safe_url = html.escape("/openclaw/proxy", quote=True)
     return HTMLResponse(
         f"<!doctype html><meta charset='utf-8'><title>Kolness OpenClaw</title>"
         f"<style>html,body,iframe{{margin:0;width:100%;height:100%;border:0;background:#11100c}}</style>"

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260613-8" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260613-9" />
   </head>
   <body>
     <div class="app-shell">
@@ -1878,6 +1878,9 @@
             <p>像聊天一样丢 brief，它会跑推荐、图谱、风险和方案。</p>
           </div>
           <div class="agent-float-actions">
+            <button id="agentFloatNewTaskBtn" class="secondary" type="button">新任务</button>
+            <button id="agentFloatSaveCampaignBtn" class="secondary hidden" type="button">保存到 Campaign</button>
+            <button id="agentFloatViewAssetsBtn" class="secondary hidden" type="button">查看资产</button>
             <button id="agentFloatOpenFullBtn" class="secondary" type="button">全屏</button>
             <button id="agentFloatCloseBtn" class="icon-btn" type="button" aria-label="关闭 Agent 浮窗">×</button>
           </div>
@@ -1920,6 +1923,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260613-8"></script>
+    <script src="/static/app.js?v=20260613-9"></script>
   </body>
 </html>

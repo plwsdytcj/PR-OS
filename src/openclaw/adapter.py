@@ -119,9 +119,13 @@ class OpenClawAdapter:
                 "tool_names": [
                     "kolness.analyze_brief",
                     "kolness.search_kol",
+                    "kolness.get_creator_profile",
+                    "kolness.tag_creator",
                     "kolness.match_kol",
                     "kolness.generate_kol_graph",
                     "kolness.generate_proposal",
+                    "kolness.get_campaign_history",
+                    "kolness.create_client_share_page",
                     "kolness.save_campaign_asset",
                 ],
             },

@@ -5,6 +5,8 @@
 阶段：OpenClaw Sidecar MVP  
 目标用户：Kolness 内部 PR 团队成员  
 
+实现状态：v0.2 已接入 Kolness 后端桥和浮窗入口，真实 OpenClaw Gateway 仍需单独部署后配置 URL。
+
 ---
 
 ## 1. 一句话
@@ -582,3 +584,65 @@ OpenClaw 工具产物回写到：
 - 调用 Kolness 的 PR/KOL 工具；
 - 把结果沉淀回 Campaign。
 
+---
+
+## 14. 2026-06-13 实现状态
+
+### 已完成
+
+- 右下角 Agent 浮窗支持切换 `OpenClaw 深度任务` runtime。
+- Admin Console 支持配置 OpenClaw Gateway、Control UI、Admin Token、默认 Agent ID。
+- Admin Console 支持给内部员工绑定 `openclaw_agent_id` 和 `openclaw_session_id`。
+- 后端已提供：
+  - `GET /api/openclaw/status`
+  - `GET /api/openclaw/me`
+  - `POST /api/openclaw/sessions`
+  - `POST /api/openclaw/chat`
+  - `GET /api/openclaw/runs/{run_id}/events`
+  - `GET /api/openclaw/runs/{run_id}/stream`
+  - `POST /api/openclaw/runs/{run_id}/save-to-campaign`
+  - `GET /api/openclaw/tools`
+  - `POST /api/openclaw/tools/{tool_name}`
+  - `GET /openclaw`
+  - `/openclaw/proxy/*`
+- OpenClaw 可调用 Kolness 工具：
+  - `kolness.analyze_brief`
+  - `kolness.search_kol`
+  - `kolness.get_creator_profile`
+  - `kolness.tag_creator`
+  - `kolness.match_kol`
+  - `kolness.generate_kol_graph`
+  - `kolness.generate_proposal`
+  - `kolness.get_campaign_history`
+  - `kolness.create_client_share_page`
+  - `kolness.save_campaign_asset`
+- OpenClaw run 可以保存成 Kolness Campaign Project，并进入历史资产 / Campaign Room。
+- 浮窗支持：
+  - `新任务`
+  - `保存到 Campaign`
+  - `查看资产`
+  - `全屏` 打开 `/openclaw`
+
+### 已验证
+
+- `python3 -m py_compile web/server.py src/openclaw/*.py`
+- `node --check web/static/app.js`
+- `python3 -m unittest tests.test_openclaw_adapter`
+- 浏览器会话验证：
+  - OpenClaw session 创建返回 200；
+  - 10 个 Kolness tools 可见；
+  - brief 解析返回行业/产品；
+  - KOL 匹配返回候选达人；
+  - 历史 Campaign 读取返回结果；
+  - OpenClaw run event 和 SSE stream 可读；
+  - run 可保存到 Campaign；
+  - 达人档案读取和标签写入可用；
+  - 甲方 share page 可生成。
+
+### 仍需真实 Gateway 才能验收
+
+- OpenClaw 的真实流式 token 输出；
+- OpenClaw 自己的工具卡 / Canvas / workspace 体验；
+- OpenClaw memory 和长任务恢复；
+- OpenClaw 多 agent 工作区隔离；
+- Gateway 侧对 Kolness tool manifest 的自动发现和调用。

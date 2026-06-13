@@ -29,6 +29,9 @@ const state = {
   agentRuntimeComparison: null,
   openClaw: null,
   activeOpenClawRun: null,
+  activeOpenClawCampaignTarget: null,
+  openClawEventSource: null,
+  openClawPollTimer: null,
   knowledgeDocuments: [],
   knowledgeStats: null,
   knowledgeSearchResults: [],
@@ -2057,6 +2060,7 @@ function setAgentFloatOpen(open) {
 
 function renderAgentFloatContent() {
   const summary = $("#agentFloatSummary");
+  renderAgentFloatActions();
   if (activeFloatRuntime() === "openclaw") {
     renderOpenClawFloatContent(summary);
     return;
@@ -2074,6 +2078,14 @@ function renderAgentFloatContent() {
     `;
   }
   renderAgentFloatMessages();
+}
+
+function renderAgentFloatActions() {
+  const isOpenClaw = activeFloatRuntime() === "openclaw";
+  const hasOpenClawRun = Boolean(state.activeOpenClawRun?.run?.run_id);
+  $("#agentFloatNewTaskBtn")?.classList.toggle("hidden", !isOpenClaw);
+  $("#agentFloatSaveCampaignBtn")?.classList.toggle("hidden", !(isOpenClaw && hasOpenClawRun));
+  $("#agentFloatViewAssetsBtn")?.classList.toggle("hidden", !(isOpenClaw && hasOpenClawRun));
 }
 
 function activeFloatRuntime() {
@@ -2250,13 +2262,17 @@ async function runAgentFromPayload(payload) {
 }
 
 async function runOpenClawFromPayload(payload) {
+  stopOpenClawPolling();
   const data = await api("/api/openclaw/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   state.activeOpenClawRun = data;
+  state.activeOpenClawCampaignTarget = null;
   renderAgentFloatDock();
+  if (data.run?.run_id && data.run?.status === "running") startOpenClawPolling(data.run.run_id);
+  await refreshWorkspaceHistoryIfVisible();
   return data;
 }
 
@@ -2658,6 +2674,17 @@ function stopAgentPolling() {
   }
 }
 
+function stopOpenClawPolling() {
+  if (state.openClawEventSource) {
+    state.openClawEventSource.close();
+    state.openClawEventSource = null;
+  }
+  if (state.openClawPollTimer) {
+    clearInterval(state.openClawPollTimer);
+    state.openClawPollTimer = null;
+  }
+}
+
 async function loadAgentThread(threadId) {
   if (!threadId) return null;
   const data = await api(`/api/agent/threads/${threadId}`);
@@ -2726,6 +2753,59 @@ function startAgentPollFallback(runId) {
   };
   tick();
   state.agentPollTimer = setInterval(tick, 1000);
+}
+
+function startOpenClawPolling(runId) {
+  stopOpenClawPolling();
+  if (!runId) return;
+  if (window.EventSource) {
+    const tenant = encodeURIComponent(state.tenant || "default");
+    const source = new EventSource(`/api/openclaw/runs/${encodeURIComponent(runId)}/stream?tenant=${tenant}`);
+    state.openClawEventSource = source;
+    source.addEventListener("openclaw_run", async (event) => {
+      const data = JSON.parse(event.data || "{}");
+      state.activeOpenClawRun = data;
+      renderAgentFloatDock();
+      const status = data.run?.status || "";
+      if (status && status !== "running") {
+        stopOpenClawPolling();
+        await refreshWorkspaceHistoryIfVisible();
+      }
+    });
+    source.addEventListener("agent_error", (event) => {
+      stopOpenClawPolling();
+      toast(JSON.parse(event.data || "{}").detail || "OpenClaw stream error", true);
+    });
+    source.onerror = () => {
+      if (!state.openClawEventSource) return;
+      source.close();
+      state.openClawEventSource = null;
+      startOpenClawPollFallback(runId);
+    };
+    return;
+  }
+  startOpenClawPollFallback(runId);
+}
+
+function startOpenClawPollFallback(runId) {
+  if (!runId) return;
+  const tick = async () => {
+    try {
+      const data = await api(`/api/openclaw/runs/${encodeURIComponent(runId)}/events`);
+      state.activeOpenClawRun = data;
+      renderAgentFloatDock();
+      const status = data.run?.status || "";
+      if (status && status !== "running") {
+        stopOpenClawPolling();
+        await refreshWorkspaceHistoryIfVisible();
+      }
+    } catch (error) {
+      stopOpenClawPolling();
+      toast(error.message || "OpenClaw 轮询失败", true);
+    }
+  };
+  tick();
+  state.openClawPollTimer = setInterval(tick, 1200);
 }
 
 function formToObject(form) {
@@ -5118,8 +5198,59 @@ function bindEvents() {
   $("#agentFloatToggle")?.addEventListener("click", () => setAgentFloatOpen(!state.agentFloatOpen));
   $("#agentFloatCloseBtn")?.addEventListener("click", () => setAgentFloatOpen(false));
   $("#openAgentFloatFromWorkspaceBtn")?.addEventListener("click", () => setAgentFloatOpen(true));
+  $("#agentFloatNewTaskBtn")?.addEventListener("click", async () => {
+    try {
+      stopOpenClawPolling();
+      state.activeOpenClawRun = null;
+      state.activeOpenClawCampaignTarget = null;
+      if (activeFloatRuntime() === "openclaw") {
+        await api("/api/openclaw/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+      }
+      renderAgentFloatDock();
+      toast("已准备新的 OpenClaw 任务");
+    } catch (error) {
+      toast(error.message || "创建 OpenClaw 会话失败", true);
+    }
+  });
+  $("#agentFloatSaveCampaignBtn")?.addEventListener("click", async () => {
+    const runId = state.activeOpenClawRun?.run?.run_id;
+    if (!runId) return;
+    const form = $("#agentFloatForm");
+    const payload = form ? formToObject(form) : {};
+    try {
+      const data = await api(`/api/openclaw/runs/${encodeURIComponent(runId)}/save-to-campaign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      state.activeOpenClawCampaignTarget = data.target || null;
+      await refreshWorkspaceHistoryIfVisible();
+      toast("OpenClaw 任务已保存到 Campaign");
+    } catch (error) {
+      toast(error.message || "保存 Campaign 失败", true);
+    }
+  });
+  $("#agentFloatViewAssetsBtn")?.addEventListener("click", async () => {
+    setAgentFloatOpen(false);
+    if (state.activeOpenClawCampaignTarget?.view === "platformOS") {
+      await loadPlatformDashboard();
+      setView("platformOS");
+      await openCampaignRoom(state.activeOpenClawCampaignTarget.id);
+      return;
+    }
+    await loadWorkspaceHistory();
+    setView("history");
+  });
   $("#agentFloatOpenFullBtn")?.addEventListener("click", () => {
     setAgentFloatOpen(false);
+    if (activeFloatRuntime() === "openclaw") {
+      window.open("/openclaw", "_blank", "noopener");
+      return;
+    }
     setView("agentWorkspace");
   });
   $("#agentFloatForm")?.addEventListener("submit", async (event) => {

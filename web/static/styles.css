@@ -1064,6 +1064,9 @@ button {
 
 .agent-float-actions {
   flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 260px;
 }
 
 .agent-float-summary {
