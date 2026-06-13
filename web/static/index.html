@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260612-17" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260613-1" />
   </head>
   <body>
     <div class="app-shell">
@@ -28,26 +28,51 @@
             <button class="nav-item" data-view="agentWorkspace">AI Agent</button>
           </div>
 
+          <div class="nav-secondary-label">Modules</div>
           <details class="nav-group">
-            <summary>更多模块</summary>
+            <summary>
+              <span>执行流</span>
+              <em>brief / campaign</em>
+            </summary>
             <button class="nav-item" data-view="brief">Brief 推荐</button>
             <button class="nav-item" data-view="platformOS">Campaign OS</button>
-            <button class="nav-item" data-view="symbolicOS">符号 OS</button>
+            <button class="nav-item" data-view="proposal">方案导出</button>
+            <button class="nav-item" data-view="briefDistribution">Brief 分发</button>
+            <button class="nav-item" data-view="stressTest">压力测试</button>
+          </details>
+
+          <details class="nav-group">
+            <summary>
+              <span>数据资产</span>
+              <em>kol / knowledge</em>
+            </summary>
             <button class="nav-item" data-view="ingest">数据接入</button>
             <button class="nav-item" data-view="knowledge">知识库</button>
             <button class="nav-item" data-view="governance">数据治理</button>
             <button class="nav-item" data-view="creatorCommercial">博主商业档案</button>
-            <button class="nav-item" data-view="proposal">方案导出</button>
-            <button class="nav-item" data-view="collaboration">客户协作</button>
-            <button class="nav-item" data-view="clientPortal">甲方方案页</button>
-            <button class="nav-item" data-view="briefDistribution">Brief 分发</button>
+            <button class="nav-item" data-view="dataSources">数据源设置</button>
+          </details>
+
+          <details class="nav-group">
+            <summary>
+              <span>符号引擎</span>
+              <em>symbolic os</em>
+            </summary>
+            <button class="nav-item" data-view="symbolicOS">符号 OS</button>
             <button class="nav-item" data-view="symbolicCreator">博主符号档案</button>
             <button class="nav-item" data-view="symbolicBrand">品牌符号分析</button>
             <button class="nav-item" data-view="symbolicMatch">符号匹配</button>
             <button class="nav-item" data-view="symbolicGraph">符号图谱</button>
-            <button class="nav-item" data-view="stressTest">压力测试</button>
+          </details>
+
+          <details class="nav-group">
+            <summary>
+              <span>协作管理</span>
+              <em>client / admin</em>
+            </summary>
+            <button class="nav-item" data-view="collaboration">客户协作</button>
+            <button class="nav-item" data-view="clientPortal">甲方方案页</button>
             <button class="nav-item" data-view="organization">Admin Console</button>
-            <button class="nav-item" data-view="dataSources">数据源设置</button>
           </details>
         </nav>
         <div class="workspace-switcher">

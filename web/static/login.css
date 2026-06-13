@@ -303,45 +303,6 @@ input:focus {
   display: none !important;
 }
 
-.session-box {
-  margin-top: 18px;
-  padding: 14px;
-  background: rgba(87, 184, 157, 0.14);
-  border: 2px solid var(--line);
-  border-radius: var(--radius);
-}
-
-.session-box p {
-  margin: 0 0 12px;
-  color: #23684f;
-  font-size: 15px;
-  font-weight: 900;
-  line-height: 1.45;
-}
-
-.session-actions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
-}
-
-.primary-link-action {
-  display: grid;
-  min-height: 52px;
-  place-items: center;
-  color: var(--paper);
-  background: var(--ink);
-  border: 2px solid var(--line);
-  border-radius: var(--radius);
-  box-shadow: 5px 5px 0 var(--acid);
-  font-weight: 1000;
-}
-
-.primary-link-action:hover,
-.primary-link-action:focus-visible {
-  transform: translateY(-2px);
-}
-
 .bootstrap-box {
   margin-top: 24px;
   padding: 16px;
@@ -525,7 +486,6 @@ input {
 .panel-tag,
 .primary-action,
 .secondary-action,
-.primary-link-action,
 .login-hint-grid span {
   transition:
     transform 180ms cubic-bezier(0.2, 0.9, 0.22, 1),

@@ -4685,11 +4685,23 @@ body.client-session #clientPortal {
   padding-bottom: 12px;
 }
 
+.nav-secondary-label {
+  color: rgba(255, 247, 223, 0.42);
+  font-family: var(--display-font);
+  font-size: 11px;
+  font-weight: 1000;
+  letter-spacing: 0.08em;
+  margin-top: 4px;
+  text-transform: uppercase;
+}
+
 .nav-group {
   background: rgba(255, 249, 233, 0.045);
   border: 2px solid rgba(255, 249, 233, 0.14);
   border-radius: 3px;
-  padding: 7px;
+  display: grid;
+  gap: 5px;
+  padding: 6px;
 }
 
 .nav-group[open] {
@@ -4711,6 +4723,24 @@ body.client-session #clientPortal {
   outline-offset: 3px;
   padding: 4px 3px;
   text-transform: uppercase;
+}
+
+.nav-group summary span,
+.nav-group summary em {
+  display: block;
+  font-style: normal;
+}
+
+.nav-group summary span {
+  font-size: 13px;
+}
+
+.nav-group summary em {
+  color: rgba(255, 247, 223, 0.42);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 900;
+  margin-top: 4px;
 }
 
 .nav-group summary::-webkit-details-marker {
@@ -4740,9 +4770,9 @@ body.client-session #clientPortal {
 }
 
 .nav-group .nav-item {
-  font-size: 13px;
-  min-height: 34px;
-  padding: 8px 10px 8px 24px;
+  font-size: 12px;
+  min-height: 32px;
+  padding: 7px 10px 7px 23px;
 }
 
 .nav-group:not([open]) {
@@ -6614,13 +6644,19 @@ textarea {
     border-style: dashed;
   }
 
-  body.sidebar-collapsed .nav-group summary {
+body.sidebar-collapsed .nav-group summary {
     font-size: 0;
     height: 34px;
     justify-content: center;
     min-height: 34px;
     padding: 0;
     width: 46px;
+  }
+
+  body.sidebar-collapsed .nav-secondary-label,
+  body.sidebar-collapsed .nav-group summary span,
+  body.sidebar-collapsed .nav-group summary em {
+    display: none;
   }
 
   body.sidebar-collapsed .nav-group summary::before {
