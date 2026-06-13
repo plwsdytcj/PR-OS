@@ -4675,6 +4675,7 @@ body.client-session #clientPortal {
 }
 
 .nav-primary,
+.nav-section,
 .nav-group {
   display: grid;
   gap: 7px;
@@ -4682,7 +4683,27 @@ body.client-session #clientPortal {
 
 .nav-primary {
   border-bottom: 2px dashed rgba(255, 249, 233, 0.26);
+  gap: 13px;
   padding-bottom: 12px;
+}
+
+.nav-section {
+  gap: 6px;
+}
+
+.nav-section + .nav-section {
+  border-top: 1px solid rgba(255, 249, 233, 0.12);
+  padding-top: 10px;
+}
+
+.nav-section-title {
+  color: rgba(255, 247, 223, 0.46);
+  font-family: var(--display-font);
+  font-size: 11px;
+  font-weight: 1000;
+  letter-spacing: 0.04em;
+  padding-left: 12px;
+  text-transform: uppercase;
 }
 
 .nav-secondary-label {
@@ -6606,6 +6627,7 @@ textarea {
   }
 
   body.sidebar-collapsed .nav-primary,
+  body.sidebar-collapsed .nav-section,
   body.sidebar-collapsed .nav-group {
     align-items: center;
     display: grid;
@@ -6615,6 +6637,7 @@ textarea {
 
   body.sidebar-collapsed .nav-item,
   body.sidebar-collapsed .nav-primary .nav-item,
+  body.sidebar-collapsed .nav-section .nav-item,
   body.sidebar-collapsed .nav-group .nav-item {
     align-items: center;
     display: inline-flex;
@@ -6640,11 +6663,16 @@ textarea {
     font-weight: 900;
   }
 
+  body.sidebar-collapsed .nav-section + .nav-section {
+    border-top: 0;
+    padding-top: 0;
+  }
+
   body.sidebar-collapsed .nav-group {
     border-style: dashed;
   }
 
-body.sidebar-collapsed .nav-group summary {
+  body.sidebar-collapsed .nav-group summary {
     font-size: 0;
     height: 34px;
     justify-content: center;
@@ -6654,6 +6682,7 @@ body.sidebar-collapsed .nav-group summary {
   }
 
   body.sidebar-collapsed .nav-secondary-label,
+  body.sidebar-collapsed .nav-section-title,
   body.sidebar-collapsed .nav-group summary span,
   body.sidebar-collapsed .nav-group summary em {
     display: none;
