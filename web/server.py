@@ -1289,22 +1289,89 @@ async def openclaw_proxy(request: Request, path: str = "") -> StreamingResponse:
 
 @app.get("/openclaw", response_class=HTMLResponse)
 def openclaw_workspace() -> HTMLResponse:
-    require_internal("read")
+    identity = require_internal("read")
     config = load_openclaw_config(DB_PATH)
+    binding = OpenClawAdapter().binding_for_user(DB_PATH, identity.user.user_id)
     url = config.control_ui_url or config.gateway_url
+    user_label = html.escape(identity.user.name or identity.user.email or identity.user.user_id)
+    user_email = html.escape(identity.user.email or identity.user.user_id)
+    agent_id = html.escape(binding.openclaw_agent_id or config.default_agent_id or "kolness_default")
+    session_id = html.escape(binding.openclaw_session_id or "new session")
     if not config.enabled or not url:
         return HTMLResponse(
-            "<!doctype html><meta charset='utf-8'><title>OpenClaw</title>"
-            "<body style='font-family:system-ui;padding:32px'>"
-            "<h1>OpenClaw 未配置</h1><p>请先在 Kolness Admin Console 配置 OpenClaw Gateway / Control UI。</p>"
-            "</body>",
+            "<!doctype html><html lang='zh-CN'><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
+            "<title>Kolness OpenClaw</title>"
+            "<style>"
+            "body{margin:0;min-height:100vh;background:#11100c;color:#fff9e9;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:grid;place-items:center;padding:32px}"
+            ".card{max-width:720px;border:4px solid #fff9e9;background:#1b1914;box-shadow:12px 12px 0 #57e0b1;padding:34px}"
+            ".tag{display:inline-block;background:#ffdd58;color:#11100c;border:3px solid #11100c;box-shadow:4px 4px 0 #000;padding:8px 12px;font-weight:900;text-transform:uppercase;letter-spacing:.08em}"
+            "h1{font-size:clamp(42px,7vw,84px);line-height:.92;margin:24px 0 16px;letter-spacing:0}"
+            "p{font-size:20px;line-height:1.55;color:#d9d0bf}"
+            "a{display:inline-flex;margin-top:20px;background:#ffdd58;color:#11100c;border:3px solid #11100c;box-shadow:5px 5px 0 #57e0b1;padding:13px 18px;font-weight:900;text-decoration:none}"
+            "</style><body><main class='card'>"
+            "<span class='tag'>OpenClaw not configured</span>"
+            "<h1>OpenClaw 原生控制台还没接上</h1>"
+            "<p>请先在 Kolness Admin Console 配置 OpenClaw Gateway / Control UI。配置后，这里会显示 OpenClaw 原生前端，同时保留 Kolness 的业务上下文和工具说明。</p>"
+            "<a href='/app'>返回 Kolness 工作台</a>"
+            "</main></body></html>",
             status_code=200,
         )
     safe_url = html.escape("/openclaw/proxy", quote=True)
+    upstream_label = html.escape(config.control_ui_url or config.gateway_url)
     return HTMLResponse(
-        f"<!doctype html><meta charset='utf-8'><title>Kolness OpenClaw</title>"
-        f"<style>html,body,iframe{{margin:0;width:100%;height:100%;border:0;background:#11100c}}</style>"
+        f"<!doctype html><html lang='zh-CN'><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
+        f"<title>Kolness × OpenClaw Workspace</title>"
+        f"<style>"
+        f":root{{--ink:#13100c;--paper:#fffaf0;--muted:#746b5e;--mint:#b9ffea;--green:#57e0b1;--yellow:#ffdd58;--red:#ff6348}}"
+        f"*{{box-sizing:border-box}}"
+        f"html,body{{margin:0;width:100%;height:100%;background:var(--ink);color:var(--ink);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}}"
+        f"body{{display:grid;grid-template-rows:auto 1fr;overflow:hidden}}"
+        f".top{{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 18px;background:var(--paper);border-bottom:4px solid var(--ink)}}"
+        f".brand{{display:flex;align-items:center;gap:14px;min-width:0}}"
+        f".logo{{width:54px;height:54px;display:grid;place-items:center;background:var(--yellow);border:3px solid var(--ink);box-shadow:5px 5px 0 var(--green);font-weight:1000;font-size:22px}}"
+        f".brand h1{{margin:0;font-size:25px;line-height:1;letter-spacing:0}}"
+        f".brand p{{margin:5px 0 0;color:var(--muted);font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}"
+        f".actions{{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}}"
+        f".pill,.btn{{border:3px solid var(--ink);background:#fffdf5;box-shadow:4px 4px 0 var(--ink);padding:9px 12px;font-weight:950;text-decoration:none;color:var(--ink)}}"
+        f".pill{{background:var(--mint);box-shadow:none;max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}"
+        f".btn.primary{{background:var(--yellow);box-shadow:4px 4px 0 var(--green)}}"
+        f".shell{{min-height:0;display:grid;grid-template-columns:280px minmax(0,1fr) 300px;gap:0;background:var(--paper)}}"
+        f"aside{{min-height:0;overflow:auto;background:#17140f;color:var(--paper);padding:18px;border-right:4px solid var(--ink)}}"
+        f"aside.right{{border-right:0;border-left:4px solid var(--ink);background:#fffdf5;color:var(--ink)}}"
+        f".section{{border:3px solid currentColor;padding:14px;margin-bottom:14px;box-shadow:5px 5px 0 rgba(87,224,177,.6)}}"
+        f".section h2{{font-size:18px;margin:0 0 10px;line-height:1}}"
+        f".section p,.section li{{font-size:14px;line-height:1.45;color:inherit;opacity:.82;font-weight:750}}"
+        f".section ul{{padding-left:18px;margin:8px 0 0}}"
+        f".tag{{display:inline-block;background:var(--yellow);color:var(--ink);border:2px solid var(--ink);padding:4px 8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:900;margin:3px 4px 3px 0}}"
+        f".frame{{min-width:0;min-height:0;position:relative;background:#080806}}"
+        f".frame-bar{{position:absolute;z-index:2;left:14px;top:14px;right:14px;display:flex;justify-content:space-between;gap:10px;pointer-events:none}}"
+        f".frame-bar span{{pointer-events:auto;background:rgba(255,250,240,.92);border:2px solid var(--ink);box-shadow:4px 4px 0 var(--green);padding:7px 10px;font-weight:950}}"
+        f"iframe{{width:100%;height:100%;border:0;background:#11100c;display:block}}"
+        f"@media (max-width:1100px){{.shell{{grid-template-columns:1fr}}aside{{display:none}}.top{{align-items:flex-start;flex-direction:column}}.actions{{justify-content:flex-start}}}}"
+        f"</style>"
+        f"<body>"
+        f"<header class='top'>"
+        f"<div class='brand'><div class='logo'>PR</div><div><h1>Kolness × OpenClaw</h1><p>OpenClaw 原生前端 + Kolness PR/KOL 工具层</p></div></div>"
+        f"<div class='actions'><span class='pill'>{user_label} · {agent_id}</span><a class='btn' href='/app'>Kolness 工作台</a><a class='btn primary' href='/app#agentWorkspace'>Agent Workspace</a></div>"
+        f"</header>"
+        f"<main class='shell'>"
+        f"<aside>"
+        f"<section class='section'><h2>当前身份</h2><p>{user_email}</p><p>Agent: {agent_id}</p><p>Session: {session_id}</p></section>"
+        f"<section class='section'><h2>Kolness 业务上下文</h2><ul><li>内部员工可用，客户侧不可直接访问。</li><li>权限、KOL 数据、Campaign 资产仍由 Kolness 控制。</li><li>这里用于需要 OpenClaw 原生对话/工具卡/工作区时使用。</li></ul></section>"
+        f"<section class='section'><h2>推荐使用方式</h2><p>日常 brief 推荐先用 Kolness 浮窗；需要更长任务、原生 OpenClaw 会话或调试工具时打开本页。</p></section>"
+        f"</aside>"
+        f"<section class='frame' aria-label='OpenClaw Control UI'>"
+        f"<div class='frame-bar'><span>Native OpenClaw UI</span><span>{upstream_label}</span></div>"
         f"<iframe src='{safe_url}' title='OpenClaw Control UI'></iframe>"
+        f"</section>"
+        f"<aside class='right'>"
+        f"<section class='section'><h2>已开放 Kolness MCP Tools</h2>"
+        f"<span class='tag'>brief</span><span class='tag'>search_kol</span><span class='tag'>match_kol</span><span class='tag'>kol_graph</span><span class='tag'>proposal</span><span class='tag'>campaign_save</span>"
+        f"</section>"
+        f"<section class='section'><h2>为什么不完全替代 Kolness UI</h2><p>OpenClaw 是执行层；Kolness 是 PR 业务 OS。KOL 档案、客户方案、历史 Campaign、权限和审计必须沉淀回 Kolness。</p></section>"
+        f"<section class='section'><h2>资产回写</h2><p>在 Kolness 浮窗里跑 OpenClaw 任务后，可保存到 Campaign。OpenClaw 原生页适合深度任务和原生体验验证。</p></section>"
+        f"</aside>"
+        f"</main></body></html>"
     )
 
 

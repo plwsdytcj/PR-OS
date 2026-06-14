@@ -5424,6 +5424,12 @@ function bindEvents() {
     setAgentFloatOpen(false);
     setView("agentWorkspace");
   });
+  $("#agentFloatOpenNativeBtn")?.addEventListener("click", () => {
+    window.open("/openclaw", "_blank", "noopener,noreferrer");
+  });
+  $("#openNativeOpenClawFromWorkspaceBtn")?.addEventListener("click", () => {
+    window.open("/openclaw", "_blank", "noopener,noreferrer");
+  });
   $("#agentFloatForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const payload = formToObject(event.currentTarget);
