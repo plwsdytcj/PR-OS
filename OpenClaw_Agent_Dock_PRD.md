@@ -639,6 +639,7 @@ OpenClaw 工具产物回写到：
 - `python3 scripts/smoke_openclaw_workspace.py`
 - `python3 scripts/smoke_openclaw_permissions.py`
 - `python3 scripts/smoke_openclaw_campaign_asset.py`
+- `python3 scripts/smoke_openclaw_async_save_flow.py`
 - 浏览器会话验证：
   - OpenClaw session 创建返回 200；
   - 10 个 Kolness tools 可见；
@@ -656,6 +657,7 @@ OpenClaw 工具产物回写到：
   - OpenClaw run 可以通过 `save-to-campaign` 保存为 Campaign；
   - 保存后的 Campaign 能进入历史资产，并保留 OpenClaw response/events。
   - 从历史资产打开 Campaign Room 后，仍能读取 `openclaw_run_saved` timeline 和原始 OpenClaw response/events。
+  - 浮窗同等的 `async:true` OpenClaw run 完成后，也可以保存为 Campaign 并在 Campaign Room 找回。
 
 ### 仍需真实 Gateway 才能验收
 

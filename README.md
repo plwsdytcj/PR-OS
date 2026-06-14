@@ -524,6 +524,7 @@ python3 scripts/smoke_openclaw_async.py
 python3 scripts/smoke_openclaw_workspace.py
 python3 scripts/smoke_openclaw_permissions.py
 python3 scripts/smoke_openclaw_campaign_asset.py
+python3 scripts/smoke_openclaw_async_save_flow.py
 python3 scripts/smoke_agent_model_provider.py
 python3 scripts/smoke_data_sources.py
 python3 scripts/smoke_storage_adapter.py
