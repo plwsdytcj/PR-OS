@@ -1,11 +1,11 @@
 # Kolness × OpenClaw Agent Dock PRD
 
-文档版本：v0.1  
-日期：2026-06-13  
+文档版本：v0.3  
+日期：2026-06-14  
 阶段：OpenClaw Sidecar MVP  
 目标用户：Kolness 内部 PR 团队成员  
 
-实现状态：v0.2 已接入 Kolness 后端桥和浮窗入口，真实 OpenClaw Gateway 仍需单独部署后配置 URL。
+实现状态：v0.3 已接入 Kolness 后端桥、异步 OpenClaw run、Kolness Agent 浮窗、`/openclaw` 原生控制台壳和页面级 smoke test。真实 OpenClaw Control UI / Gateway 仍由独立服务提供，通过 Admin Console 配置 URL。
 
 ---
 
@@ -621,13 +621,22 @@ OpenClaw 工具产物回写到：
   - `新任务`
   - `保存到 Campaign`
   - `查看资产`
-  - `全屏` 打开 `/openclaw`
+  - `全屏` 打开 Kolness 自己的 Agent Workspace，用于查看 Thread、过程日志和交付产物
+  - `OpenClaw 原生` 打开 `/openclaw`，用于进入 OpenClaw Control UI 壳页面
+- `/openclaw` 已从纯 iframe 升级为 Kolness × OpenClaw Workspace：
+  - 顶部显示 Kolness / OpenClaw 入口；
+  - 左侧显示当前内部账号、agent id、session id 和使用边界；
+  - 中间 iframe/proxy 嵌入 OpenClaw Control UI；
+  - 右侧显示已开放的 Kolness MCP tools 和资产回写说明；
+  - 未配置 Gateway / Control UI 时显示明确的配置提示页。
 
 ### 已验证
 
 - `python3 -m py_compile web/server.py src/openclaw/*.py`
 - `node --check web/static/app.js`
 - `python3 -m unittest tests.test_openclaw_adapter`
+- `python3 scripts/smoke_openclaw_async.py`
+- `python3 scripts/smoke_openclaw_workspace.py`
 - 浏览器会话验证：
   - OpenClaw session 创建返回 200；
   - 10 个 Kolness tools 可见；
@@ -638,6 +647,8 @@ OpenClaw 工具产物回写到：
   - run 可保存到 Campaign；
   - 达人档案读取和标签写入可用；
   - 甲方 share page 可生成。
+  - `/app` 存在 OpenClaw 原生入口按钮；
+  - `/openclaw` 未配置 / 已配置状态均可渲染正确页面。
 
 ### 仍需真实 Gateway 才能验收
 
