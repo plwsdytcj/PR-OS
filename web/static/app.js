@@ -2494,6 +2494,7 @@ function renderOpenClawMainMessages() {
   const run = state.activeOpenClawRun?.run || {};
   if (!run.run_id) return false;
   const events = state.activeOpenClawRun?.events || [];
+  renderOpenClawExecutionPanel(run, events);
   const status = run.status || "running";
   const displayMessage = displayOpenClawMessage(run);
   const response = run.response || run.error || "";
@@ -2528,6 +2529,71 @@ function renderOpenClawMainMessages() {
   `;
   list.scrollTop = list.scrollHeight;
   return true;
+}
+
+function renderOpenClawExecutionPanel(run, events) {
+  const steps = buildOpenClawSteps(run, events);
+  const meta = $("#agentRunMeta");
+  if (meta) {
+    meta.textContent = `${run.status || "running"} · ${fmtNumber(steps.length)} steps · ${fmtNumber(events.length)} events`;
+  }
+  $("#agentApprovePlanBtn")?.classList.add("hidden");
+  $("#agentCancelRunBtn")?.classList.toggle("hidden", !run.run_id || run.status !== "running");
+  $("#agentCopyBriefBtn")?.classList.add("hidden");
+  $("#agentApproveBtn")?.classList.add("hidden");
+  $("#agentClarificationForm")?.classList.add("hidden");
+
+  const stepList = $("#agentStepList");
+  if (stepList) {
+    stepList.innerHTML = steps.length
+      ? steps
+          .map(
+            (step, index) => `
+              <article class="agent-step-card ${escapeHTML(step.status || "pending")}">
+                <div class="agent-step-rail">${String(index + 1).padStart(2, "0")}</div>
+                <div class="agent-step-body">
+                  <div class="agent-step-head">
+                    <div>
+                      <span>OpenClaw / Kolness MCP</span>
+                      <strong>${escapeHTML(step.label || "任务步骤")}</strong>
+                    </div>
+                    <em>${escapeHTML(step.status || "pending")}</em>
+                  </div>
+                  <p>${escapeHTML(step.meta || "等待任务事件。")}</p>
+                </div>
+              </article>
+            `
+          )
+          .join("")
+      : emptyState("等待 OpenClaw 步骤", "任务启动后会显示 brief 解析、达人库读取、KOL 匹配和方案生成。");
+  }
+
+  const stream = $("#agentEventStream");
+  if (stream) {
+    stream.innerHTML = events.length
+      ? events
+          .map((event, index) => {
+            const payload = event.payload || {};
+            const status = openClawStepStatus(event, run);
+            const label = openClawStepLabel(event);
+            const summary = payload.content || payload.preview || payload.error || payload.tool_name || event.event_type || "";
+            return `
+              <article class="agent-event ${escapeHTML(status)}">
+                <div class="agent-event-index">${String(event.sequence || index + 1).padStart(2, "0")}</div>
+                <div>
+                  <div class="agent-event-head">
+                    <strong>${escapeHTML(label)}</strong>
+                    <span>${escapeHTML(status)}</span>
+                  </div>
+                  <p>${escapeHTML(String(summary).slice(0, 240))}</p>
+                  <div class="meta">${escapeHTML(event.event_type || "openclaw.event")}</div>
+                </div>
+              </article>
+            `;
+          })
+          .join("")
+      : emptyState("暂无 OpenClaw 事件", "OpenClaw Gateway 返回后会同步显示工具调用和产物事件。");
+  }
 }
 
 function renderAgentFloatMessages() {

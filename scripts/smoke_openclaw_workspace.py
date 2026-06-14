@@ -43,6 +43,7 @@ def main() -> None:
     assert "agentSaveOpenClawCampaignBtn" in app_js.text
     assert "saveActiveOpenClawRunToCampaign" in app_js.text
     assert "renderOpenClawMainMessages" in app_js.text
+    assert "renderOpenClawExecutionPanel" in app_js.text
 
     db_path = ROOT / "data" / "processed" / "tenants" / TENANT / "app.sqlite3"
     save_config(
