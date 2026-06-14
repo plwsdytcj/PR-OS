@@ -637,6 +637,7 @@ OpenClaw 工具产物回写到：
 - `python3 -m unittest tests.test_openclaw_adapter`
 - `python3 scripts/smoke_openclaw_async.py`
 - `python3 scripts/smoke_openclaw_workspace.py`
+- `python3 scripts/smoke_openclaw_permissions.py`
 - 浏览器会话验证：
   - OpenClaw session 创建返回 200；
   - 10 个 Kolness tools 可见；
@@ -649,6 +650,8 @@ OpenClaw 工具产物回写到：
   - 甲方 share page 可生成。
   - `/app` 存在 OpenClaw 原生入口按钮；
   - `/openclaw` 未配置 / 已配置状态均可渲染正确页面。
+  - 甲方账号不能访问 `/openclaw`、OpenClaw chat/session/status/tools；
+  - OpenClaw service token 只能访问 `/api/openclaw/tools/*`。
 
 ### 仍需真实 Gateway 才能验收
 
