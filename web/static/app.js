@@ -1936,6 +1936,9 @@ function renderAgentOpenClawStatus() {
   const available = Boolean(status.available);
   const issues = checks.issues || [];
   const latestRun = recentRuns[0];
+  const activeRun = state.activeOpenClawRun?.run || null;
+  const hasActiveRun = Boolean(activeRun?.run_id);
+  const hasSavedTarget = Boolean(state.activeOpenClawCampaignTarget?.id);
   node.innerHTML = `
     <div class="agent-openclaw-status-head">
       <div>
@@ -1959,6 +1962,18 @@ function renderAgentOpenClawStatus() {
     ${
       latestRun
         ? `<div class="agent-openclaw-latest"><strong>最近任务</strong><span>${escapeHTML(latestRun.status || "unknown")} · ${escapeHTML(latestRun.openclaw_agent_id || "default")} · ${fmtNumber(latestRun.event_count || 0)} events</span></div>`
+        : ""
+    }
+    ${
+      hasActiveRun
+        ? `<div class="agent-openclaw-actions">
+            <div>
+              <strong>${escapeHTML(activeRun.status || "running")}</strong>
+              <span>${escapeHTML(activeRun.openclaw_agent_id || "OpenClaw")} · ${fmtNumber((state.activeOpenClawRun?.events || []).length)} events</span>
+            </div>
+            <button id="agentSaveOpenClawCampaignBtn" class="secondary" type="button">${hasSavedTarget ? "已保存" : "保存到 Campaign"}</button>
+            <button id="agentViewOpenClawAssetsBtn" class="secondary${hasSavedTarget ? "" : " hidden"}" type="button">查看资产</button>
+          </div>`
         : ""
     }
   `;
@@ -2546,6 +2561,7 @@ async function runOpenClawFromPayload(payload) {
   state.activeOpenClawRun = optimisticOpenClawRun(payload);
   state.activeOpenClawCampaignTarget = null;
   renderAgentFloatDock();
+  renderAgentOpenClawStatus();
   const openClawPayload = enrichOpenClawPayload(payload);
   const data = await api("/api/openclaw/chat", {
     method: "POST",
@@ -2556,9 +2572,39 @@ async function runOpenClawFromPayload(payload) {
   state.activeOpenClawRun = data;
   state.activeOpenClawCampaignTarget = null;
   renderAgentFloatDock();
+  renderAgentOpenClawStatus();
   if (data.run?.run_id && data.run?.status === "running") startOpenClawPolling(data.run.run_id);
   await refreshWorkspaceHistoryIfVisible();
   return data;
+}
+
+async function saveActiveOpenClawRunToCampaign(formSelector = "#agentChatForm") {
+  const runId = state.activeOpenClawRun?.run?.run_id;
+  if (!runId) throw new Error("没有可保存的 OpenClaw run");
+  const form = $(formSelector);
+  const payload = form ? formToObject(form) : {};
+  const data = await api(`/api/openclaw/runs/${encodeURIComponent(runId)}/save-to-campaign`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  state.activeOpenClawCampaignTarget = data.target || null;
+  await refreshWorkspaceHistoryIfVisible();
+  renderAgentOpenClawStatus();
+  renderAgentFloatDock();
+  return data;
+}
+
+async function viewActiveOpenClawAssets() {
+  setAgentFloatOpen(false);
+  if (state.activeOpenClawCampaignTarget?.view === "platformOS") {
+    await loadPlatformDashboard();
+    setView("platformOS");
+    await openCampaignRoom(state.activeOpenClawCampaignTarget.id);
+    return;
+  }
+  await loadWorkspaceHistory();
+  setView("history");
 }
 
 function activeReasoningGraphArtifact() {
@@ -3051,6 +3097,7 @@ function startOpenClawPolling(runId) {
       const data = JSON.parse(event.data || "{}");
       state.activeOpenClawRun = data;
       renderAgentFloatDock();
+      renderAgentOpenClawStatus();
       const status = data.run?.status || "";
       if (status && status !== "running") {
         stopOpenClawPolling();
@@ -3079,6 +3126,7 @@ function startOpenClawPollFallback(runId) {
       const data = await api(`/api/openclaw/runs/${encodeURIComponent(runId)}/events`);
       state.activeOpenClawRun = data;
       renderAgentFloatDock();
+      renderAgentOpenClawStatus();
       const status = data.run?.status || "";
       if (status && status !== "running") {
         stopOpenClawPolling();
@@ -5505,33 +5553,34 @@ function bindEvents() {
     }
   });
   $("#agentFloatSaveCampaignBtn")?.addEventListener("click", async () => {
-    const runId = state.activeOpenClawRun?.run?.run_id;
-    if (!runId) return;
-    const form = $("#agentFloatForm");
-    const payload = form ? formToObject(form) : {};
     try {
-      const data = await api(`/api/openclaw/runs/${encodeURIComponent(runId)}/save-to-campaign`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      state.activeOpenClawCampaignTarget = data.target || null;
-      await refreshWorkspaceHistoryIfVisible();
+      await saveActiveOpenClawRunToCampaign("#agentFloatForm");
       toast("OpenClaw 任务已保存到 Campaign");
     } catch (error) {
       toast(error.message || "保存 Campaign 失败", true);
     }
   });
   $("#agentFloatViewAssetsBtn")?.addEventListener("click", async () => {
-    setAgentFloatOpen(false);
-    if (state.activeOpenClawCampaignTarget?.view === "platformOS") {
-      await loadPlatformDashboard();
-      setView("platformOS");
-      await openCampaignRoom(state.activeOpenClawCampaignTarget.id);
+    await viewActiveOpenClawAssets();
+  });
+  document.addEventListener("click", async (event) => {
+    const saveBtn = event.target.closest("#agentSaveOpenClawCampaignBtn");
+    if (saveBtn) {
+      try {
+        saveBtn.disabled = true;
+        await saveActiveOpenClawRunToCampaign("#agentChatForm");
+        toast("OpenClaw 任务已保存到 Campaign");
+      } catch (error) {
+        toast(error.message || "保存 Campaign 失败", true);
+      } finally {
+        saveBtn.disabled = false;
+      }
       return;
     }
-    await loadWorkspaceHistory();
-    setView("history");
+    const viewBtn = event.target.closest("#agentViewOpenClawAssetsBtn");
+    if (viewBtn) {
+      await viewActiveOpenClawAssets();
+    }
   });
   $("#agentFloatOpenFullBtn")?.addEventListener("click", () => {
     setAgentFloatOpen(false);

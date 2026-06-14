@@ -2109,6 +2109,34 @@ button {
   color: var(--ink);
 }
 
+.agent-openclaw-actions {
+  align-items: center;
+  background: #11100c;
+  border: 3px solid var(--ink);
+  color: #fffdf6;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  padding: 10px;
+}
+
+.agent-openclaw-actions strong,
+.agent-openclaw-actions span {
+  display: block;
+}
+
+.agent-openclaw-actions strong {
+  color: #b9ffea;
+  font-family: var(--display-font);
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.agent-openclaw-actions span {
+  color: rgba(255, 253, 246, 0.72);
+  margin-top: 2px;
+}
+
 .agent-step-list {
   margin-bottom: 14px;
 }
