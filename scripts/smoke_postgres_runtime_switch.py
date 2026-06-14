@@ -19,6 +19,7 @@ def main() -> None:
         assert postgres_enabled() is True
         assert tenant_from_path(Path("data/processed/phase1_web.sqlite3")) == "default"
         assert tenant_from_path(Path("data/processed/tenants/alpha-media/phase1_web.sqlite3")) == "alpha-media"
+        assert tenant_from_path(Path("data/processed/tenants/openclaw-smoke/app.sqlite3")) == "openclaw-smoke"
         print("OK postgres runtime switch")
     finally:
         if previous is None:

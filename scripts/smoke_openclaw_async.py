@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import sys
+from uuid import uuid4
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,7 +13,8 @@ from src.openclaw.schemas import OpenClawConfig
 from src.openclaw.storage import load_binding, save_config
 
 
-DB_PATH = ROOT / "data" / "processed" / "smoke_openclaw_async.sqlite3"
+TENANT = f"openclaw-async-{uuid4().hex[:8]}"
+DB_PATH = ROOT / "data" / "processed" / "tenants" / TENANT / "app.sqlite3"
 
 
 class FakeGatewayOpenClawAdapter(OpenClawAdapter):
@@ -31,6 +33,7 @@ class FakeGatewayOpenClawAdapter(OpenClawAdapter):
 def main() -> None:
     if DB_PATH.exists():
         DB_PATH.unlink()
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     save_config(
         DB_PATH,
         OpenClawConfig(
