@@ -2401,6 +2401,29 @@ function renderOpenClawWorkspace(run, events) {
   `;
 }
 
+function summarizeOpenClawResponse(response, events = []) {
+  const text = String(response || "").trim();
+  if (!text) return "";
+  if (/返回错误|失败|error/i.test(text) && text.length < 360) return text;
+  const eventKols = openClawEventKols(events);
+  const fallbackKols = extractOpenClawKols(text);
+  const kols = (eventKols.length ? eventKols : fallbackKols).slice(0, 8);
+  const lines = [];
+  const firstLine = text.split(/\n+/).find((line) => line.trim() && !line.trim().startsWith("#"));
+  lines.push(firstLine || "已完成本次 PR Agent 任务。");
+  if (kols.length) lines.push(`推荐 KOL：${kols.join("、")}`);
+  const riskMatch = text.match(/##\s*主要风险\s*([\s\S]*?)(?:\n##\s|$)/);
+  if (riskMatch) {
+    const risk = riskMatch[1]
+      .split(/\n+/)
+      .map((line) => line.replace(/^[\s>*-]+/, "").trim())
+      .find(Boolean);
+    if (risk) lines.push(`风险提示：${risk.slice(0, 110)}${risk.length > 110 ? "..." : ""}`);
+  }
+  lines.push("完整推荐理由、预算建议和客户方案已在下方任务空间生成，可保存到 Campaign。");
+  return lines.join("\n");
+}
+
 function renderOpenClawFloatContent(summary) {
   const run = state.activeOpenClawRun?.run || {};
   const events = state.activeOpenClawRun?.events || [];
@@ -2453,7 +2476,7 @@ function renderOpenClawFloatMessages() {
     : "";
   const assistantMessage =
     run.response || run.error
-      ? `<article class="agent-float-message assistant"><span>Agent</span><p>${escapeHTML(run.response || run.error)}</p></article>`
+      ? `<article class="agent-float-message assistant"><span>Agent</span><p>${escapeHTML(summarizeOpenClawResponse(run.response || run.error, events))}</p></article>`
       : "";
   node.innerHTML = `
     <section class="agent-float-transcript">
@@ -2474,6 +2497,7 @@ function renderOpenClawMainMessages() {
   const status = run.status || "running";
   const displayMessage = displayOpenClawMessage(run);
   const response = run.response || run.error || "";
+  const assistantSummary = summarizeOpenClawResponse(response, events);
   const meta = $("#agentThreadMeta");
   if (meta) {
     meta.textContent = `${displayMessage || "OpenClaw 深度任务"} · ${status} · ${fmtNumber(events.length)} events`;
@@ -2491,8 +2515,8 @@ function renderOpenClawMainMessages() {
       <div class="agent-message-role">Agent</div>
       <div>
         <p>${
-          response
-            ? escapeHTML(response)
+          assistantSummary
+            ? escapeHTML(assistantSummary)
             : "我正在调用 Kolness 工具：解析 brief、读取达人库、匹配 KOL、生成风险和客户可读结论。"
         }</p>
         <span>${escapeHTML(status)} · ${fmtNumber(events.length)} events</span>
