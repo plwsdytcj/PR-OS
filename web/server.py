@@ -18,7 +18,7 @@ import pandas as pd
 import requests
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1416,7 +1416,7 @@ async def openclaw_proxy(request: Request, path: str = "") -> StreamingResponse:
 
 
 @app.get("/openclaw", response_class=HTMLResponse)
-def openclaw_workspace() -> HTMLResponse | RedirectResponse:
+def openclaw_workspace() -> Response:
     identity = require_internal("read")
     config = load_openclaw_config(DB_PATH)
     binding = OpenClawAdapter().binding_for_user(DB_PATH, identity.user.user_id)
