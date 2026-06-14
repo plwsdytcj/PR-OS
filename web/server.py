@@ -1393,9 +1393,9 @@ async def openclaw_call_tool(tool_name: str, payload: dict[str, Any], request: R
 async def openclaw_proxy(request: Request, path: str = "") -> StreamingResponse:
     require_internal("read")
     config = load_openclaw_config(DB_PATH)
-    upstream = (config.control_ui_url or config.gateway_url).rstrip("/")
+    upstream = config.control_ui_url.rstrip("/")
     if not config.enabled or not upstream:
-        raise HTTPException(status_code=503, detail="OpenClaw is not configured")
+        raise HTTPException(status_code=503, detail="OpenClaw native UI is not configured")
     query = request.url.query
     target = f"{upstream}/{path.lstrip('/')}"
     if query:
@@ -1420,27 +1420,43 @@ def openclaw_workspace() -> HTMLResponse:
     identity = require_internal("read")
     config = load_openclaw_config(DB_PATH)
     binding = OpenClawAdapter().binding_for_user(DB_PATH, identity.user.user_id)
-    url = config.control_ui_url or config.gateway_url
+    url = config.control_ui_url
     user_label = html.escape(identity.user.name or identity.user.email or identity.user.user_id)
     user_email = html.escape(identity.user.email or identity.user.user_id)
     agent_id = html.escape(binding.openclaw_agent_id or config.default_agent_id or "kolness_default")
     session_id = html.escape(binding.openclaw_session_id or "new session")
     if not config.enabled or not url:
+        state_label = "OpenClaw disabled" if not config.enabled else "Native UI not connected"
+        heading = "OpenClaw 原生前端还没接上" if config.enabled else "OpenClaw 还没启用"
+        gateway_note = "Kolness Agent / MCP bridge 已可用；只是还没有配置可 iframe 的 OpenClaw 原生前端地址。" if config.enabled and config.gateway_url else "请先在 Kolness Admin Console 配置 OpenClaw Gateway / Control UI。"
         return HTMLResponse(
             "<!doctype html><html lang='zh-CN'><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
             "<title>Kolness OpenClaw</title>"
             "<style>"
             "body{margin:0;min-height:100vh;background:#11100c;color:#fff9e9;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:grid;place-items:center;padding:32px}"
-            ".card{max-width:720px;border:4px solid #fff9e9;background:#1b1914;box-shadow:12px 12px 0 #57e0b1;padding:34px}"
+            ".card{max-width:820px;border:4px solid #fff9e9;background:#1b1914;box-shadow:12px 12px 0 #57e0b1;padding:34px}"
             ".tag{display:inline-block;background:#ffdd58;color:#11100c;border:3px solid #11100c;box-shadow:4px 4px 0 #000;padding:8px 12px;font-weight:900;text-transform:uppercase;letter-spacing:.08em}"
             "h1{font-size:clamp(42px,7vw,84px);line-height:.92;margin:24px 0 16px;letter-spacing:0}"
             "p{font-size:20px;line-height:1.55;color:#d9d0bf}"
-            "a{display:inline-flex;margin-top:20px;background:#ffdd58;color:#11100c;border:3px solid #11100c;box-shadow:5px 5px 0 #57e0b1;padding:13px 18px;font-weight:900;text-decoration:none}"
+            ".grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:18px}"
+            ".box{border:3px solid #fff9e9;background:#11100c;padding:14px;box-shadow:5px 5px 0 rgba(87,224,177,.75)}"
+            ".box strong{display:block;margin-bottom:6px;color:#ffdd58;font-size:14px;text-transform:uppercase}"
+            ".box span{color:#fff9e9;font-size:17px;font-weight:800;word-break:break-all}"
+            ".actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:22px}"
+            "a{display:inline-flex;background:#ffdd58;color:#11100c;border:3px solid #11100c;box-shadow:5px 5px 0 #57e0b1;padding:13px 18px;font-weight:900;text-decoration:none}"
+            "a.secondary{background:#fff9e9;box-shadow:5px 5px 0 #ffdd58}"
+            "@media(max-width:720px){.grid{grid-template-columns:1fr}}"
             "</style><body><main class='card'>"
-            "<span class='tag'>OpenClaw not configured</span>"
-            "<h1>OpenClaw 原生控制台还没接上</h1>"
-            "<p>请先在 Kolness Admin Console 配置 OpenClaw Gateway / Control UI。配置后，这里会显示 OpenClaw 原生前端，同时保留 Kolness 的业务上下文和工具说明。</p>"
-            "<a href='/app'>返回 Kolness 工作台</a>"
+            f"<span class='tag'>{html.escape(state_label)}</span>"
+            f"<h1>{heading}</h1>"
+            f"<p>{html.escape(gateway_note)}</p>"
+            "<div class='grid'>"
+            f"<div class='box'><strong>Agent</strong><span>{agent_id}</span></div>"
+            f"<div class='box'><strong>Session</strong><span>{session_id}</span></div>"
+            f"<div class='box'><strong>Gateway</strong><span>{html.escape(config.gateway_url or '未配置')}</span></div>"
+            f"<div class='box'><strong>Native UI</strong><span>{html.escape(config.control_ui_url or '未配置')}</span></div>"
+            "</div>"
+            "<div class='actions'><a href='/app'>返回 Kolness 工作台</a><a class='secondary' href='/app#agentWorkspace'>打开 Agent Workspace</a></div>"
             "</main></body></html>",
             status_code=200,
         )

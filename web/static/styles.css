@@ -1089,6 +1089,16 @@ button {
   pointer-events: none;
 }
 
+.agent-float-dock:has(.agent-float-panel:not(.hidden))::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(circle at 78% 18%, rgba(185, 255, 234, 0.2), transparent 26%),
+    rgba(17, 16, 12, 0.66);
+  pointer-events: auto;
+}
+
 .agent-float-dock.hidden {
   display: none;
 }
@@ -1135,6 +1145,7 @@ button {
 }
 
 .agent-float-panel {
+  position: relative;
   width: min(980px, calc(100vw - 32px));
   height: min(820px, calc(100vh - 96px));
   overflow: hidden;
@@ -1143,8 +1154,21 @@ button {
   gap: 12px;
   padding: 16px;
   border: 4px solid var(--ink);
-  background: var(--paper);
+  background: #fffaf0;
   box-shadow: 10px 10px 0 #57e0b1, 14px 14px 0 var(--ink);
+  isolation: isolate;
+}
+
+.agent-float-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(90deg, rgba(17, 16, 12, 0.035) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(17, 16, 12, 0.035) 1px, transparent 1px),
+    #fffaf0;
+  background-size: 44px 44px;
 }
 
 .agent-float-panel.hidden {
@@ -1205,7 +1229,10 @@ button {
   display: grid;
   align-content: start;
   gap: 12px;
-  padding-right: 4px;
+  padding: 10px;
+  border: 3px solid var(--ink);
+  background: #fffdf6;
+  box-shadow: inset 0 0 0 2px rgba(17, 16, 12, 0.04);
 }
 
 .agent-float-openclaw-space {
@@ -1228,8 +1255,8 @@ button {
   position: relative;
   border: 3px solid var(--ink);
   background:
-    radial-gradient(circle at 78% 18%, rgba(185, 255, 234, 0.88) 0 16%, transparent 17%),
-    linear-gradient(135deg, rgba(255, 221, 88, 0.3), transparent 38%),
+    radial-gradient(circle at 78% 18%, rgba(185, 255, 234, 0.58) 0 16%, transparent 17%),
+    linear-gradient(135deg, rgba(255, 221, 88, 0.22), transparent 38%),
     #fff9e9;
   padding: 14px;
   box-shadow: 6px 6px 0 #57e0b1, 9px 9px 0 var(--ink);
@@ -1373,7 +1400,7 @@ button {
 .agent-float-welcome,
 .agent-float-run-card {
   border: 3px dashed var(--ink);
-  background: rgba(255, 249, 233, 0.92);
+  background: #fff9e9;
   padding: 14px;
 }
 
@@ -1498,7 +1525,7 @@ button {
   display: grid;
   gap: 9px;
   border: 3px solid var(--ink);
-  background: rgba(255, 253, 246, 0.94);
+  background: #fffdf6;
   padding: 12px;
   box-shadow: 4px 4px 0 rgba(23, 18, 13, 0.75);
 }
@@ -1540,7 +1567,7 @@ button {
 
 .agent-float-settings {
   border: 2px solid rgba(23, 18, 13, 0.2);
-  background: rgba(255, 249, 233, 0.72);
+  background: #fff9e9;
   padding: 8px 10px;
 }
 
