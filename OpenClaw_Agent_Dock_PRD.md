@@ -638,6 +638,7 @@ OpenClaw 工具产物回写到：
 - `python3 scripts/smoke_openclaw_async.py`
 - `python3 scripts/smoke_openclaw_workspace.py`
 - `python3 scripts/smoke_openclaw_permissions.py`
+- `python3 scripts/smoke_openclaw_campaign_asset.py`
 - 浏览器会话验证：
   - OpenClaw session 创建返回 200；
   - 10 个 Kolness tools 可见；
@@ -652,6 +653,8 @@ OpenClaw 工具产物回写到：
   - `/openclaw` 未配置 / 已配置状态均可渲染正确页面。
   - 甲方账号不能访问 `/openclaw`、OpenClaw chat/session/status/tools；
   - OpenClaw service token 只能访问 `/api/openclaw/tools/*`。
+  - OpenClaw run 可以通过 `save-to-campaign` 保存为 Campaign；
+  - 保存后的 Campaign 能进入历史资产，并保留 OpenClaw response/events。
 
 ### 仍需真实 Gateway 才能验收
 
