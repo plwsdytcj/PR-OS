@@ -2440,7 +2440,7 @@ async function runOpenClawFromPayload(payload) {
   const data = await api("/api/openclaw/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(openClawPayload),
+    body: JSON.stringify({ ...openClawPayload, async: true }),
   });
   data.displayMessage = displayMessage;
   state.activeOpenClawRun = data;

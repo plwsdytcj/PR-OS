@@ -844,21 +844,29 @@ async def openclaw_session_create(payload: dict[str, Any] | None = None) -> dict
 
 
 @app.post("/api/openclaw/chat")
-async def openclaw_chat(payload: dict[str, Any]) -> dict[str, Any]:
+async def openclaw_chat(payload: dict[str, Any], background_tasks: BackgroundTasks) -> dict[str, Any]:
     identity = require_internal("project_run")
     if identity.user.user_type == "client":
         raise HTTPException(status_code=403, detail="client cannot use OpenClaw")
     message = str(payload.get("message") or payload.get("brief") or "").strip()
     if not message:
         raise HTTPException(status_code=400, detail="message is required")
-    adapter = OpenClawAdapter()
-    return adapter.start_chat(
-        DB_PATH,
-        user_id=identity.user.user_id,
-        message=message,
-        campaign_id=str(payload.get("campaign_id") or ""),
-        session_id=str(payload.get("openclaw_session_id") or payload.get("session_id") or ""),
-    )
+    adapter = OpenClawAdapter(timeout=180)
+    db_path = _db_path_ctx.get()
+    run_payload = {
+        "db_path": db_path,
+        "user_id": identity.user.user_id,
+        "message": message,
+        "campaign_id": str(payload.get("campaign_id") or ""),
+        "session_id": str(payload.get("openclaw_session_id") or payload.get("session_id") or ""),
+    }
+    if payload.get("async") is True:
+        data = adapter.start_chat_async(**run_payload)
+        run_id = str((data.get("run") or {}).get("run_id") or "")
+        if run_id:
+            background_tasks.add_task(OpenClawAdapter(timeout=180).complete_chat, db_path, run_id)
+        return data
+    return adapter.start_chat(**run_payload)
 
 
 @app.get("/api/openclaw/runs/{run_id}/events")

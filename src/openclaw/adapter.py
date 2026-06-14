@@ -53,7 +53,7 @@ class OpenClawAdapter:
         save_binding(db_path, binding)
         return binding
 
-    def start_chat(self, db_path: Path, user_id: str, message: str, campaign_id: str = "", session_id: str = "") -> dict[str, Any]:
+    def create_chat(self, db_path: Path, user_id: str, message: str, campaign_id: str = "", session_id: str = "") -> OpenClawRun:
         config = load_config(db_path)
         binding = self.binding_for_user(db_path, user_id)
         if session_id:
@@ -69,17 +69,35 @@ class OpenClawAdapter:
         )
         save_run(db_path, run)
         self._event(db_path, run.run_id, 1, "message.created", {"role": "user", "content": message})
+        return run
+
+    def start_chat(self, db_path: Path, user_id: str, message: str, campaign_id: str = "", session_id: str = "") -> dict[str, Any]:
+        run = self.create_chat(db_path, user_id, message, campaign_id=campaign_id, session_id=session_id)
+        return self.complete_chat(db_path, run.run_id)
+
+    def start_chat_async(self, db_path: Path, user_id: str, message: str, campaign_id: str = "", session_id: str = "") -> dict[str, Any]:
+        run = self.create_chat(db_path, user_id, message, campaign_id=campaign_id, session_id=session_id)
+        return self.payload(db_path, run.run_id)
+
+    def complete_chat(self, db_path: Path, run_id: str) -> dict[str, Any]:
+        config = load_config(db_path)
+        run = load_run(db_path, run_id)
+        if run is None:
+            return {}
+        if run.status != "running":
+            return self.payload(db_path, run.run_id)
+        binding = self.binding_for_user(db_path, run.user_id)
         if not config.enabled or not config.gateway_url:
             run.status = "failed"
             run.error = "OpenClaw 未启用或未配置 Gateway URL。"
             run.updated_at = now_iso()
             save_run(db_path, run)
-            self._event(db_path, run.run_id, 2, "run.failed", {"error": run.error})
+            self._event(db_path, run.run_id, self._next_sequence(db_path, run.run_id), "run.failed", {"error": run.error})
             return self.payload(db_path, run.run_id)
 
         try:
-            self._event(db_path, run.run_id, 2, "gateway.started", {"tool_name": "openclaw.gateway", "agent_id": run.openclaw_agent_id})
-            response = self._send_message(config, run, message)
+            self._event(db_path, run.run_id, self._next_sequence(db_path, run.run_id), "gateway.started", {"tool_name": "openclaw.gateway", "agent_id": run.openclaw_agent_id})
+            response = self._send_message(config, run, run.message)
             run.response = response.get("message") or response.get("response") or response.get("content") or "OpenClaw 已接收任务。"
             run.openclaw_session_id = response.get("session_id") or response.get("thread_id") or run.openclaw_session_id
             binding.openclaw_session_id = run.openclaw_session_id
@@ -88,8 +106,8 @@ class OpenClawAdapter:
             run.status = "completed"
             run.updated_at = now_iso()
             save_run(db_path, run)
-            self._event(db_path, run.run_id, 3, "gateway.completed", {"tool_name": "openclaw.gateway", "agent_id": run.openclaw_agent_id})
-            next_sequence = self._record_response_events(db_path, run, response, start_sequence=4)
+            self._event(db_path, run.run_id, self._next_sequence(db_path, run.run_id), "gateway.completed", {"tool_name": "openclaw.gateway", "agent_id": run.openclaw_agent_id})
+            next_sequence = self._record_response_events(db_path, run, response, start_sequence=self._next_sequence(db_path, run.run_id))
             self._event(db_path, run.run_id, next_sequence, "message.completed", {"role": "assistant", "content": run.response})
             self._event(db_path, run.run_id, next_sequence + 1, "run.completed", {"session_id": run.openclaw_session_id})
         except Exception as exc:
@@ -97,8 +115,9 @@ class OpenClawAdapter:
             run.error = str(exc)
             run.updated_at = now_iso()
             save_run(db_path, run)
-            self._event(db_path, run.run_id, 2, "tool.failed", {"tool_name": "openclaw.gateway", "error": run.error})
-            self._event(db_path, run.run_id, 3, "run.failed", {"error": run.error})
+            sequence = self._next_sequence(db_path, run.run_id)
+            self._event(db_path, run.run_id, sequence, "tool.failed", {"tool_name": "openclaw.gateway", "error": run.error})
+            self._event(db_path, run.run_id, sequence + 1, "run.failed", {"error": run.error})
         return self.payload(db_path, run.run_id)
 
     def payload(self, db_path: Path, run_id: str) -> dict[str, Any]:
@@ -256,6 +275,10 @@ class OpenClawAdapter:
             if name and name not in names:
                 names.append(name)
         return names[:8]
+
+    def _next_sequence(self, db_path: Path, run_id: str) -> int:
+        events = load_events_for_run(db_path, run_id)
+        return max((event.sequence for event in events), default=0) + 1
 
     def _event(self, db_path: Path, run_id: str, sequence: int, event_type: str, payload: dict[str, Any]) -> None:
         save_event(
