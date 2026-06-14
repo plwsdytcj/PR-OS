@@ -331,7 +331,7 @@ function decorateViews() {
   $$(".view").forEach((view) => {
     if (view.querySelector(":scope > .view-poster")) return;
     const meta = VIEW_TITLES[view.id];
-    if (!meta || view.id === "workspace") return;
+    if (!meta || view.id === "workspace" || view.id === "agentWorkspace") return;
     const header = document.createElement("div");
     header.className = "view-poster";
     header.innerHTML = `
@@ -2035,7 +2035,7 @@ function renderAgentArtifacts() {
   if (!list) return;
   list.innerHTML = state.activeAgentArtifacts.length
     ? state.activeAgentArtifacts.map((artifact) => renderAgentArtifact(artifact)).join("")
-    : emptyState("暂无产物", "Agent 会在这里沉淀知识检索、PR 运行结果和甲方方案。");
+    : emptyState("等待 Agent 产物", "启动 OpenClaw 后，这里会沉淀 KOL 推荐、风险判断、图谱快照和可保存到 Campaign 的方案资产。");
 }
 
 function renderAgentFloatDock() {

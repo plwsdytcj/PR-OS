@@ -1754,10 +1754,12 @@ button {
 
 .agent-console {
   align-items: center;
-  background: #fffdf6;
+  background:
+    linear-gradient(110deg, transparent 0 58%, rgba(247, 216, 76, 0.92) 58% 70%, rgba(185, 255, 234, 0.92) 70% 82%, rgba(255, 122, 94, 0.28) 82% 100%),
+    #fffdf6;
   border: 3px solid #17120d;
   border-radius: 6px;
-  box-shadow: 8px 8px 0 #ff7ab6;
+  box-shadow: 8px 8px 0 #17120d, 12px 12px 0 #b9ffea;
   display: flex;
   justify-content: space-between;
   gap: 18px;
@@ -1778,6 +1780,15 @@ button {
   color: var(--muted);
   margin: 0;
   max-width: 720px;
+}
+
+.agent-manus-header {
+  min-height: 180px;
+}
+
+.agent-manus-header .primary {
+  align-self: flex-end;
+  min-width: 120px;
 }
 
 .agent-console-mark {
@@ -1806,7 +1817,8 @@ button {
 .agent-layout {
   display: grid;
   gap: 18px;
-  grid-template-columns: minmax(220px, 0.8fr) minmax(360px, 1.5fr) minmax(260px, 0.9fr);
+  grid-template-columns: minmax(230px, 0.72fr) minmax(520px, 1.55fr) minmax(300px, 0.9fr);
+  min-height: calc(100vh - 260px);
 }
 
 .agent-sidebar,
@@ -1819,6 +1831,18 @@ button {
 .agent-main {
   display: grid;
   gap: 18px;
+}
+
+.agent-chat-panel {
+  background:
+    radial-gradient(circle at 86% 12%, rgba(185, 255, 234, 0.55) 0 15%, transparent 16%),
+    #fffdf6;
+}
+
+.agent-chat-panel .panel-header h2 {
+  font-size: clamp(32px, 4.8vw, 58px);
+  line-height: 0.88;
+  margin: 4px 0 6px;
 }
 
 .agent-task-list,
@@ -1862,6 +1886,39 @@ button {
   font-size: 13px;
   margin: 0;
   max-width: 360px;
+}
+
+.agent-openclaw-strip {
+  align-items: center;
+  background: #11100c;
+  border: 3px solid #17120d;
+  box-shadow: 5px 5px 0 #b9ffea;
+  color: #fffdf6;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  margin-top: 4px;
+  padding: 12px;
+}
+
+.agent-openclaw-strip strong,
+.agent-openclaw-strip span {
+  display: block;
+}
+
+.agent-openclaw-strip strong {
+  font-family: var(--display-font);
+  letter-spacing: 0;
+}
+
+.agent-openclaw-strip span {
+  color: rgba(255, 253, 246, 0.72);
+  font-weight: 800;
+  margin-top: 3px;
+}
+
+.agent-openclaw-strip button {
+  flex: 0 0 auto;
 }
 
 .agent-step-list {
@@ -2021,8 +2078,8 @@ button {
   box-shadow: inset 0 0 0 2px rgba(255, 253, 246, 0.12);
   display: grid;
   gap: 12px;
-  max-height: 420px;
-  min-height: 220px;
+  max-height: 520px;
+  min-height: 300px;
   overflow: auto;
   padding: 14px;
 }
