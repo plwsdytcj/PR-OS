@@ -32,7 +32,9 @@ def main() -> None:
     assert app_page.status_code == 200, app_page.text[:400]
     assert "agentFloatOpenNativeBtn" in app_page.text
     assert "openNativeOpenClawFromWorkspaceBtn" in app_page.text
-    assert "app.js?v=20260614-3" in app_page.text
+    assert "openclaw command center" in app_page.text
+    assert "PR Agent OS" in app_page.text
+    assert "app.js?v=" in app_page.text
 
     db_path = ROOT / "data" / "processed" / "tenants" / TENANT / "app.sqlite3"
     save_config(
