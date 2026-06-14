@@ -28,6 +28,7 @@ const state = {
   agentRuntime: null,
   agentRuntimeComparison: null,
   openClaw: null,
+  openClawDiagnostics: null,
   activeOpenClawRun: null,
   activeOpenClawCampaignTarget: null,
   openClawEventSource: null,
@@ -485,6 +486,11 @@ async function loadOrganization() {
     state.openClaw = await api("/api/openclaw/config");
   } catch (error) {
     state.openClaw = null;
+  }
+  try {
+    state.openClawDiagnostics = await api("/api/openclaw/diagnostics");
+  } catch (error) {
+    state.openClawDiagnostics = null;
   }
   state.authUsers = users.items || [];
   state.authClients = clients.items || [];
@@ -1690,6 +1696,7 @@ function renderOpenClawAdmin() {
   const meta = $("#openClawConfigMeta");
   const bindingSelect = $("#openClawBindingUserSelect");
   const bindingList = $("#openClawBindingList");
+  const diagnosticsPanel = $("#openClawDiagnosticsPanel");
   const canAdmin = isCurrentUserAdmin();
   const config = state.openClaw?.config || {};
   const status = state.openClaw?.status || {};
@@ -1749,6 +1756,62 @@ function renderOpenClawAdmin() {
           .join("")
       : emptyState("暂无 OpenClaw 绑定", "保存配置后，可以给每个内部员工绑定自己的 OpenClaw agent。");
   }
+  renderOpenClawDiagnostics(diagnosticsPanel);
+}
+
+function renderOpenClawDiagnostics(target) {
+  if (!target) return;
+  const diagnostics = state.openClawDiagnostics;
+  if (!diagnostics) {
+    target.innerHTML = emptyState("暂无 OpenClaw 诊断", "只有内部账号可读取 diagnostics；admin 进入后会显示配置、绑定、工具和最近运行状态。");
+    return;
+  }
+  const checks = diagnostics.checks || {};
+  const status = diagnostics.status || {};
+  const issues = checks.issues || [];
+  const recent = diagnostics.run_summary?.recent || [];
+  const metricItems = [
+    ["enabled", checks.enabled ? "ON" : "OFF"],
+    ["gateway", checks.gateway_url ? "ready" : "missing"],
+    ["tools", fmtNumber(checks.tool_count || 0)],
+    ["bindings", `${fmtNumber(checks.active_binding_count || 0)}/${fmtNumber(checks.binding_count || 0)}`],
+    ["runs", fmtNumber(checks.run_count || 0)],
+  ];
+  target.innerHTML = `
+    <div class="openclaw-diagnostics-head">
+      <div>
+        <span class="card-kicker">diagnostics</span>
+        <strong>${escapeHTML(status.available ? "OpenClaw 可用" : "OpenClaw 未就绪")}</strong>
+        <p>${escapeHTML(status.message || "等待 OpenClaw 状态。")}</p>
+      </div>
+      <span class="status-pill ${status.available ? "ok" : "warn"}">${escapeHTML(status.configured ? "configured" : "setup needed")}</span>
+    </div>
+    <div class="openclaw-diagnostics-grid">
+      ${metricItems.map(([label, value]) => `<span><strong>${escapeHTML(value)}</strong><small>${escapeHTML(label)}</small></span>`).join("")}
+    </div>
+    ${
+      issues.length
+        ? `<div class="openclaw-diagnostics-issues">${issues.map((issue) => `<span>${escapeHTML(issue)}</span>`).join("")}</div>`
+        : `<div class="openclaw-diagnostics-issues ok"><span>配置、工具和绑定检查通过</span></div>`
+    }
+    <div class="openclaw-run-log">
+      ${
+        recent.length
+          ? recent
+              .slice(0, 4)
+              .map(
+                (run) => `
+                  <article>
+                    <strong>${escapeHTML(run.status || "unknown")}</strong>
+                    <span>${escapeHTML(run.openclaw_agent_id || "default agent")} · ${fmtNumber(run.event_count || 0)} events</span>
+                  </article>
+                `
+              )
+              .join("")
+          : "<p>还没有 OpenClaw run。启动一次 Agent 后，这里会出现最近任务。</p>"
+      }
+    </div>
+  `;
 }
 
 function renderAgentTasks() {
@@ -5304,6 +5367,7 @@ function bindEvents() {
   $("#reloadOpenClawConfigBtn")?.addEventListener("click", async () => {
     try {
       state.openClaw = await api("/api/openclaw/config");
+      state.openClawDiagnostics = await api("/api/openclaw/diagnostics");
       renderOpenClawAdmin();
       toast("OpenClaw 配置已重新加载");
     } catch (error) {
@@ -5323,6 +5387,7 @@ function bindEvents() {
       });
       state.openClaw = { ...(state.openClaw || {}), ...data };
       state.openClaw = await api("/api/openclaw/config");
+      state.openClawDiagnostics = await api("/api/openclaw/diagnostics");
       renderOpenClawAdmin();
       renderAgentRuntimeControls();
       toast("OpenClaw 配置已保存");
@@ -5340,6 +5405,7 @@ function bindEvents() {
         body: JSON.stringify(payload),
       });
       state.openClaw = await api("/api/openclaw/config");
+      state.openClawDiagnostics = await api("/api/openclaw/diagnostics");
       renderOpenClawAdmin();
       toast("员工 OpenClaw Agent 已绑定");
     } catch (error) {

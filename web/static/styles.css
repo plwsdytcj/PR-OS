@@ -961,6 +961,111 @@ button {
   margin-top: 20px;
 }
 
+.openclaw-diagnostics {
+  background: #11100c;
+  border: 3px solid var(--ink);
+  box-shadow: 6px 6px 0 #b9ffea;
+  color: #fffdf6;
+  display: grid;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 14px;
+}
+
+.openclaw-diagnostics-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.openclaw-diagnostics-head strong {
+  display: block;
+  font-family: var(--display-font);
+  font-size: 24px;
+  letter-spacing: 0;
+  line-height: 1;
+  margin: 5px 0;
+}
+
+.openclaw-diagnostics-head p {
+  color: rgba(255, 253, 246, 0.72);
+  margin: 0;
+}
+
+.openclaw-diagnostics-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+}
+
+.openclaw-diagnostics-grid span,
+.openclaw-run-log article,
+.openclaw-diagnostics-issues span {
+  border: 2px solid rgba(255, 253, 246, 0.28);
+  background: rgba(255, 253, 246, 0.08);
+}
+
+.openclaw-diagnostics-grid span {
+  display: grid;
+  gap: 2px;
+  padding: 10px;
+}
+
+.openclaw-diagnostics-grid strong {
+  color: #f7d84c;
+  font-family: var(--display-font);
+  font-size: 20px;
+  letter-spacing: 0;
+}
+
+.openclaw-diagnostics-grid small {
+  color: rgba(255, 253, 246, 0.6);
+  font-family: var(--mono);
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.openclaw-diagnostics-issues,
+.openclaw-run-log {
+  display: grid;
+  gap: 8px;
+}
+
+.openclaw-diagnostics-issues {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.openclaw-diagnostics-issues span {
+  color: #ff7a5e;
+  font-weight: 900;
+  padding: 8px 10px;
+}
+
+.openclaw-diagnostics-issues.ok span {
+  color: #b9ffea;
+}
+
+.openclaw-run-log article {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 9px 10px;
+}
+
+.openclaw-run-log strong {
+  color: #b9ffea;
+  font-family: var(--mono);
+  text-transform: uppercase;
+}
+
+.openclaw-run-log span,
+.openclaw-run-log p {
+  color: rgba(255, 253, 246, 0.68);
+  margin: 0;
+}
+
 .rule-config-editor {
   width: 100%;
   min-height: 560px;

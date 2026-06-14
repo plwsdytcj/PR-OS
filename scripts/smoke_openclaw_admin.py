@@ -109,6 +109,13 @@ def main() -> None:
     assert binding is not None
     assert binding.openclaw_session_id == "staff_session_001"
 
+    diagnostics = assert_ok(admin.get("/api/openclaw/diagnostics", headers=HEADERS), "openclaw diagnostics")
+    assert diagnostics["checks"]["enabled"] is True
+    assert diagnostics["checks"]["gateway_url"] is True
+    assert diagnostics["checks"]["tool_count"] >= 10
+    assert diagnostics["checks"]["binding_count"] == 1
+    assert diagnostics["checks"]["active_binding_count"] == 1
+
     client_binding = admin.post(
         "/api/openclaw/bindings",
         headers=HEADERS,
