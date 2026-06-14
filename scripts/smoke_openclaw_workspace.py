@@ -34,12 +34,21 @@ def main() -> None:
     assert "openNativeOpenClawFromWorkspaceBtn" in app_page.text
     assert "app.js?v=20260614-3" in app_page.text
 
+    db_path = ROOT / "data" / "processed" / "tenants" / TENANT / "app.sqlite3"
+    save_config(
+        db_path,
+        OpenClawConfig(
+            enabled=False,
+            gateway_url="",
+            control_ui_url="",
+            default_agent_id="kolness_workspace_smoke",
+        ),
+    )
     unconfigured = client.get("/openclaw", headers=HEADERS)
     assert unconfigured.status_code == 200, unconfigured.text[:400]
     assert "OpenClaw 原生控制台还没接上" in unconfigured.text
     assert "返回 Kolness 工作台" in unconfigured.text
 
-    db_path = ROOT / "data" / "processed" / "tenants" / TENANT / "app.sqlite3"
     save_config(
         db_path,
         OpenClawConfig(
