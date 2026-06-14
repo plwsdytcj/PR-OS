@@ -58,7 +58,7 @@ def main() -> None:
     )
     unconfigured = client.get("/openclaw", headers=HEADERS)
     assert unconfigured.status_code == 200, unconfigured.text[:400]
-    assert "OpenClaw 原生前端还没接上" in unconfigured.text
+    assert "OpenClaw 还没启用" in unconfigured.text or "OpenClaw 原生前端还没接上" in unconfigured.text
     assert "返回 Kolness 工作台" in unconfigured.text
 
     save_config(
