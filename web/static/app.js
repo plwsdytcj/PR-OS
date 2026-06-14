@@ -2092,13 +2092,167 @@ function activeFloatRuntime() {
   return $("#agentFloatRuntimeSelect")?.value || "auto";
 }
 
+function displayOpenClawMessage(run) {
+  return state.activeOpenClawRun?.displayMessage || run?.display_message || run?.message || "";
+}
+
+function enrichOpenClawPayload(payload) {
+  const message = String(payload.message || payload.brief || "").trim();
+  const alreadyToolDirected = /kolness(__|\.)(analyze_brief|match_kol|search_kol|generate_proposal)/i.test(message);
+  if (!message || alreadyToolDirected) return { ...payload, message };
+  return {
+    ...payload,
+    message: `${message}
+
+执行方式：
+1. 优先调用 Kolness MCP 工具，不要只凭模型常识回答。
+2. 先用 kolness__kolness_analyze_brief 解析 brief。
+3. 再用 kolness__kolness_match_kol 从达人库匹配 KOL。
+4. 如需要客户可读方案，调用 kolness__kolness_generate_proposal。
+5. 最后用中文输出推荐名单、匹配理由、主要风险和下一步。`,
+  };
+}
+
+function optimisticOpenClawRun(payload) {
+  const now = new Date().toISOString();
+  const message = String(payload.message || payload.brief || "").trim();
+  return {
+    displayMessage: message,
+    run: {
+      run_id: `local_openclaw_${Date.now()}`,
+      status: "running",
+      message,
+      response: "",
+      error: "",
+      openclaw_agent_id: "kolness_openclaw",
+      openclaw_session_id: "",
+      created_at: now,
+      updated_at: now,
+    },
+    events: [
+      { event_type: "message.created", sequence: 1, created_at: now, payload: { role: "user", content: message } },
+      {
+        event_type: "tool.started",
+        sequence: 2,
+        created_at: now,
+        payload: { tool_name: "kolness__kolness_match_kol", optimistic: true },
+      },
+    ],
+  };
+}
+
+function openClawStepLabel(event) {
+  const eventType = event?.event_type || "";
+  const toolName = event?.payload?.tool_name || "";
+  if (eventType === "message.created") return "接收 brief";
+  if (eventType === "tool.started" && /kolness.*match/i.test(toolName)) return "调用达人匹配工具";
+  if (eventType === "tool.started") return toolName.includes("openclaw") ? "连接 OpenClaw Gateway" : toolName;
+  if (eventType === "message.completed") return "整理推荐结论";
+  if (eventType === "tool.failed" || eventType === "run.failed") return "任务失败";
+  if (eventType === "run.completed") return "完成任务";
+  return eventType || "任务事件";
+}
+
+function openClawStepStatus(event, run) {
+  const type = event?.event_type || "";
+  if (type.includes("failed") || run?.status === "failed") return "failed";
+  if (type === "tool.started" && run?.status === "running") return "running";
+  if (type === "run.completed" || type === "message.completed") return "completed";
+  return run?.status === "running" ? "running" : "completed";
+}
+
+function buildOpenClawSteps(run, events) {
+  const baseSteps = [
+    { label: "解析 PR brief", status: events.length ? "completed" : "running", meta: "brand / audience / channel" },
+    { label: "读取 Kolness 达人库", status: run?.status === "running" ? "running" : "completed", meta: "profile / tags / risks" },
+    { label: "调用 KOL 匹配工具", status: run?.response ? "completed" : run?.status === "failed" ? "failed" : "running", meta: "kolness MCP" },
+  ];
+  const eventSteps = (events || []).slice(-5).map((event) => ({
+    label: openClawStepLabel(event),
+    status: openClawStepStatus(event, run),
+    meta: event?.payload?.tool_name || event?.event_type || "",
+  }));
+  return [...baseSteps, ...eventSteps].slice(-7);
+}
+
+function extractOpenClawKols(text) {
+  const value = String(text || "");
+  if (!value) return [];
+  const lines = value
+    .split(/\n+/)
+    .map((line) => line.replace(/^[\s>*-]*(\d+[.、)]\s*)?/, "").trim())
+    .filter(Boolean);
+  const candidates = [];
+  for (const line of lines) {
+    const match = line.match(/^([^：:，,。；;\-|]+)(?:[：:，,。；;\-|]|\s+-\s+).{0,120}$/);
+    const name = (match ? match[1] : line).replace(/^(KOL|达人|推荐|账号)\s*/i, "").trim();
+    if (name.length >= 2 && name.length <= 18 && !/[。！？]$/.test(name) && !/推荐名单|匹配理由|主要风险|下一步/.test(name)) {
+      candidates.push(name);
+    }
+  }
+  return [...new Set(candidates)].slice(0, 6);
+}
+
+function renderOpenClawWorkspace(run, events) {
+  const status = run.status || "running";
+  const steps = buildOpenClawSteps(run, events);
+  const response = run.response || run.error || "";
+  const kols = extractOpenClawKols(response);
+  const isFailed = status === "failed";
+  return `
+    <section class="agent-float-workspace">
+      <div class="agent-float-workspace-head">
+        <div>
+          <span class="agent-float-status-pill ${escapeHTML(status)}">${escapeHTML(status)}</span>
+          <strong>Agent Task Space</strong>
+        </div>
+        <span>${fmtNumber(events.length)} events</span>
+      </div>
+      <div class="agent-float-tool-rail">
+        <span>brief</span>
+        <i></i>
+        <span>Kolness MCP</span>
+        <i></i>
+        <span>KOL picks</span>
+      </div>
+      <div class="agent-float-step-stack compact">
+        ${steps
+          .map(
+            (step, index) => `
+              <div class="agent-float-step ${escapeHTML(step.status)}">
+                <em>${String(index + 1).padStart(2, "0")}</em>
+                <span>${escapeHTML(step.label)}</span>
+                <small>${escapeHTML(step.meta || "")}</small>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+      <article class="agent-float-output-card ${isFailed ? "failed" : ""}">
+        <span class="card-kicker">${isFailed ? "error" : "deliverable"}</span>
+        <strong>${isFailed ? "Agent 返回错误" : "推荐结果预览"}</strong>
+        ${
+          response
+            ? `<p>${escapeHTML(response).slice(0, 680)}${response.length > 680 ? "..." : ""}</p>`
+            : `<p>OpenClaw 正在拆 brief、调用 Kolness 工具和整理推荐。完成后这里会出现推荐名单、理由和风险。</p>`
+        }
+        ${
+          kols.length
+            ? `<div class="agent-float-kol-chips">${kols.map((kol) => `<span>${escapeHTML(kol)}</span>`).join("")}</div>`
+            : ""
+        }
+      </article>
+    </section>
+  `;
+}
+
 function renderOpenClawFloatContent(summary) {
   const run = state.activeOpenClawRun?.run || {};
   const events = state.activeOpenClawRun?.events || [];
   if (summary) {
     summary.innerHTML = `
-      <strong>OpenClaw 深度任务</strong>
-      <span>${escapeHTML(run.status || "idle")} · ${fmtNumber(events.length)} events</span>
+      <strong>${escapeHTML(displayOpenClawMessage(run) || "OpenClaw 深度任务")}</strong>
+      <span>${escapeHTML(run.status || "idle")} · ${fmtNumber(events.length)} events · Kolness MCP</span>
     `;
   }
   renderOpenClawFloatMessages();
@@ -2110,57 +2264,56 @@ function renderOpenClawFloatMessages() {
   const run = state.activeOpenClawRun?.run || {};
   const events = state.activeOpenClawRun?.events || [];
   if (!run.run_id) {
+    node.classList.add("agent-float-openclaw-space");
     node.innerHTML = `
       <article class="agent-float-welcome">
-        <strong>OpenClaw 深度任务</strong>
-        <p>这个模式会把 brief 发给绑定的 OpenClaw agent。OpenClaw 负责长任务、流式执行和工具调用，Kolness 负责权限和 KOL 数据。</p>
+        <strong>开一个 PR 任务空间。</strong>
+        <p>输入 brief 后，Agent 会调用 KOL 工具：解析 brief、查达人库、匹配 KOL、整理风险和客户可读结论。</p>
         <div class="agent-float-suggestions">
           <button type="button" data-agent-prompt="帮我把这个 PR brief 跑成一条深度任务，先推荐 KOL，再解释推荐理由和风险。">深度跑 brief</button>
           <button type="button" data-agent-prompt="用 Kolness 的达人库帮我查适合这个项目的 KOL，并生成客户可读解释。">查达人库</button>
         </div>
       </article>
+      <section class="agent-float-workspace idle">
+        <div class="agent-float-workspace-head">
+          <div><span class="agent-float-status-pill idle">idle</span><strong>Run Space</strong></div>
+          <span>ready</span>
+        </div>
+        <div class="agent-float-tool-rail">
+          <span>brief</span><i></i><span>tools</span><i></i><span>assets</span>
+        </div>
+        <article class="agent-float-output-card">
+          <span class="card-kicker">Kolness MCP</span>
+          <strong>已连接 KOL 工具层</strong>
+          <p>可调用 brief 解析、达人搜索、KOL 匹配、图谱生成、方案生成和 Campaign 沉淀。</p>
+        </article>
+      </section>
     `;
     return;
   }
-  const userMessage = run.message
-    ? `<article class="agent-float-message user"><span>You</span><p>${escapeHTML(run.message)}</p></article>`
+  node.classList.add("agent-float-openclaw-space");
+  const displayMessage = displayOpenClawMessage(run);
+  const userMessage = displayMessage
+    ? `<article class="agent-float-message user"><span>You</span><p>${escapeHTML(displayMessage)}</p></article>`
     : "";
   const assistantMessage =
     run.response || run.error
-      ? `<article class="agent-float-message assistant"><span>OpenClaw</span><p>${escapeHTML(run.response || run.error)}</p></article>`
+      ? `<article class="agent-float-message assistant"><span>Agent</span><p>${escapeHTML(run.response || run.error)}</p></article>`
       : "";
-  const eventCard = `
-    <article class="agent-float-run-card ${escapeHTML(run.status || "running")}">
-      <div class="agent-float-run-head">
-        <span>${escapeHTML(run.status || "running")}</span>
-        <strong>${fmtNumber(events.length)} events</strong>
-      </div>
-      <div class="agent-float-step-stack">
-        ${
-          events.length
-            ? events
-                .slice(-5)
-                .map(
-                  (event, index) => `
-                    <div class="agent-float-step">
-                      <em>${String(index + 1).padStart(2, "0")}</em>
-                      <span>${escapeHTML(event.event_type || "event")}</span>
-                    </div>
-                  `
-                )
-                .join("")
-            : '<div class="meta">等待 OpenClaw 事件。</div>'
-        }
-      </div>
-    </article>
+  node.innerHTML = `
+    <section class="agent-float-transcript">
+      ${userMessage}
+      ${assistantMessage || '<article class="agent-float-message assistant thinking"><span>Agent</span><p>正在调用 Kolness MCP 工具，完成后会把推荐、理由、风险和下一步写回来。</p></article>'}
+    </section>
+    ${renderOpenClawWorkspace(run, events)}
   `;
-  node.innerHTML = `${userMessage}${eventCard}${assistantMessage}`;
   node.scrollTop = node.scrollHeight;
 }
 
 function renderAgentFloatMessages() {
   const node = $("#agentFloatMessages");
   if (!node) return;
+  node.classList.remove("agent-float-openclaw-space");
   const messages = state.activeAgentThread?.messages || [];
   const run = state.activeAgentRun?.run || {};
   const steps = state.activeAgentSteps || [];
@@ -2263,11 +2416,17 @@ async function runAgentFromPayload(payload) {
 
 async function runOpenClawFromPayload(payload) {
   stopOpenClawPolling();
+  const displayMessage = String(payload.message || payload.brief || "").trim();
+  state.activeOpenClawRun = optimisticOpenClawRun(payload);
+  state.activeOpenClawCampaignTarget = null;
+  renderAgentFloatDock();
+  const openClawPayload = enrichOpenClawPayload(payload);
   const data = await api("/api/openclaw/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(openClawPayload),
   });
+  data.displayMessage = displayMessage;
   state.activeOpenClawRun = data;
   state.activeOpenClawCampaignTarget = null;
   renderAgentFloatDock();
@@ -5247,10 +5406,6 @@ function bindEvents() {
   });
   $("#agentFloatOpenFullBtn")?.addEventListener("click", () => {
     setAgentFloatOpen(false);
-    if (activeFloatRuntime() === "openclaw") {
-      window.open("/openclaw", "_blank", "noopener");
-      return;
-    }
     setView("agentWorkspace");
   });
   $("#agentFloatForm")?.addEventListener("submit", async (event) => {
