@@ -32,8 +32,9 @@ def main() -> None:
     assert app_page.status_code == 200, app_page.text[:400]
     assert "agentFloatOpenNativeBtn" in app_page.text
     assert "openNativeOpenClawFromWorkspaceBtn" in app_page.text
-    assert "openclaw command center" in app_page.text
-    assert "PR Agent OS" in app_page.text
+    assert "openclaw task space" in app_page.text
+    assert "PR Agent Workspace" in app_page.text
+    assert "PR Task Chat" in app_page.text
     assert "agentOpenClawStatusPanel" in app_page.text
     assert "app.js?v=" in app_page.text
     app_js = client.get("/static/app.js", headers=HEADERS)
@@ -41,6 +42,7 @@ def main() -> None:
     assert "my agent binding" in app_js.text
     assert "agentSaveOpenClawCampaignBtn" in app_js.text
     assert "saveActiveOpenClawRunToCampaign" in app_js.text
+    assert "renderOpenClawMainMessages" in app_js.text
 
     db_path = ROOT / "data" / "processed" / "tenants" / TENANT / "app.sqlite3"
     save_config(
