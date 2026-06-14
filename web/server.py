@@ -931,9 +931,19 @@ async def openclaw_chat(payload: dict[str, Any], background_tasks: BackgroundTas
     return adapter.start_chat(**run_payload)
 
 
+def _require_openclaw_run_access(run_id: str, action: str = "read") -> tuple[Any, Any]:
+    identity = require_internal(action)
+    run = load_openclaw_run(DB_PATH, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="openclaw run not found")
+    if identity.user.role != "admin" and run.user_id != identity.user.user_id:
+        raise HTTPException(status_code=403, detail="openclaw run access denied")
+    return identity, run
+
+
 @app.get("/api/openclaw/runs/{run_id}/events")
 def openclaw_run_events(run_id: str) -> dict[str, Any]:
-    require_internal("read")
+    _require_openclaw_run_access(run_id, "read")
     payload = OpenClawAdapter().payload(DB_PATH, run_id)
     if not payload:
         raise HTTPException(status_code=404, detail="openclaw run not found")
@@ -942,10 +952,8 @@ def openclaw_run_events(run_id: str) -> dict[str, Any]:
 
 @app.get("/api/openclaw/runs/{run_id}/stream")
 async def openclaw_run_stream(run_id: str) -> StreamingResponse:
-    require_internal("read")
+    _require_openclaw_run_access(run_id, "read")
     db_path = _db_path_ctx.get()
-    if load_openclaw_run(db_path, run_id) is None:
-        raise HTTPException(status_code=404, detail="openclaw run not found")
 
     async def event_stream():
         last_signature = ""
@@ -966,10 +974,7 @@ async def openclaw_run_stream(run_id: str) -> StreamingResponse:
 
 @app.post("/api/openclaw/runs/{run_id}/save-to-campaign")
 async def openclaw_save_run_to_campaign(run_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-    identity = require_internal("project_run")
-    run = load_openclaw_run(DB_PATH, run_id)
-    if run is None:
-        raise HTTPException(status_code=404, detail="openclaw run not found")
+    identity, run = _require_openclaw_run_access(run_id, "project_run")
     payload = payload or {}
     client_name = str(payload.get("client_name") or "OpenClaw").strip()
     project_name = str(payload.get("project_name") or (run.message[:36] if run.message else "OpenClaw Campaign")).strip()

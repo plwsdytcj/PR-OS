@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT))
 
 from src.openclaw.schemas import OpenClawConfig
 from src.openclaw.storage import save_config
+from src.openclaw.adapter import OpenClawAdapter
 from web.server import app
 
 
@@ -21,6 +22,8 @@ ADMIN_EMAIL = "openclaw-admin@test.local"
 ADMIN_PASSWORD = "Aa88005568"
 CLIENT_EMAIL = "openclaw-client@brand.test"
 CLIENT_PASSWORD = "client-pass-123"
+STAFF_EMAIL = "openclaw-staff@test.local"
+STAFF_PASSWORD = "staff-pass-123"
 SERVICE_TOKEN = "smoke-openclaw-service-token"
 
 
@@ -72,6 +75,15 @@ def main() -> None:
         "create client user",
     )["user"]
     assert user["user_type"] == "client"
+    staff = assert_ok(
+        admin.post(
+            "/api/auth/users",
+            headers=HEADERS,
+            json={"email": STAFF_EMAIL, "name": "OpenClaw Staff", "password": STAFF_PASSWORD, "user_type": "internal", "role": "strategist"},
+        ),
+        "create staff",
+    )["user"]
+    assert staff["user_type"] == "internal"
 
     internal_openclaw = admin.get("/openclaw", headers=HEADERS)
     assert internal_openclaw.status_code == 200, internal_openclaw.text[:400]
@@ -79,6 +91,17 @@ def main() -> None:
 
     internal_status = assert_ok(admin.get("/api/openclaw/status", headers=HEADERS), "internal openclaw status")
     assert internal_status["status"]["available"] is True
+
+    run_payload = OpenClawAdapter().start_chat(db_path, user_id=bootstrap["user"]["user_id"], message="Owner-only OpenClaw run access smoke")
+    run_id = run_payload["run"]["run_id"]
+    admin_events = assert_ok(admin.get(f"/api/openclaw/runs/{run_id}/events", headers=HEADERS), "admin own run events")
+    assert admin_events["run"]["run_id"] == run_id
+
+    staff_client = login(STAFF_EMAIL, STAFF_PASSWORD)
+    blocked_events = staff_client.get(f"/api/openclaw/runs/{run_id}/events", headers=HEADERS)
+    assert blocked_events.status_code == 403, blocked_events.text
+    blocked_save = staff_client.post(f"/api/openclaw/runs/{run_id}/save-to-campaign", headers=HEADERS, json={"client_name": "Blocked", "project_name": "Blocked"})
+    assert blocked_save.status_code == 403, blocked_save.text
 
     client = login(CLIENT_EMAIL, CLIENT_PASSWORD)
     forbidden_checks = [
