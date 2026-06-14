@@ -3249,6 +3249,7 @@ function startOpenClawPolling(runId) {
       const status = data.run?.status || "";
       if (status && status !== "running") {
         stopOpenClawPolling();
+        await refreshOpenClawRun(runId);
         await refreshWorkspaceHistoryIfVisible();
       }
     });
@@ -3279,6 +3280,7 @@ function startOpenClawPollFallback(runId) {
       const status = data.run?.status || "";
       if (status && status !== "running") {
         stopOpenClawPolling();
+        await refreshOpenClawRun(runId);
         await refreshWorkspaceHistoryIfVisible();
       }
     } catch (error) {
@@ -3288,6 +3290,17 @@ function startOpenClawPollFallback(runId) {
   };
   tick();
   state.openClawPollTimer = setInterval(tick, 1200);
+}
+
+async function refreshOpenClawRun(runId) {
+  if (!runId) return null;
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  const data = await api(`/api/openclaw/runs/${encodeURIComponent(runId)}/events`);
+  state.activeOpenClawRun = data;
+  renderAgentMessages();
+  renderAgentFloatDock();
+  renderAgentOpenClawStatus();
+  return data;
 }
 
 function formToObject(form) {

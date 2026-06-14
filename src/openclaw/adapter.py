@@ -113,13 +113,14 @@ class OpenClawAdapter:
             binding.openclaw_session_id = run.openclaw_session_id
             binding.updated_at = now_iso()
             save_binding(db_path, binding)
-            run.status = "completed"
-            run.updated_at = now_iso()
             save_run(db_path, run)
             self._event(db_path, run.run_id, self._next_sequence(db_path, run.run_id), "gateway.completed", {"tool_name": "openclaw.gateway", "agent_id": run.openclaw_agent_id})
             next_sequence = self._record_response_events(db_path, run, response, start_sequence=self._next_sequence(db_path, run.run_id))
             self._event(db_path, run.run_id, next_sequence, "message.completed", {"role": "assistant", "content": run.response})
             self._event(db_path, run.run_id, next_sequence + 1, "run.completed", {"session_id": run.openclaw_session_id})
+            run.status = "completed"
+            run.updated_at = now_iso()
+            save_run(db_path, run)
         except Exception as exc:
             run.status = "failed"
             run.error = str(exc)
