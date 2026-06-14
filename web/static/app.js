@@ -2144,6 +2144,10 @@ function optimisticOpenClawRun(payload) {
 function openClawStepLabel(event) {
   const eventType = event?.event_type || "";
   const toolName = event?.payload?.tool_name || "";
+  if (eventType === "gateway.started") return "连接 Agent Gateway";
+  if (eventType === "gateway.completed") return "Agent Gateway 返回";
+  if (eventType === "kolness.match.completed") return "KOL 匹配完成";
+  if (eventType === "artifact.preview.created") return "生成推荐预览";
   if (eventType === "message.created") return "接收 brief";
   if (eventType === "tool.started" && /kolness.*match/i.test(toolName)) return "调用达人匹配工具";
   if (eventType === "tool.started") return toolName.includes("openclaw") ? "连接 OpenClaw Gateway" : toolName;
@@ -2157,7 +2161,7 @@ function openClawStepStatus(event, run) {
   const type = event?.event_type || "";
   if (type.includes("failed") || run?.status === "failed") return "failed";
   if (type === "tool.started" && run?.status === "running") return "running";
-  if (type === "run.completed" || type === "message.completed") return "completed";
+  if (type === "run.completed" || type === "message.completed" || type.endsWith(".completed") || type.includes(".created")) return "completed";
   return run?.status === "running" ? "running" : "completed";
 }
 
@@ -2193,11 +2197,23 @@ function extractOpenClawKols(text) {
   return [...new Set(candidates)].slice(0, 6);
 }
 
+function openClawEventKols(events) {
+  const names = [];
+  for (const event of events || []) {
+    const eventNames = Array.isArray(event?.payload?.recommended_kols) ? event.payload.recommended_kols : [];
+    for (const name of eventNames) {
+      const value = String(name || "").trim();
+      if (value && !names.includes(value)) names.push(value);
+    }
+  }
+  return names.slice(0, 6);
+}
+
 function renderOpenClawWorkspace(run, events) {
   const status = run.status || "running";
   const steps = buildOpenClawSteps(run, events);
   const response = run.response || run.error || "";
-  const kols = extractOpenClawKols(response);
+  const kols = openClawEventKols(events).length ? openClawEventKols(events) : extractOpenClawKols(response);
   const isFailed = status === "failed";
   return `
     <section class="agent-float-workspace">

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import Any
 
 import requests
@@ -77,6 +78,7 @@ class OpenClawAdapter:
             return self.payload(db_path, run.run_id)
 
         try:
+            self._event(db_path, run.run_id, 2, "gateway.started", {"tool_name": "openclaw.gateway", "agent_id": run.openclaw_agent_id})
             response = self._send_message(config, run, message)
             run.response = response.get("message") or response.get("response") or response.get("content") or "OpenClaw 已接收任务。"
             run.openclaw_session_id = response.get("session_id") or response.get("thread_id") or run.openclaw_session_id
@@ -86,9 +88,10 @@ class OpenClawAdapter:
             run.status = "completed"
             run.updated_at = now_iso()
             save_run(db_path, run)
-            self._event(db_path, run.run_id, 2, "tool.started", {"tool_name": "openclaw.gateway", "agent_id": run.openclaw_agent_id})
-            self._event(db_path, run.run_id, 3, "message.completed", {"role": "assistant", "content": run.response})
-            self._event(db_path, run.run_id, 4, "run.completed", {"session_id": run.openclaw_session_id})
+            self._event(db_path, run.run_id, 3, "gateway.completed", {"tool_name": "openclaw.gateway", "agent_id": run.openclaw_agent_id})
+            next_sequence = self._record_response_events(db_path, run, response, start_sequence=4)
+            self._event(db_path, run.run_id, next_sequence, "message.completed", {"role": "assistant", "content": run.response})
+            self._event(db_path, run.run_id, next_sequence + 1, "run.completed", {"session_id": run.openclaw_session_id})
         except Exception as exc:
             run.status = "failed"
             run.error = str(exc)
@@ -198,6 +201,61 @@ class OpenClawAdapter:
         content = message_payload.get("content") if isinstance(message_payload, dict) else ""
         session_id = response.headers.get("x-openclaw-session-key") or run.openclaw_session_id
         return {"response": content or "OpenClaw 已完成任务。", "session_id": session_id, "raw": data}
+
+    def _record_response_events(self, db_path: Path, run: OpenClawRun, response: dict[str, Any], start_sequence: int) -> int:
+        sequence = start_sequence
+        text = str(response.get("message") or response.get("response") or response.get("content") or run.response or "")
+        recommended_kols = self._extract_kol_names(text)
+        if recommended_kols:
+            self._event(
+                db_path,
+                run.run_id,
+                sequence,
+                "kolness.match.completed",
+                {
+                    "tool_name": "kolness.match_kol",
+                    "source": "agent_response",
+                    "result_count": len(recommended_kols),
+                    "recommended_kols": recommended_kols,
+                },
+            )
+            sequence += 1
+        if text:
+            self._event(
+                db_path,
+                run.run_id,
+                sequence,
+                "artifact.preview.created",
+                {
+                    "artifact_type": "kol_recommendation",
+                    "source": "agent_response",
+                    "title": "KOL 推荐结果",
+                    "preview": text[:900],
+                },
+            )
+            sequence += 1
+        return sequence
+
+    def _extract_kol_names(self, text: str) -> list[str]:
+        names: list[str] = []
+        for line in text.splitlines():
+            raw_value = line.strip()
+            if not raw_value:
+                continue
+            structured_line = bool(re.match(r"^[\s>*-]*(\d+[.、)]\s*)", raw_value)) or bool(re.match(r"^[\s>*-]*(KOL|达人|账号)", raw_value, flags=re.IGNORECASE))
+            if not structured_line:
+                continue
+            value = re.sub(r"^[\s>*-]*(\d+[.、)]\s*)?", "", raw_value).strip()
+            value = value.replace("**", "").strip()
+            match = re.match(r"^(?:KOL|达人|账号)?\s*([^：:，,。；;（）()\-|]{2,18})", value, flags=re.IGNORECASE)
+            if not match:
+                continue
+            name = match.group(1).strip()
+            if name in {"推荐以下", "推荐名单", "匹配理由", "主要风险", "下一步"}:
+                continue
+            if name and name not in names:
+                names.append(name)
+        return names[:8]
 
     def _event(self, db_path: Path, run_id: str, sequence: int, event_type: str, payload: dict[str, Any]) -> None:
         save_event(
