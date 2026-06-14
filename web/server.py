@@ -968,7 +968,7 @@ async def kolness_openclaw_bridge(payload: dict[str, Any], request: Request) -> 
             risk_notes.append(f"{result.creator.name}: {'; '.join(result.risk_points[:2])}")
     response = "\n".join(
         [
-            "Kolness OpenClaw Bridge 已完成本次 PR 任务。",
+            "已完成本次 PR Agent 任务。",
             "",
             "## KOL 推荐",
             *(score_lines or ["暂无匹配达人，请先导入或补充达人资料。"]),
