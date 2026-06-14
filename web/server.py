@@ -18,7 +18,7 @@ import pandas as pd
 import requests
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1416,7 +1416,7 @@ async def openclaw_proxy(request: Request, path: str = "") -> StreamingResponse:
 
 
 @app.get("/openclaw", response_class=HTMLResponse)
-def openclaw_workspace() -> HTMLResponse:
+def openclaw_workspace() -> HTMLResponse | RedirectResponse:
     identity = require_internal("read")
     config = load_openclaw_config(DB_PATH)
     binding = OpenClawAdapter().binding_for_user(DB_PATH, identity.user.user_id)
@@ -1426,42 +1426,7 @@ def openclaw_workspace() -> HTMLResponse:
     agent_id = html.escape(binding.openclaw_agent_id or config.default_agent_id or "kolness_default")
     session_id = html.escape(binding.openclaw_session_id or "new session")
     if not config.enabled or not url:
-        state_label = "OpenClaw disabled" if not config.enabled else "Native UI not connected"
-        heading = "OpenClaw 原生前端还没接上" if config.enabled else "OpenClaw 还没启用"
-        gateway_note = "Kolness Agent / MCP bridge 已可用；只是还没有配置可 iframe 的 OpenClaw 原生前端地址。" if config.enabled and config.gateway_url else "请先在 Kolness Admin Console 配置 OpenClaw Gateway / Control UI。"
-        return HTMLResponse(
-            "<!doctype html><html lang='zh-CN'><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-            "<title>Kolness OpenClaw</title>"
-            "<style>"
-            ":root{--ink:#17120d;--paper:#fffaf0;--surface:#fffdf7;--muted:#6f675d;--line:#e4dccc;--mint:#57e0b1;--yellow:#ffdd58}"
-            "*{box-sizing:border-box}"
-            "body{margin:0;min-height:100vh;background:#f3efe4;color:var(--ink);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:24px;display:grid;place-items:center}"
-            ".card{width:min(920px,100%);border:1px solid var(--line);border-left:5px solid var(--mint);border-radius:10px;background:var(--surface);box-shadow:0 24px 70px rgba(23,18,13,.14);padding:28px}"
-            ".tag{display:inline-flex;align-items:center;gap:8px;background:#fff7cd;color:var(--ink);border:1px solid #ead37a;border-radius:999px;padding:7px 11px;font-size:12px;font-weight:850;text-transform:uppercase;letter-spacing:.08em}"
-            "h1{font-size:clamp(30px,5vw,52px);line-height:1.05;margin:18px 0 10px;letter-spacing:0;max-width:760px}"
-            "p{font-size:16px;line-height:1.55;color:var(--muted);margin:0;max-width:780px}"
-            ".grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:22px}"
-            ".box{border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:13px 14px;min-width:0}"
-            ".box strong{display:block;margin-bottom:6px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}"
-            ".box span{display:block;color:var(--ink);font-size:15px;font-weight:760;word-break:break-word}"
-            ".actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}"
-            "a{display:inline-flex;align-items:center;justify-content:center;min-height:42px;background:var(--ink);color:#fffaf0;border:1px solid var(--ink);border-radius:7px;padding:10px 14px;font-weight:850;text-decoration:none}"
-            "a.secondary{background:var(--surface);color:var(--ink);border-color:var(--line)}"
-            "@media(max-width:720px){body{padding:14px;place-items:start}.card{padding:18px}.grid{grid-template-columns:1fr}h1{font-size:32px}.actions a{width:100%}}"
-            "</style><body><main class='card'>"
-            f"<span class='tag'>{html.escape(state_label)}</span>"
-            f"<h1>{heading}</h1>"
-            f"<p>{html.escape(gateway_note)}</p>"
-            "<div class='grid'>"
-            f"<div class='box'><strong>Agent</strong><span>{agent_id}</span></div>"
-            f"<div class='box'><strong>Session</strong><span>{session_id}</span></div>"
-            f"<div class='box'><strong>Gateway</strong><span>{html.escape(config.gateway_url or '未配置')}</span></div>"
-            f"<div class='box'><strong>Native UI</strong><span>{html.escape(config.control_ui_url or '未配置')}</span></div>"
-            "</div>"
-            "<div class='actions'><a href='/app'>返回 Kolness 工作台</a><a class='secondary' href='/app#agentWorkspace'>打开 Agent Workspace</a></div>"
-            "</main></body></html>",
-            status_code=200,
-        )
+        return RedirectResponse(url="/app#agentWorkspace", status_code=307)
     safe_url = html.escape("/openclaw/proxy", quote=True)
     upstream_label = html.escape(config.control_ui_url or config.gateway_url)
     return HTMLResponse(

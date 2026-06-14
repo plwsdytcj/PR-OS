@@ -2754,6 +2754,17 @@ async function viewActiveOpenClawAssets() {
   setView("history");
 }
 
+function openNativeOpenClawOrWorkspace() {
+  const hasNativeUi = Boolean(state.openClawDiagnostics?.checks?.control_ui_url || state.openClaw?.status?.control_ui_url);
+  if (hasNativeUi) {
+    window.open("/openclaw", "_blank", "noopener,noreferrer");
+    return;
+  }
+  setAgentFloatOpen(false);
+  setView("agentWorkspace");
+  toast("OpenClaw 原生前端未配置，已切到 Agent Workspace");
+}
+
 function activeReasoningGraphArtifact() {
   return state.activeAgentArtifacts.find((artifact) => artifact.artifact_type === "reasoning_graph");
 }
@@ -5753,10 +5764,10 @@ function bindEvents() {
     setView("agentWorkspace");
   });
   $("#agentFloatOpenNativeBtn")?.addEventListener("click", () => {
-    window.open("/openclaw", "_blank", "noopener,noreferrer");
+    openNativeOpenClawOrWorkspace();
   });
   $("#openNativeOpenClawFromWorkspaceBtn")?.addEventListener("click", () => {
-    window.open("/openclaw", "_blank", "noopener,noreferrer");
+    openNativeOpenClawOrWorkspace();
   });
   $("#agentFloatForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();

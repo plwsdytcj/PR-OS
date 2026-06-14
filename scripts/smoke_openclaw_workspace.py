@@ -56,10 +56,9 @@ def main() -> None:
             default_agent_id="kolness_workspace_smoke",
         ),
     )
-    unconfigured = client.get("/openclaw", headers=HEADERS)
-    assert unconfigured.status_code == 200, unconfigured.text[:400]
-    assert "OpenClaw 还没启用" in unconfigured.text or "OpenClaw 原生前端还没接上" in unconfigured.text
-    assert "返回 Kolness 工作台" in unconfigured.text
+    unconfigured = client.get("/openclaw", headers=HEADERS, follow_redirects=False)
+    assert unconfigured.status_code == 307, unconfigured.text[:400]
+    assert unconfigured.headers["location"] == "/app#agentWorkspace"
 
     save_config(
         db_path,
