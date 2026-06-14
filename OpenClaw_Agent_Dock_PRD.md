@@ -655,6 +655,7 @@ OpenClaw 工具产物回写到：
   - OpenClaw service token 只能访问 `/api/openclaw/tools/*`。
   - OpenClaw run 可以通过 `save-to-campaign` 保存为 Campaign；
   - 保存后的 Campaign 能进入历史资产，并保留 OpenClaw response/events。
+  - 从历史资产打开 Campaign Room 后，仍能读取 `openclaw_run_saved` timeline 和原始 OpenClaw response/events。
 
 ### 仍需真实 Gateway 才能验收
 

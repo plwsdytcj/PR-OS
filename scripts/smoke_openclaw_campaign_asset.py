@@ -102,6 +102,14 @@ def main() -> None:
     assert item["status"] == "openclaw_saved"
     assert item["target"] == {"view": "platformOS", "action": "campaign", "id": campaign_id}
 
+    room = assert_ok(client.get(f"/api/platform/campaigns/{campaign_id}/room", headers=HEADERS), "campaign room")["room"]
+    assert room["campaign"]["campaign_id"] == campaign_id
+    assert room["campaign"]["status"] == "openclaw_saved"
+    room_event = next((event for event in room["timeline"] if event.get("event_type") == "openclaw_run_saved"), None)
+    assert room_event is not None, room["timeline"]
+    assert room_event["payload"]["run_id"] == run["run_id"]
+    assert "城市车生活" in room_event["payload"]["response"]
+
     print(f"OK openclaw_campaign_asset campaign={campaign_id} timeline={len(project.timeline)}")
 
 
