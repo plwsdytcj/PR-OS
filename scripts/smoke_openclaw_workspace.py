@@ -33,8 +33,8 @@ def main() -> None:
     assert "agentFloatOpenNativeBtn" in app_page.text
     assert "openNativeOpenClawFromWorkspaceBtn" in app_page.text
     assert "kolness agent" in app_page.text
-    assert "PR Agent Workspace" in app_page.text
-    assert "PR Task Chat" in app_page.text
+    assert "PR Agent Chat" in app_page.text
+    assert "PR Agent" in app_page.text
     assert "agentOpenClawStatusPanel" in app_page.text
     assert "app.js?v=" in app_page.text
     app_js = client.get("/static/app.js", headers=HEADERS)
