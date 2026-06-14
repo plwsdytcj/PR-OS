@@ -400,7 +400,10 @@ def _auth_bypass_for_access_key(request: Request) -> bool:
 
 
 def _auth_bypass_for_openclaw_tool_token(request: Request, db_path: Path) -> bool:
-    if not request.url.path.startswith("/api/openclaw/tools"):
+    path = request.url.path
+    if path.startswith("/api/kolness/chat") and request.client and request.client.host in {"127.0.0.1", "::1", "localhost"}:
+        return True
+    if not path.startswith("/api/openclaw/tools") and not path.startswith("/api/kolness/chat"):
         return False
     auth = request.headers.get("Authorization", "")
     token = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else ""
