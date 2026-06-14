@@ -2129,6 +2129,8 @@ function renderAgentSteps() {
 function renderAgentMessages() {
   const list = $("#agentMessageList");
   if (!list) return;
+  if (renderOpenClawMainMessages()) return;
+  list.classList.remove("openclaw-thread");
   const thread = state.activeAgentThread?.thread;
   const messages = state.activeAgentThread?.messages || [];
   const meta = $("#agentThreadMeta");
@@ -2451,6 +2453,47 @@ function renderOpenClawFloatMessages() {
   node.scrollTop = node.scrollHeight;
 }
 
+function renderOpenClawMainMessages() {
+  const list = $("#agentMessageList");
+  if (!list) return false;
+  const run = state.activeOpenClawRun?.run || {};
+  if (!run.run_id) return false;
+  const events = state.activeOpenClawRun?.events || [];
+  const status = run.status || "running";
+  const displayMessage = displayOpenClawMessage(run);
+  const response = run.response || run.error || "";
+  const meta = $("#agentThreadMeta");
+  if (meta) {
+    meta.textContent = `${displayMessage || "OpenClaw 深度任务"} · ${status} · ${fmtNumber(events.length)} events`;
+  }
+  list.classList.add("openclaw-thread");
+  list.innerHTML = `
+    <article class="agent-message user completed">
+      <div class="agent-message-role">You</div>
+      <div>
+        <p>${escapeHTML(displayMessage || "启动一个 OpenClaw PR 任务。")}</p>
+        <span>brief received</span>
+      </div>
+    </article>
+    <article class="agent-message assistant ${escapeHTML(status)}">
+      <div class="agent-message-role">Agent</div>
+      <div>
+        <p>${
+          response
+            ? escapeHTML(response)
+            : "我正在调用 Kolness 工具：解析 brief、读取达人库、匹配 KOL、生成风险和客户可读结论。"
+        }</p>
+        <span>${escapeHTML(status)} · ${fmtNumber(events.length)} events</span>
+      </div>
+    </article>
+    <div class="agent-main-openclaw-space">
+      ${renderOpenClawWorkspace(run, events)}
+    </div>
+  `;
+  list.scrollTop = list.scrollHeight;
+  return true;
+}
+
 function renderAgentFloatMessages() {
   const node = $("#agentFloatMessages");
   if (!node) return;
@@ -2560,6 +2603,7 @@ async function runOpenClawFromPayload(payload) {
   const displayMessage = String(payload.message || payload.brief || "").trim();
   state.activeOpenClawRun = optimisticOpenClawRun(payload);
   state.activeOpenClawCampaignTarget = null;
+  renderAgentMessages();
   renderAgentFloatDock();
   renderAgentOpenClawStatus();
   const openClawPayload = enrichOpenClawPayload(payload);
@@ -2571,6 +2615,7 @@ async function runOpenClawFromPayload(payload) {
   data.displayMessage = displayMessage;
   state.activeOpenClawRun = data;
   state.activeOpenClawCampaignTarget = null;
+  renderAgentMessages();
   renderAgentFloatDock();
   renderAgentOpenClawStatus();
   if (data.run?.run_id && data.run?.status === "running") startOpenClawPolling(data.run.run_id);
@@ -3096,6 +3141,7 @@ function startOpenClawPolling(runId) {
     source.addEventListener("openclaw_run", async (event) => {
       const data = JSON.parse(event.data || "{}");
       state.activeOpenClawRun = data;
+      renderAgentMessages();
       renderAgentFloatDock();
       renderAgentOpenClawStatus();
       const status = data.run?.status || "";
@@ -3125,6 +3171,7 @@ function startOpenClawPollFallback(runId) {
     try {
       const data = await api(`/api/openclaw/runs/${encodeURIComponent(runId)}/events`);
       state.activeOpenClawRun = data;
+      renderAgentMessages();
       renderAgentFloatDock();
       renderAgentOpenClawStatus();
       const status = data.run?.status || "";
@@ -5410,13 +5457,17 @@ function bindEvents() {
   });
   $("#agentNewThreadBtn")?.addEventListener("click", () => {
     stopAgentPolling();
+    stopOpenClawPolling();
     state.activeAgentThread = null;
     state.activeAgentRun = null;
     state.activeAgentArtifacts = [];
     state.agentRuntimeComparison = null;
+    state.activeOpenClawRun = null;
+    state.activeOpenClawCampaignTarget = null;
     renderAgentTasks();
     renderAgentRun({ events: [], artifacts: [], run: {}, task: {} });
     renderAgentRuntimeComparison();
+    renderAgentOpenClawStatus();
     renderAgentFloatDock();
     toast("已准备新 Agent 会话");
   });

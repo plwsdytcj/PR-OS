@@ -261,9 +261,9 @@
         <section id="agentWorkspace" class="view">
           <div class="agent-console agent-manus-header">
             <div>
-              <div class="eyebrow">openclaw command center</div>
-              <h2>PR Agent OS</h2>
-              <p>这里是内部团队的 Agent 工作区：开 Thread、丢 brief、看实时工具调用、沉淀 Campaign 资产。右下角浮窗只做快捷入口。</p>
+              <div class="eyebrow">openclaw task space</div>
+              <h2>PR Agent Workspace</h2>
+              <p>像 Manus 一样把 brief 变成连续任务：对话、工具调用、KOL 选择、图谱、风险和 Campaign 资产都在同一个空间里沉淀。</p>
             </div>
             <div class="agent-console-mark">
               <span>Thread</span>
@@ -288,14 +288,14 @@
               <div class="panel agent-chat-panel">
                 <div class="panel-header">
                   <div>
-                    <span class="card-kicker">chat driven task</span>
-                    <h2>Ask Agent</h2>
+                    <span class="card-kicker">copilot thread</span>
+                    <h2>PR Task Chat</h2>
                     <p id="agentThreadMeta">输入 brief 后创建 Thread；Agent 会调用 Kolness 工具，持续写入步骤、图谱和产物。</p>
                   </div>
                   <button id="agentNewThreadBtn" class="secondary" type="button">新会话</button>
                 </div>
                 <div id="agentMessageList" class="agent-message-list"></div>
-                <form id="agentChatForm" class="form">
+                <form id="agentChatForm" class="form agent-composer-form">
                   <div class="field-row">
                     <input name="client_name" value="Demo 新能源品牌" placeholder="客户 / 品牌名称" required />
                     <input name="project_name" value="年轻人新能源 SUV 上市预热" placeholder="项目名称" required />
@@ -313,14 +313,6 @@
                     <button id="agentCompareRuntimeBtn" class="secondary" type="button">A/B 对比</button>
                   </div>
                   <p id="agentRuntimeMeta" class="meta">Runtime 状态读取中...</p>
-                  <div class="agent-openclaw-strip">
-                    <div>
-                      <strong>OpenClaw 原生工作台</strong>
-                      <span>需要更像 Manus 的连续任务空间时，直接打开原生控制台。</span>
-                    </div>
-                    <button id="openNativeOpenClawFromWorkspaceBtn" class="secondary" type="button">打开 OpenClaw</button>
-                  </div>
-                  <div id="agentOpenClawStatusPanel" class="agent-openclaw-status"></div>
                   <label class="checkline">
                     <input name="require_plan_approval" type="checkbox" />
                     先确认执行计划，再调用工具
@@ -381,6 +373,14 @@
                 <span class="card-kicker">deliverables</span>
                 <h2>产物面板</h2>
               </div>
+              <div class="agent-openclaw-strip">
+                <div>
+                  <strong>OpenClaw Native</strong>
+                  <span>需要看原生 Agent 控制台时打开。</span>
+                </div>
+                <button id="openNativeOpenClawFromWorkspaceBtn" class="secondary" type="button">打开</button>
+              </div>
+              <div id="agentOpenClawStatusPanel" class="agent-openclaw-status"></div>
               <div id="agentArtifactList" class="agent-artifact-list"></div>
             </aside>
           </div>
@@ -1934,6 +1934,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260614-8"></script>
+    <script src="/static/app.js?v=20260614-9"></script>
   </body>
 </html>
