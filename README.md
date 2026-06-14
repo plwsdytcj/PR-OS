@@ -520,6 +520,7 @@ python3 scripts/smoke_phase7i_runtime_adapter.py
 python3 scripts/smoke_phase7i_b_agent_sdk.py
 python3 scripts/smoke_phase7i_c_runtime_ab.py
 python3 scripts/smoke_phase7j_manus_workspace.py
+python3 scripts/smoke_openclaw_async.py
 python3 scripts/smoke_agent_model_provider.py
 python3 scripts/smoke_data_sources.py
 python3 scripts/smoke_storage_adapter.py

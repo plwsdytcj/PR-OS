@@ -4,7 +4,17 @@ from pathlib import Path
 import re
 from typing import Any
 
-import requests
+try:
+    import requests
+except ModuleNotFoundError:
+    class _MissingRequests:
+        RequestException = Exception
+
+        @staticmethod
+        def post(*args: Any, **kwargs: Any) -> Any:
+            raise RuntimeError("Python package 'requests' is required for real OpenClaw Gateway calls.")
+
+    requests = _MissingRequests()  # type: ignore[assignment]
 
 from src.agent.schemas import now_iso
 from src.openclaw.schemas import (
