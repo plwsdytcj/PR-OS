@@ -143,6 +143,7 @@ from src.openclaw.schemas import OpenClawConfig, OpenClawUserBinding, binding_id
 from src.openclaw.storage import (
     init_openclaw_db,
     load_all_bindings,
+    load_all_runs as load_all_openclaw_runs,
     load_config as load_openclaw_config,
     load_events_for_run as load_openclaw_events_for_run,
     load_run as load_openclaw_run,
@@ -768,6 +769,64 @@ def openclaw_me() -> dict[str, Any]:
     adapter = OpenClawAdapter()
     binding = adapter.binding_for_user(DB_PATH, identity.user.user_id)
     return {"binding": binding.to_dict(), "status": adapter.status(DB_PATH)}
+
+
+@app.get("/api/openclaw/diagnostics")
+def openclaw_diagnostics() -> dict[str, Any]:
+    require_internal("read")
+    adapter = OpenClawAdapter()
+    config = load_openclaw_config(DB_PATH)
+    status = adapter.status(DB_PATH)
+    bindings = load_all_bindings(DB_PATH)
+    runs = load_all_openclaw_runs(DB_PATH)
+    recent_runs = runs[:8]
+    recent_event_counts = {run.run_id: len(load_openclaw_events_for_run(DB_PATH, run.run_id)) for run in recent_runs}
+    status_counts: dict[str, int] = {}
+    for run in runs:
+        status_counts[run.status] = status_counts.get(run.status, 0) + 1
+    active_bindings = [item for item in bindings if item.status == "active"]
+    issues: list[str] = []
+    if not config.enabled:
+        issues.append("OpenClaw is disabled")
+    if not config.gateway_url:
+        issues.append("Gateway URL is missing")
+    if not config.default_agent_id:
+        issues.append("Default agent id is missing")
+    if not bindings:
+        issues.append("No internal user bindings yet")
+    return {
+        "status": status,
+        "config": config.to_dict(mask_secret=True),
+        "checks": {
+            "enabled": bool(config.enabled),
+            "gateway_url": bool(config.gateway_url),
+            "control_ui_url": bool(config.control_ui_url),
+            "default_agent_id": bool(config.default_agent_id),
+            "admin_token": bool(config.admin_token),
+            "tool_count": len(_openclaw_tool_manifest()),
+            "binding_count": len(bindings),
+            "active_binding_count": len(active_bindings),
+            "run_count": len(runs),
+            "issues": issues,
+        },
+        "bindings": [item.to_dict() for item in bindings],
+        "run_summary": {
+            "by_status": status_counts,
+            "recent": [
+                {
+                    "run_id": run.run_id,
+                    "user_id": run.user_id,
+                    "status": run.status,
+                    "openclaw_agent_id": run.openclaw_agent_id,
+                    "openclaw_session_id": run.openclaw_session_id,
+                    "event_count": recent_event_counts.get(run.run_id, 0),
+                    "updated_at": run.updated_at,
+                    "created_at": run.created_at,
+                }
+                for run in recent_runs
+            ],
+        },
+    }
 
 
 @app.get("/api/openclaw/config")

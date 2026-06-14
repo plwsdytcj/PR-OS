@@ -176,6 +176,15 @@ def load_run(path: Path, run_id: str) -> OpenClawRun | None:
     return OpenClawRun.from_json(row[0]) if row else None
 
 
+def load_all_runs(path: Path) -> list[OpenClawRun]:
+    if postgres_enabled():
+        return [OpenClawRun.from_json(payload) for payload in fetch_payloads(path, "openclaw_runs", order_by="updated_at DESC")]
+    init_openclaw_db(path)
+    with sqlite3.connect(path) as conn:
+        rows = conn.execute("SELECT payload FROM openclaw_runs ORDER BY updated_at DESC").fetchall()
+    return [OpenClawRun.from_json(row[0]) for row in rows]
+
+
 def save_event(path: Path, event: OpenClawEvent) -> None:
     if postgres_enabled():
         upsert_payload(path, "openclaw_events", "event_id", event.event_id, event.to_json(), {"run_id": event.run_id, "sequence": event.sequence, "event_type": event.event_type})
@@ -204,4 +213,3 @@ def load_events_for_run(path: Path, run_id: str) -> list[OpenClawEvent]:
     with sqlite3.connect(path) as conn:
         rows = conn.execute("SELECT payload FROM openclaw_events WHERE run_id = ? ORDER BY sequence ASC", (run_id,)).fetchall()
     return [OpenClawEvent.from_json(row[0]) for row in rows]
-

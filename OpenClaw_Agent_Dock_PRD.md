@@ -595,6 +595,7 @@ OpenClaw 工具产物回写到：
 - Admin Console 支持给内部员工绑定 `openclaw_agent_id` 和 `openclaw_session_id`。
 - 后端已提供：
   - `GET /api/openclaw/status`
+  - `GET /api/openclaw/diagnostics`
   - `GET /api/openclaw/me`
   - `POST /api/openclaw/sessions`
   - `POST /api/openclaw/chat`
@@ -641,6 +642,7 @@ OpenClaw 工具产物回写到：
 - `python3 scripts/smoke_openclaw_campaign_asset.py`
 - `python3 scripts/smoke_openclaw_async_save_flow.py`
 - `python3 scripts/smoke_openclaw_admin.py`
+- `python3 scripts/smoke_openclaw_diagnostics.py`
 - 浏览器会话验证：
   - OpenClaw session 创建返回 200；
   - 10 个 Kolness tools 可见；
@@ -662,6 +664,8 @@ OpenClaw 工具产物回写到：
   - OpenClaw Gateway / Control UI / Admin Token 只能由 admin 配置；
   - Admin Token 不会在 API/UI 明文回显；
   - OpenClaw agent binding 只能绑定内部员工，不能绑定甲方账号。
+  - OpenClaw diagnostics 可返回配置完整度、tool count、binding count、recent run 和 event count；
+  - 甲方账号不能访问 OpenClaw diagnostics。
 
 ### 仍需真实 Gateway 才能验收
 
