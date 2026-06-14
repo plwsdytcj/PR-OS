@@ -100,6 +100,8 @@ def main() -> None:
     staff_client = login(STAFF_EMAIL, STAFF_PASSWORD)
     blocked_events = staff_client.get(f"/api/openclaw/runs/{run_id}/events", headers=HEADERS)
     assert blocked_events.status_code == 403, blocked_events.text
+    blocked_stream = staff_client.get(f"/api/openclaw/runs/{run_id}/stream", headers=HEADERS)
+    assert blocked_stream.status_code == 403, blocked_stream.text
     blocked_save = staff_client.post(f"/api/openclaw/runs/{run_id}/save-to-campaign", headers=HEADERS, json={"client_name": "Blocked", "project_name": "Blocked"})
     assert blocked_save.status_code == 403, blocked_save.text
 
