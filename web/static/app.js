@@ -9,6 +9,7 @@ const state = {
   historyFilter: "all",
   historyLoaded: false,
   historyLoading: false,
+  activeView: "workspace",
   authUsers: [],
   authClients: [],
   projectAccess: [],
@@ -304,6 +305,7 @@ function setView(viewId) {
   if (state.currentIdentity?.user?.user_type === "client" && viewId !== "clientPortal") {
     viewId = "clientPortal";
   }
+  state.activeView = viewId;
   $$(".view").forEach((node) => node.classList.toggle("active", node.id === viewId));
   $$(".nav-item").forEach((node) => node.classList.toggle("active", node.dataset.view === viewId));
   const activeNav = $(`.nav-item[data-view="${viewId}"]`);
@@ -311,6 +313,7 @@ function setView(viewId) {
     group.open = Boolean(activeNav && group.contains(activeNav));
   });
   if (viewId === "history") ensureWorkspaceHistoryLoaded();
+  renderAgentFloatDock();
 }
 
 function applySidebarState() {
@@ -2169,7 +2172,7 @@ function renderAgentFloatDock() {
   const dock = $("#agentFloatDock");
   if (!dock) return;
   const user = state.currentIdentity?.user;
-  const visible = user?.user_type === "internal";
+  const visible = user?.user_type === "internal" && state.activeView !== "agentWorkspace";
   dock.classList.toggle("hidden", !visible);
   if (!visible) return;
   const panel = $("#agentFloatPanel");

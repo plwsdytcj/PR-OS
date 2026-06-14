@@ -7754,6 +7754,168 @@ textarea {
   }
 }
 
+/* Focus the AI Agent route on the primary chat experience. The run/event/artifact
+   data still exists behind the scenes, but it should not dominate the first screen. */
+#agentWorkspace {
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+#agentWorkspace .agent-manus-header,
+#agentWorkspace .agent-sidebar,
+#agentWorkspace .agent-artifacts,
+#agentWorkspace .agent-run-panel,
+#agentWorkspace .agent-reasoning-panel {
+  display: none !important;
+}
+
+#agentWorkspace .agent-layout,
+#agentWorkspace .agent-main {
+  display: block;
+  min-height: 0;
+}
+
+#agentWorkspace .agent-chat-panel {
+  min-height: min(760px, calc(100vh - 128px));
+  border: 1px solid rgba(23, 18, 13, 0.12);
+  border-radius: 10px;
+  background: #fffdf7;
+  color: var(--ink);
+  box-shadow: 0 18px 48px rgba(23, 18, 13, 0.12);
+}
+
+#agentWorkspace .agent-chat-panel > .panel-header {
+  align-items: center;
+  border-bottom: 1px solid rgba(23, 18, 13, 0.1);
+  padding: 16px 18px;
+}
+
+#agentWorkspace .agent-chat-panel h2 {
+  color: var(--ink);
+  font-size: 24px;
+  line-height: 1.1;
+  margin: 3px 0;
+}
+
+#agentWorkspace .agent-chat-panel p,
+#agentWorkspace .agent-chat-panel .meta,
+#agentWorkspace .agent-chat-panel .checkline {
+  color: var(--muted);
+}
+
+#agentWorkspace .agent-chat-panel #agentNewThreadBtn {
+  min-height: 38px;
+  border: 1px solid rgba(23, 18, 13, 0.16);
+  border-radius: 7px;
+  background: #fffaf0;
+  color: var(--ink);
+  box-shadow: none;
+}
+
+#agentWorkspace .agent-chat-panel .agent-message-list {
+  min-height: 0;
+  border: 0;
+  background: #fffdf7;
+  box-shadow: none;
+  padding: 18px;
+}
+
+#agentWorkspace .agent-chat-panel .agent-message {
+  grid-template-columns: 44px minmax(0, 1fr);
+  max-width: min(760px, 96%);
+}
+
+#agentWorkspace .agent-message-role {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  background: #17120d;
+  color: #fffaf0;
+  box-shadow: none;
+  font-size: 10px;
+}
+
+#agentWorkspace .agent-message > div:last-child,
+#agentWorkspace .agent-message.user > div:last-child {
+  border: 1px solid rgba(23, 18, 13, 0.12);
+  border-radius: 10px;
+  background: #fffaf0;
+  box-shadow: none;
+}
+
+#agentWorkspace .agent-message.user > div:last-child {
+  background: #e4fff4;
+}
+
+#agentWorkspace .agent-chat-panel #agentChatForm,
+#agentWorkspace .agent-composer-form {
+  border-top: 1px solid rgba(23, 18, 13, 0.1);
+  background: #fffaf0;
+  padding: 14px;
+}
+
+#agentWorkspace #agentChatForm .field-row,
+#agentWorkspace #agentRuntimeMeta,
+#agentWorkspace #agentRuntimeComparison,
+#agentWorkspace #agentCompareRuntimeBtn,
+#agentWorkspace .checkline {
+  display: none !important;
+}
+
+#agentWorkspace #agentChatForm textarea {
+  min-height: 112px;
+  border: 1px solid rgba(23, 18, 13, 0.16);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  resize: vertical;
+}
+
+#agentWorkspace #agentChatForm .field-row:has(#agentRuntimeSelect) {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 108px;
+  gap: 10px;
+}
+
+#agentWorkspace #agentChatForm .field-row:has(#agentRuntimeSelect) input,
+#agentWorkspace #agentChatForm .field-row:has(#agentRuntimeSelect) select,
+#agentWorkspace #agentChatForm .field-row:has(#agentRuntimeSelect) #agentCompareRuntimeBtn {
+  display: none;
+}
+
+#agentWorkspace #agentChatForm .field-row:has(#agentRuntimeSelect) #agentRunBtn {
+  display: block;
+  grid-column: 2;
+  min-height: 48px;
+  border-radius: 8px;
+  background: #17120d;
+  color: #fffaf0;
+}
+
+@media (max-width: 760px) {
+  #agentWorkspace {
+    max-width: none;
+  }
+
+  #agentWorkspace .agent-chat-panel {
+    min-height: calc(100vh - 104px);
+    border-radius: 8px;
+  }
+
+  #agentWorkspace .agent-chat-panel > .panel-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  #agentWorkspace #agentChatForm .field-row:has(#agentRuntimeSelect) {
+    grid-template-columns: 1fr;
+  }
+
+  #agentWorkspace #agentChatForm .field-row:has(#agentRuntimeSelect) #agentRunBtn {
+    grid-column: 1;
+  }
+}
+
 @media (min-width: 901px) {
   .sidebar {
     transition:

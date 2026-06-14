@@ -32,7 +32,7 @@ def main() -> None:
     assert app_page.status_code == 200, app_page.text[:400]
     assert "agentFloatOpenNativeBtn" in app_page.text
     assert "openNativeOpenClawFromWorkspaceBtn" in app_page.text
-    assert "openclaw task space" in app_page.text
+    assert "kolness agent" in app_page.text
     assert "PR Agent Workspace" in app_page.text
     assert "PR Task Chat" in app_page.text
     assert "agentOpenClawStatusPanel" in app_page.text

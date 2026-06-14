@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260614-3" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260615-1" />
   </head>
   <body>
     <div class="app-shell">
@@ -261,18 +261,10 @@
         <section id="agentWorkspace" class="view">
           <div class="agent-console agent-manus-header">
             <div>
-              <div class="eyebrow">openclaw task space</div>
-              <h2>PR Agent Workspace</h2>
-              <p>像 Manus 一样把 brief 变成连续任务：对话、工具调用、KOL 选择、图谱、风险和 Campaign 资产都在同一个空间里沉淀。</p>
+              <div class="eyebrow">kolness agent</div>
+              <h2>PR Agent Chat</h2>
+              <p>把甲方 brief 丢进来，Agent 会调用 Kolness 工具完成 KOL 推荐、风险判断和客户可读结论。</p>
             </div>
-            <div class="agent-console-mark">
-              <span>Thread</span>
-              <strong>→</strong>
-              <span>Chat</span>
-              <strong>→</strong>
-              <span>OS</span>
-            </div>
-            <button id="openAgentFloatFromWorkspaceBtn" class="primary" type="button">打开浮窗</button>
           </div>
 
           <div class="agent-layout">
@@ -288,9 +280,9 @@
               <div class="panel agent-chat-panel">
                 <div class="panel-header">
                   <div>
-                    <span class="card-kicker">copilot thread</span>
-                    <h2>PR Task Chat</h2>
-                    <p id="agentThreadMeta">输入 brief 后创建 Thread；Agent 会调用 Kolness 工具，持续写入步骤、图谱和产物。</p>
+                    <span class="card-kicker">agent chat</span>
+                    <h2>PR Agent</h2>
+                    <p id="agentThreadMeta">输入 brief 后，Agent 会调用 Kolness 工具并把结果写回对话。</p>
                   </div>
                   <button id="agentNewThreadBtn" class="secondary" type="button">新会话</button>
                 </div>
@@ -309,7 +301,7 @@
                       <option value="custom">Custom Native</option>
                       <option value="openai_agents">Agents SDK</option>
                     </select>
-                    <button id="agentRunBtn" class="primary" type="submit">启动 Agent</button>
+                    <button id="agentRunBtn" class="primary" type="submit">发送</button>
                     <button id="agentCompareRuntimeBtn" class="secondary" type="button">A/B 对比</button>
                   </div>
                   <p id="agentRuntimeMeta" class="meta">Runtime 状态读取中...</p>
@@ -1934,6 +1926,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260614-14"></script>
+    <script src="/static/app.js?v=20260615-1"></script>
   </body>
 </html>
