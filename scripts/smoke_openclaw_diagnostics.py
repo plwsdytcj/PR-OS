@@ -70,6 +70,23 @@ def main() -> None:
         "bind diagnostics agent",
     )
     assert bind["binding"]["openclaw_agent_id"] == "kolness_diagnostics_agent"
+    staff = assert_ok(
+        client.post(
+            "/api/auth/users",
+            headers=HEADERS,
+            json={"email": "openclaw-diagnostics-staff@test.local", "name": "Diagnostics Staff", "password": "staff-pass-123", "user_type": "internal", "role": "strategist"},
+        ),
+        "create diagnostics staff",
+    )["user"]
+    staff_bind = assert_ok(
+        client.post(
+            "/api/openclaw/bindings",
+            headers=HEADERS,
+            json={"user_id": staff["user_id"], "openclaw_agent_id": "kolness_staff_diagnostics_agent", "openclaw_session_id": "staff_diagnostics_session"},
+        ),
+        "bind diagnostics staff agent",
+    )
+    assert staff_bind["binding"]["openclaw_agent_id"] == "kolness_staff_diagnostics_agent"
 
     run_payload = FakeGatewayOpenClawAdapter().start_chat(
         db_path,
@@ -87,15 +104,26 @@ def main() -> None:
     assert checks["default_agent_id"] is True
     assert checks["admin_token"] is True
     assert checks["tool_count"] >= 10
-    assert checks["binding_count"] == 1
-    assert checks["active_binding_count"] == 1
+    assert checks["binding_count"] == 2
+    assert checks["active_binding_count"] == 2
     assert checks["run_count"] == 1
     assert checks["issues"] == []
     assert diagnostics["config"]["admin_token"] != "diagnostics-token"
+    assert len(diagnostics["bindings"]) == 2
     assert diagnostics["run_summary"]["by_status"]["completed"] == 1
     recent = diagnostics["run_summary"]["recent"][0]
     assert recent["run_id"] == run_payload["run"]["run_id"]
     assert recent["event_count"] >= 5
+
+    staff_session = TestClient(app)
+    assert_ok(staff_session.post("/api/auth/login", headers=HEADERS, json={"email": "openclaw-diagnostics-staff@test.local", "password": "staff-pass-123"}), "staff login")
+    staff_diagnostics = assert_ok(staff_session.get("/api/openclaw/diagnostics", headers=HEADERS), "staff diagnostics")
+    assert staff_diagnostics["checks"]["binding_count"] == 1
+    assert staff_diagnostics["checks"]["active_binding_count"] == 1
+    assert staff_diagnostics["checks"]["run_count"] == 0
+    assert len(staff_diagnostics["bindings"]) == 1
+    assert staff_diagnostics["bindings"][0]["user_id"] == staff["user_id"]
+    assert staff_diagnostics["run_summary"]["recent"] == []
 
     client_company = assert_ok(
         client.post("/api/auth/clients", headers=HEADERS, json={"name": "Diagnostics Client", "company": "Brand Co"}),

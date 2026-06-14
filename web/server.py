@@ -773,18 +773,21 @@ def openclaw_me() -> dict[str, Any]:
 
 @app.get("/api/openclaw/diagnostics")
 def openclaw_diagnostics() -> dict[str, Any]:
-    require_internal("read")
+    identity = require_internal("read")
     adapter = OpenClawAdapter()
     config = load_openclaw_config(DB_PATH)
     status = adapter.status(DB_PATH)
     bindings = load_all_bindings(DB_PATH)
     runs = load_all_openclaw_runs(DB_PATH)
-    recent_runs = runs[:8]
+    is_admin = identity.user.role == "admin"
+    visible_bindings = bindings if is_admin else [item for item in bindings if item.user_id == identity.user.user_id]
+    visible_runs = runs if is_admin else [run for run in runs if run.user_id == identity.user.user_id]
+    recent_runs = visible_runs[:8]
     recent_event_counts = {run.run_id: len(load_openclaw_events_for_run(DB_PATH, run.run_id)) for run in recent_runs}
     status_counts: dict[str, int] = {}
-    for run in runs:
+    for run in visible_runs:
         status_counts[run.status] = status_counts.get(run.status, 0) + 1
-    active_bindings = [item for item in bindings if item.status == "active"]
+    active_bindings = [item for item in visible_bindings if item.status == "active"]
     issues: list[str] = []
     if not config.enabled:
         issues.append("OpenClaw is disabled")
@@ -792,8 +795,8 @@ def openclaw_diagnostics() -> dict[str, Any]:
         issues.append("Gateway URL is missing")
     if not config.default_agent_id:
         issues.append("Default agent id is missing")
-    if not bindings:
-        issues.append("No internal user bindings yet")
+    if not visible_bindings:
+        issues.append("No OpenClaw binding for this account" if not is_admin else "No internal user bindings yet")
     return {
         "status": status,
         "config": config.to_dict(mask_secret=True),
@@ -804,12 +807,12 @@ def openclaw_diagnostics() -> dict[str, Any]:
             "default_agent_id": bool(config.default_agent_id),
             "admin_token": bool(config.admin_token),
             "tool_count": len(_openclaw_tool_manifest()),
-            "binding_count": len(bindings),
+            "binding_count": len(visible_bindings),
             "active_binding_count": len(active_bindings),
-            "run_count": len(runs),
+            "run_count": len(visible_runs),
             "issues": issues,
         },
-        "bindings": [item.to_dict() for item in bindings],
+        "bindings": [item.to_dict() for item in visible_bindings],
         "run_summary": {
             "by_status": status_counts,
             "recent": [
