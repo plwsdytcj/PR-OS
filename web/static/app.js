@@ -2220,7 +2220,17 @@ function activeFloatRuntime() {
 }
 
 function displayOpenClawMessage(run) {
-  return state.activeOpenClawRun?.displayMessage || run?.display_message || run?.message || "";
+  return stripOpenClawDisplayMessage(state.activeOpenClawRun?.displayMessage || run?.display_message || run?.message || "");
+}
+
+function stripOpenClawDisplayMessage(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  return text
+    .split(/\n\s*执行方式：/)[0]
+    .split(/\n\s*执行方式:/)[0]
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function enrichOpenClawPayload(payload) {
@@ -2309,15 +2319,17 @@ function buildOpenClawSteps(run, events) {
 function extractOpenClawKols(text) {
   const value = String(text || "");
   if (!value) return [];
-  const lines = value
-    .split(/\n+/)
-    .map((line) => line.replace(/^[\s>*-]*(\d+[.、)]\s*)?/, "").trim())
-    .filter(Boolean);
+  const rawLines = value.split(/\n+/).map((line) => line.trim()).filter(Boolean);
   const candidates = [];
-  for (const line of lines) {
+  for (const rawLine of rawLines) {
+    const structuredLine =
+      /^[\s>*-]*\d+[.、)]\s*/.test(rawLine) ||
+      /^[\s>*-]*(KOL(?!ness)|达人|账号)\b/i.test(rawLine);
+    if (!structuredLine) continue;
+    const line = rawLine.replace(/^[\s>*-]*(\d+[.、)]\s*)?/, "").trim();
     const match = line.match(/^([^：:，,。；;\-|]+)(?:[：:，,。；;\-|]|\s+-\s+).{0,120}$/);
-    const name = (match ? match[1] : line).replace(/^(KOL|达人|推荐|账号)\s*/i, "").trim();
-    if (name.length >= 2 && name.length <= 18 && !/[。！？]$/.test(name) && !/推荐名单|匹配理由|主要风险|下一步/.test(name)) {
+    const name = (match ? match[1] : line).replace(/^(KOL(?!ness)|达人|推荐|账号)\s*/i, "").trim();
+    if (name.length >= 2 && name.length <= 18 && !/[。！？]$/.test(name) && !/Kolness|OpenClaw|Bridge|推荐名单|匹配理由|主要风险|下一步/.test(name)) {
       candidates.push(name);
     }
   }

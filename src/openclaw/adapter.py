@@ -271,16 +271,16 @@ class OpenClawAdapter:
             raw_value = line.strip()
             if not raw_value:
                 continue
-            structured_line = bool(re.match(r"^[\s>*-]*(\d+[.、)]\s*)", raw_value)) or bool(re.match(r"^[\s>*-]*(KOL|达人|账号)", raw_value, flags=re.IGNORECASE))
+            structured_line = bool(re.match(r"^[\s>*-]*(\d+[.、)]\s*)", raw_value)) or bool(re.match(r"^[\s>*-]*(KOL(?!ness)|达人|账号)\b", raw_value, flags=re.IGNORECASE))
             if not structured_line:
                 continue
             value = re.sub(r"^[\s>*-]*(\d+[.、)]\s*)?", "", raw_value).strip()
             value = value.replace("**", "").strip()
-            match = re.match(r"^(?:KOL|达人|账号)?\s*([^：:，,。；;（）()\-|]{2,18})", value, flags=re.IGNORECASE)
+            match = re.match(r"^(?:KOL(?!ness)|达人|账号)?\s*([^：:，,。；;（）()\-|]{2,18})", value, flags=re.IGNORECASE)
             if not match:
                 continue
             name = match.group(1).strip()
-            if name in {"推荐以下", "推荐名单", "匹配理由", "主要风险", "下一步"}:
+            if name in {"推荐以下", "推荐名单", "匹配理由", "主要风险", "下一步"} or re.search(r"Kolness|OpenClaw|Bridge", name, flags=re.IGNORECASE):
                 continue
             if name and name not in names:
                 names.append(name)
