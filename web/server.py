@@ -931,6 +931,64 @@ async def openclaw_chat(payload: dict[str, Any], background_tasks: BackgroundTas
     return adapter.start_chat(**run_payload)
 
 
+def _require_kolness_bridge_access(request: Request) -> None:
+    client_host = request.client.host if request.client else ""
+    if client_host in {"127.0.0.1", "::1", "localhost"}:
+        return
+    config = load_openclaw_config(DB_PATH)
+    auth = request.headers.get("Authorization", "")
+    token = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else ""
+    if config.admin_token and token and secrets.compare_digest(token, config.admin_token):
+        return
+    raise HTTPException(status_code=403, detail="kolness bridge access denied")
+
+
+@app.post("/api/kolness/chat")
+async def kolness_openclaw_bridge(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    _require_kolness_bridge_access(request)
+    message = str(payload.get("message") or payload.get("brief") or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+    top_n = int(metadata.get("top_n") or payload.get("top_n") or 8)
+    brief = parse_brief(message)
+    results = rank_creators(brief, load_profiles(DB_PATH))[:top_n]
+    proposal = generate_markdown_proposal(brief, results)
+    recommended = [result.creator.name for result in results]
+    score_lines = [
+        f"{index}. {result.creator.name}（{result.creator.platform}）- score {result.match_score}：{'; '.join(result.reasons[:3])}"
+        for index, result in enumerate(results[:top_n], start=1)
+    ]
+    risk_notes = []
+    for result in results[:top_n]:
+        if result.risk_points:
+            risk_notes.append(f"{result.creator.name}: {'; '.join(result.risk_points[:2])}")
+    response = "\n".join(
+        [
+            "Kolness OpenClaw Bridge 已完成本次 PR 任务。",
+            "",
+            "## KOL 推荐",
+            *(score_lines or ["暂无匹配达人，请先导入或补充达人资料。"]),
+            "",
+            "## 主要风险",
+            *(risk_notes[:6] or ["当前候选池未发现明显高风险标签，建议进入人工复核。"]),
+            "",
+            "## 客户可读方案摘要",
+            proposal[:1400],
+        ]
+    )
+    return {
+        "message": response,
+        "session_id": str(payload.get("session_id") or stable_id("kolness_bridge_session", message[:120], prefix="openclaw_session")),
+        "recommended_kols": recommended,
+        "brief": asdict(brief),
+        "artifacts": [
+            {"artifact_type": "kol_recommendation", "title": "KOL 推荐", "payload": {"items": [_match_result_payload(result) for result in results]}},
+            {"artifact_type": "proposal_markdown", "title": "客户可读方案", "payload": {"markdown": proposal}},
+        ],
+    }
+
+
 def _require_openclaw_run_access(run_id: str, action: str = "read") -> tuple[Any, Any]:
     identity = require_internal(action)
     run = load_openclaw_run(DB_PATH, run_id)
