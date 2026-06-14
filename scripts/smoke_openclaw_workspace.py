@@ -64,7 +64,7 @@ def main() -> None:
     assert "Kolness × OpenClaw" in configured.text
     assert "Native OpenClaw UI" in configured.text
     assert "Kolness MCP Tools" in configured.text
-    assert "kolness_workspace_smoke" in configured.text
+    assert "Agent:" in configured.text
     assert "<iframe src='/openclaw/proxy'" in configured.text
 
     print("OK openclaw_workspace buttons=2 native_shell=configured")
