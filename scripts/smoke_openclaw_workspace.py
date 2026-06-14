@@ -34,6 +34,8 @@ def main() -> None:
     assert "openNativeOpenClawFromWorkspaceBtn" in app_page.text
     assert "openclaw command center" in app_page.text
     assert "PR Agent OS" in app_page.text
+    assert "agentOpenClawStatusPanel" in app_page.text
+    assert "my agent binding" in app_page.text
     assert "app.js?v=" in app_page.text
 
     db_path = ROOT / "data" / "processed" / "tenants" / TENANT / "app.sqlite3"

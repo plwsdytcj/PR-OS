@@ -29,6 +29,7 @@ const state = {
   agentRuntimeComparison: null,
   openClaw: null,
   openClawDiagnostics: null,
+  openClawMe: null,
   activeOpenClawRun: null,
   activeOpenClawCampaignTarget: null,
   openClawEventSource: null,
@@ -519,9 +520,16 @@ async function loadAgentTasks() {
 
 async function loadAgentRuntime() {
   if (state.currentIdentity?.user?.user_type === "client") return;
-  const [data, openClaw] = await Promise.all([api("/api/agent/runtime"), api("/api/openclaw/status").catch(() => null)]);
+  const [data, openClaw, openClawMe, openClawDiagnostics] = await Promise.all([
+    api("/api/agent/runtime"),
+    api("/api/openclaw/status").catch(() => null),
+    api("/api/openclaw/me").catch(() => null),
+    api("/api/openclaw/diagnostics").catch(() => null),
+  ]);
   state.agentRuntime = data;
   if (openClaw) state.openClaw = { ...(state.openClaw || {}), ...openClaw };
+  state.openClawMe = openClawMe;
+  if (openClawDiagnostics) state.openClawDiagnostics = openClawDiagnostics;
   renderAgentRuntimeControls();
 }
 
@@ -1915,6 +1923,45 @@ function renderAgentRuntimeControls() {
     floatSelect.querySelector('option[value="openai_agents"]').disabled = !(sdk?.available);
     floatSelect.querySelector('option[value="openclaw"]').disabled = !openClawAvailable;
   }
+  renderAgentOpenClawStatus();
+}
+
+function renderAgentOpenClawStatus() {
+  const node = $("#agentOpenClawStatusPanel");
+  if (!node) return;
+  const status = state.openClaw?.status || state.openClawMe?.status || {};
+  const binding = state.openClawMe?.binding || {};
+  const checks = state.openClawDiagnostics?.checks || {};
+  const recentRuns = state.openClawDiagnostics?.run_summary?.recent || [];
+  const available = Boolean(status.available);
+  const issues = checks.issues || [];
+  const latestRun = recentRuns[0];
+  node.innerHTML = `
+    <div class="agent-openclaw-status-head">
+      <div>
+        <span class="card-kicker">my agent binding</span>
+        <strong>${escapeHTML(available ? "OpenClaw ready" : "OpenClaw needs setup")}</strong>
+        <p>${escapeHTML(status.message || "等待 OpenClaw Gateway 状态。")}</p>
+      </div>
+      <span class="agent-float-status-pill ${available ? "completed" : "failed"}">${escapeHTML(available ? "ready" : "blocked")}</span>
+    </div>
+    <div class="agent-openclaw-status-grid">
+      <span><strong>${escapeHTML(binding.openclaw_agent_id || status.default_agent_id || "kolness_default")}</strong><small>agent</small></span>
+      <span><strong>${escapeHTML(binding.openclaw_session_id || "new session")}</strong><small>session</small></span>
+      <span><strong>${fmtNumber(checks.tool_count || 0)}</strong><small>tools</small></span>
+      <span><strong>${fmtNumber(checks.run_count || 0)}</strong><small>runs</small></span>
+    </div>
+    ${
+      issues.length
+        ? `<div class="agent-openclaw-status-note">${issues.map((issue) => `<span>${escapeHTML(issue)}</span>`).join("")}</div>`
+        : `<div class="agent-openclaw-status-note ok"><span>Kolness tools、Gateway 和员工绑定状态可用</span></div>`
+    }
+    ${
+      latestRun
+        ? `<div class="agent-openclaw-latest"><strong>最近任务</strong><span>${escapeHTML(latestRun.status || "unknown")} · ${escapeHTML(latestRun.openclaw_agent_id || "default")} · ${fmtNumber(latestRun.event_count || 0)} events</span></div>`
+        : ""
+    }
+  `;
 }
 
 function renderAgentRuntimeComparison() {
