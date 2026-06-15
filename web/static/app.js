@@ -2445,34 +2445,20 @@ function renderOpenClawFloatMessages() {
   const run = state.activeOpenClawRun?.run || {};
   const events = state.activeOpenClawRun?.events || [];
   if (!run.run_id) {
-    node.classList.add("agent-float-openclaw-space");
+    node.classList.remove("agent-float-openclaw-space");
     node.innerHTML = `
       <article class="agent-float-welcome">
-        <strong>开一个 PR 任务空间。</strong>
-        <p>输入 brief 后，Agent 会调用 KOL 工具：解析 brief、查达人库、匹配 KOL、整理风险和客户可读结论。</p>
+        <strong>直接和 PR Agent 对话。</strong>
+        <p>输入 brief 或问题后，Agent 会调用 Kolness 工具，并把推荐、风险和下一步直接写回聊天里。</p>
         <div class="agent-float-suggestions">
-          <button type="button" data-agent-prompt="帮我把这个 PR brief 跑成一条深度任务，先推荐 KOL，再解释推荐理由和风险。">深度跑 brief</button>
+          <button type="button" data-agent-prompt="帮我把这个 PR brief 跑成一条对话任务，先推荐 KOL，再解释推荐理由和风险。">跑 brief</button>
           <button type="button" data-agent-prompt="用 Kolness 的达人库帮我查适合这个项目的 KOL，并生成客户可读解释。">查达人库</button>
         </div>
       </article>
-      <section class="agent-float-workspace idle">
-        <div class="agent-float-workspace-head">
-          <div><span class="agent-float-status-pill idle">idle</span><strong>Run Space</strong></div>
-          <span>ready</span>
-        </div>
-        <div class="agent-float-tool-rail">
-          <span>brief</span><i></i><span>tools</span><i></i><span>assets</span>
-        </div>
-        <article class="agent-float-output-card">
-          <span class="card-kicker">Kolness MCP</span>
-          <strong>已连接 KOL 工具层</strong>
-          <p>可调用 brief 解析、达人搜索、KOL 匹配、图谱生成、方案生成和 Campaign 沉淀。</p>
-        </article>
-      </section>
     `;
     return;
   }
-  node.classList.add("agent-float-openclaw-space");
+  node.classList.remove("agent-float-openclaw-space");
   const displayMessage = displayOpenClawMessage(run);
   const userMessage = displayMessage
     ? `<article class="agent-float-message user"><span>You</span><p>${escapeHTML(displayMessage)}</p></article>`
@@ -2486,7 +2472,6 @@ function renderOpenClawFloatMessages() {
       ${userMessage}
       ${assistantMessage || '<article class="agent-float-message assistant thinking"><span>Agent</span><p>正在调用 Kolness MCP 工具，完成后会把推荐、理由、风险和下一步写回来。</p></article>'}
     </section>
-    ${renderOpenClawWorkspace(run, events)}
   `;
   node.scrollTop = node.scrollHeight;
 }

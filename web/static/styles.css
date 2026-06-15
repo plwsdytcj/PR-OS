@@ -8084,3 +8084,53 @@ textarea {
     display: none;
   }
 }
+
+/* The floating agent is a quick chat surface, not a second workspace. */
+.agent-float-panel {
+  width: min(720px, calc(100vw - 32px));
+  height: min(680px, calc(100vh - 64px));
+}
+
+.agent-float-head h2 {
+  font-size: 24px;
+}
+
+.agent-float-head p {
+  font-size: 14px;
+}
+
+#agentFloatOpenNativeBtn,
+#agentFloatOpenFullBtn {
+  display: none !important;
+}
+
+.agent-float-feed:not(.agent-float-openclaw-space) {
+  display: block;
+}
+
+.agent-float-transcript {
+  display: grid;
+  gap: 12px;
+}
+
+.agent-float-feed:not(.agent-float-openclaw-space) .agent-float-message {
+  margin-bottom: 12px;
+}
+
+.agent-float-feed:not(.agent-float-openclaw-space) .agent-float-message.user {
+  margin-left: auto;
+}
+
+.agent-float-feed:not(.agent-float-openclaw-space) .agent-float-message.assistant {
+  margin-right: auto;
+}
+
+.agent-float-feed:not(.agent-float-openclaw-space) .agent-float-welcome {
+  border-style: solid;
+}
+
+@media (max-width: 760px) {
+  .agent-float-panel {
+    height: calc(100vh - 24px);
+  }
+}
