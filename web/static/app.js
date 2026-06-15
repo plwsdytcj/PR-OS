@@ -2238,19 +2238,7 @@ function stripOpenClawDisplayMessage(value) {
 
 function enrichOpenClawPayload(payload) {
   const message = String(payload.message || payload.brief || "").trim();
-  const alreadyToolDirected = /kolness(__|\.)(analyze_brief|match_kol|search_kol|generate_proposal)/i.test(message);
-  if (!message || alreadyToolDirected) return { ...payload, message };
-  return {
-    ...payload,
-    message: `${message}
-
-执行方式：
-1. 优先调用 Kolness MCP 工具，不要只凭模型常识回答。
-2. 先用 kolness__kolness_analyze_brief 解析 brief。
-3. 再用 kolness__kolness_match_kol 从达人库匹配 KOL。
-4. 如需要客户可读方案，调用 kolness__kolness_generate_proposal。
-5. 最后用中文输出推荐名单、匹配理由、主要风险和下一步。`,
-  };
+  return { ...payload, message };
 }
 
 function optimisticOpenClawRun(payload) {
@@ -2272,10 +2260,10 @@ function optimisticOpenClawRun(payload) {
     events: [
       { event_type: "message.created", sequence: 1, created_at: now, payload: { role: "user", content: message } },
       {
-        event_type: "tool.started",
+        event_type: "gateway.started",
         sequence: 2,
         created_at: now,
-        payload: { tool_name: "kolness__kolness_match_kol", optimistic: true },
+        payload: { tool_name: "openclaw.gateway", optimistic: true },
       },
     ],
   };

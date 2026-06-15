@@ -946,12 +946,52 @@ def _require_kolness_bridge_access(request: Request) -> None:
     raise HTTPException(status_code=403, detail="kolness bridge access denied")
 
 
+def _is_pr_agent_task(message: str) -> bool:
+    text = message.strip().lower()
+    if not text:
+        return False
+    task_keywords = [
+        "brief",
+        "kol",
+        "koc",
+        "达人",
+        "博主",
+        "推荐",
+        "匹配",
+        "方案",
+        "campaign",
+        "投放",
+        "预算",
+        "品牌",
+        "新品",
+        "上市",
+        "预热",
+        "小红书",
+        "抖音",
+        "b站",
+        "风险",
+        "报价",
+        "客户",
+    ]
+    if any(keyword in text for keyword in task_keywords):
+        return True
+    return len(message) >= 80
+
+
 @app.post("/api/kolness/chat")
 async def kolness_openclaw_bridge(payload: dict[str, Any], request: Request) -> dict[str, Any]:
     _require_kolness_bridge_access(request)
     message = str(payload.get("message") or payload.get("brief") or "").strip()
     if not message:
         raise HTTPException(status_code=400, detail="message is required")
+    session_id = str(payload.get("session_id") or stable_id("kolness_bridge_session", message[:120], prefix="openclaw_session"))
+    if not _is_pr_agent_task(message):
+        return {
+            "message": "你好，我是 Kolness PR Agent。你可以直接把甲方 brief 发给我，我会帮你推荐 KOL、说明匹配理由、提示主要风险，并整理成客户可看的方案。",
+            "session_id": session_id,
+            "recommended_kols": [],
+            "artifacts": [],
+        }
     metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
     top_n = int(metadata.get("top_n") or payload.get("top_n") or 8)
     brief = parse_brief(message)
@@ -982,7 +1022,7 @@ async def kolness_openclaw_bridge(payload: dict[str, Any], request: Request) -> 
     )
     return {
         "message": response,
-        "session_id": str(payload.get("session_id") or stable_id("kolness_bridge_session", message[:120], prefix="openclaw_session")),
+        "session_id": session_id,
         "recommended_kols": recommended,
         "brief": asdict(brief),
         "artifacts": [
