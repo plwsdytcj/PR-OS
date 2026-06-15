@@ -32,6 +32,7 @@ const state = {
   openClawDiagnostics: null,
   openClawMe: null,
   activeOpenClawRun: null,
+  openClawConversation: [],
   activeOpenClawCampaignTarget: null,
   openClawEventSource: null,
   openClawPollTimer: null,
@@ -2411,7 +2412,7 @@ function summarizeOpenClawResponse(response, events = []) {
       .find(Boolean);
     if (risk) lines.push(`风险提示：${risk.slice(0, 110)}${risk.length > 110 ? "..." : ""}`);
   }
-  lines.push("完整推荐理由、预算建议和客户方案已在下方任务空间生成，可保存到 Campaign。");
+  if (kols.length || riskMatch) lines.push("完整推荐理由、预算建议和客户方案已生成，可保存到 Campaign。");
   return lines.join("\n");
 }
 
@@ -2419,9 +2420,10 @@ function renderOpenClawFloatContent(summary) {
   const run = state.activeOpenClawRun?.run || {};
   const events = state.activeOpenClawRun?.events || [];
   if (summary) {
+    const hasToolEvent = events.some((event) => event.event_type === "kolness.match.completed");
     summary.innerHTML = `
-      <strong>${escapeHTML(displayOpenClawMessage(run) || "OpenClaw 深度任务")}</strong>
-      <span>${escapeHTML(run.status || "idle")} · ${fmtNumber(events.length)} events · Kolness MCP</span>
+      <strong>${escapeHTML(displayOpenClawMessage(run) || "和 PR Agent 对话")}</strong>
+      <span>${escapeHTML(hasToolEvent ? `已调用 KOL 工具 · ${run.status || "idle"}` : run.status || "ready")}</span>
     `;
   }
   renderOpenClawFloatMessages();
@@ -2432,7 +2434,8 @@ function renderOpenClawFloatMessages() {
   if (!node) return;
   const run = state.activeOpenClawRun?.run || {};
   const events = state.activeOpenClawRun?.events || [];
-  if (!run.run_id) {
+  const conversation = state.openClawConversation || [];
+  if (!conversation.length && !run.run_id) {
     node.classList.remove("agent-float-openclaw-space");
     node.innerHTML = `
       <article class="agent-float-welcome">
@@ -2447,21 +2450,59 @@ function renderOpenClawFloatMessages() {
     return;
   }
   node.classList.remove("agent-float-openclaw-space");
-  const displayMessage = displayOpenClawMessage(run);
-  const userMessage = displayMessage
-    ? `<article class="agent-float-message user"><span>You</span><p>${escapeHTML(displayMessage)}</p></article>`
-    : "";
-  const assistantMessage =
-    run.response || run.error
-      ? `<article class="agent-float-message assistant"><span>Agent</span><p>${escapeHTML(summarizeOpenClawResponse(run.response || run.error, events))}</p></article>`
-      : "";
+  const rows = conversation.length
+    ? conversation
+    : [
+        {
+          user: displayOpenClawMessage(run),
+          assistant: run.response || run.error ? summarizeOpenClawResponse(run.response || run.error, events) : "",
+          status: run.status || "running",
+        },
+      ];
   node.innerHTML = `
     <section class="agent-float-transcript">
-      ${userMessage}
-      ${assistantMessage || '<article class="agent-float-message assistant thinking"><span>Agent</span><p>正在调用 Kolness MCP 工具，完成后会把推荐、理由、风险和下一步写回来。</p></article>'}
+      ${rows
+        .map(
+          (item) => `
+            ${
+              item.user
+                ? `<article class="agent-float-message user"><span>You</span><p>${escapeHTML(item.user)}</p></article>`
+                : ""
+            }
+            ${
+              item.assistant
+                ? `<article class="agent-float-message assistant"><span>Agent</span><p>${escapeHTML(item.assistant)}</p></article>`
+                : `<article class="agent-float-message assistant thinking"><span>Agent</span><p>${escapeHTML(item.status === "failed" ? "这条消息执行失败，请稍后重试。" : "正在处理这条消息。")}</p></article>`
+            }
+          `
+        )
+        .join("")}
     </section>
   `;
   node.scrollTop = node.scrollHeight;
+}
+
+function upsertOpenClawConversation(data, fallbackMessage = "") {
+  const run = data?.run || {};
+  const events = data?.events || [];
+  const runId = run.run_id || data?.run_id || "";
+  if (!runId) return;
+  const user = stripOpenClawDisplayMessage(fallbackMessage || data.displayMessage || run.display_message || run.message || "");
+  const assistant = run.response || run.error ? summarizeOpenClawResponse(run.response || run.error, events) : "";
+  const index = state.openClawConversation.findIndex((item) => item.runId === runId || (item.pending && user && item.user === user));
+  const item = {
+    runId,
+    user,
+    assistant,
+    status: run.status || "running",
+    eventCount: events.length,
+    pending: false,
+  };
+  if (index >= 0) {
+    state.openClawConversation[index] = { ...state.openClawConversation[index], ...item };
+  } else {
+    state.openClawConversation.push(item);
+  }
 }
 
 function renderOpenClawMainMessages() {
@@ -2680,6 +2721,14 @@ async function runOpenClawFromPayload(payload) {
   stopOpenClawPolling();
   const displayMessage = String(payload.message || payload.brief || "").trim();
   state.activeOpenClawRun = optimisticOpenClawRun(payload);
+  state.openClawConversation.push({
+    runId: state.activeOpenClawRun.run.run_id,
+    user: displayMessage,
+    assistant: "",
+    status: "running",
+    eventCount: state.activeOpenClawRun.events.length,
+    pending: true,
+  });
   state.activeOpenClawCampaignTarget = null;
   renderAgentMessages();
   renderAgentFloatDock();
@@ -2692,6 +2741,7 @@ async function runOpenClawFromPayload(payload) {
   });
   data.displayMessage = displayMessage;
   state.activeOpenClawRun = data;
+  upsertOpenClawConversation(data, displayMessage);
   state.activeOpenClawCampaignTarget = null;
   renderAgentMessages();
   renderAgentFloatDock();
@@ -3230,6 +3280,7 @@ function startOpenClawPolling(runId) {
     source.addEventListener("openclaw_run", async (event) => {
       const data = JSON.parse(event.data || "{}");
       state.activeOpenClawRun = data;
+      upsertOpenClawConversation(data);
       renderAgentMessages();
       renderAgentFloatDock();
       renderAgentOpenClawStatus();
@@ -3261,6 +3312,7 @@ function startOpenClawPollFallback(runId) {
     try {
       const data = await api(`/api/openclaw/runs/${encodeURIComponent(runId)}/events`);
       state.activeOpenClawRun = data;
+      upsertOpenClawConversation(data);
       renderAgentMessages();
       renderAgentFloatDock();
       renderAgentOpenClawStatus();
@@ -3284,6 +3336,7 @@ async function refreshOpenClawRun(runId) {
   await new Promise((resolve) => setTimeout(resolve, 250));
   const data = await api(`/api/openclaw/runs/${encodeURIComponent(runId)}/events`);
   state.activeOpenClawRun = data;
+  upsertOpenClawConversation(data);
   renderAgentMessages();
   renderAgentFloatDock();
   renderAgentOpenClawStatus();
@@ -5565,6 +5618,7 @@ function bindEvents() {
     state.activeAgentArtifacts = [];
     state.agentRuntimeComparison = null;
     state.activeOpenClawRun = null;
+    state.openClawConversation = [];
     state.activeOpenClawCampaignTarget = null;
     renderAgentTasks();
     renderAgentRun({ events: [], artifacts: [], run: {}, task: {} });
@@ -5691,6 +5745,7 @@ function bindEvents() {
     try {
       stopOpenClawPolling();
       state.activeOpenClawRun = null;
+      state.openClawConversation = [];
       state.activeOpenClawCampaignTarget = null;
       if (activeFloatRuntime() === "openclaw") {
         await api("/api/openclaw/sessions", {
