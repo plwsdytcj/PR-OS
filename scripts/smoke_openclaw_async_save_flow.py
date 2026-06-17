@@ -88,7 +88,7 @@ def main() -> None:
         time.sleep(0.2)
     assert completed["run"]["status"] == "completed", completed
     assert "Async 汽车生活家" in completed["run"]["response"]
-    assert any(event["event_type"] == "kolness.match.completed" for event in completed["events"])
+    assert any(event["event_type"] == "message.completed" for event in completed["events"])
 
     saved = assert_ok(
         client.post(

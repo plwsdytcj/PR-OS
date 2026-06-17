@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextvars
 import asyncio
+import base64
 import html
 import json
 import os
@@ -139,7 +140,7 @@ from src.kol_intelligence.service import (
 from src.kol_intelligence.storage import init_kol_intelligence_db
 from src.normalize.mapper import infer_column_mapping, map_dataframe_to_profiles
 from src.openclaw.adapter import OpenClawAdapter
-from src.openclaw.schemas import OpenClawConfig, OpenClawUserBinding, binding_id_for, now_iso as openclaw_now_iso
+from src.openclaw.schemas import OpenClawConfig, OpenClawSession, OpenClawUserBinding, binding_id_for, now_iso as openclaw_now_iso
 from src.openclaw.storage import (
     init_openclaw_db,
     load_all_bindings,
@@ -147,8 +148,12 @@ from src.openclaw.storage import (
     load_config as load_openclaw_config,
     load_events_for_run as load_openclaw_events_for_run,
     load_run as load_openclaw_run,
+    load_runs_for_session as load_openclaw_runs_for_session,
+    load_session as load_openclaw_session,
+    load_sessions_for_user as load_openclaw_sessions_for_user,
     save_binding as save_openclaw_binding,
     save_config as save_openclaw_config,
+    save_session as save_openclaw_session,
 )
 from src.platform_os.service import (
     add_post_campaign_review,
@@ -223,6 +228,7 @@ _TENANT_RE = re.compile(r"[^a-zA-Z0-9_-]+")
 _db_path_ctx: contextvars.ContextVar[Path] = contextvars.ContextVar("db_path", default=DEFAULT_DB_PATH)
 _template_path_ctx: contextvars.ContextVar[Path] = contextvars.ContextVar("template_path", default=DEFAULT_TEMPLATE_PATH)
 _identity_ctx: contextvars.ContextVar[Any] = contextvars.ContextVar("identity", default=None)
+_AGENT_IMPORT_STAGING: dict[str, dict[str, Any]] = {}
 
 
 class ContextPath(PathLike[str]):
@@ -564,6 +570,112 @@ def _quality_report(profiles: list[CreatorProfile], sheet_counts: dict[str, int]
     }
 
 
+def _tables_from_upload_content(content: bytes, filename: str) -> dict[str, pd.DataFrame]:
+    holder = BytesIO(content)
+    holder.name = filename or "upload"
+    tables = load_table_file(holder)
+    if not tables:
+        raise HTTPException(status_code=400, detail="未识别到可导入的表格")
+    return tables
+
+
+def _preview_creator_import(content: bytes, filename: str, template_id: str | None = None, created_by: str = "") -> dict[str, Any]:
+    tables = _tables_from_upload_content(content, filename)
+    templates = load_templates(TEMPLATE_PATH)
+    template = next((item for item in templates if item.get("id") == template_id), None) if template_id else None
+    match_score = 0
+    if template is None:
+        template, match_score = find_best_template(templates, tables)
+    else:
+        _, match_score = find_best_template([template], tables)
+    review = _build_import_review(tables, template=template)
+    import_id = stable_id("agent_import", created_by, filename, openclaw_now_iso(), prefix="agent_import")
+    review["import_id"] = import_id
+    review["filename"] = filename or "upload"
+    review["matched_template"] = {"id": template.get("id"), "name": template.get("name"), "score": match_score} if template else None
+    review["totals"] = {
+        "sheets": len(review.get("sheets", [])),
+        "rows": sum(int(sheet.get("rows") or 0) for sheet in review.get("sheets", [])),
+        "detected_profiles": sum(int(sheet.get("detected_profiles") or 0) for sheet in review.get("sheets", [])),
+    }
+    _AGENT_IMPORT_STAGING[import_id] = {
+        "content": content,
+        "filename": filename or "upload",
+        "review": review,
+        "created_by": created_by,
+        "created_at": openclaw_now_iso(),
+    }
+    return review
+
+
+def _commit_creator_import(
+    import_id: str,
+    mappings: dict[str, Any] | None = None,
+    replace: bool = False,
+    save_template: bool = False,
+    template_name: str = "",
+    template_id: str | None = None,
+) -> dict[str, Any]:
+    staged = _AGENT_IMPORT_STAGING.get(import_id)
+    if not staged:
+        raise HTTPException(status_code=404, detail="导入预览已失效，请重新上传文件")
+    filename = str(staged.get("filename") or "upload")
+    content = staged.get("content")
+    if not isinstance(content, bytes):
+        raise HTTPException(status_code=400, detail="导入文件内容无效")
+    tables = _tables_from_upload_content(content, filename)
+    source_object = _store_uploaded_object(content, filename, category="imports")
+    payload = mappings if isinstance(mappings, dict) else {}
+
+    profiles: list[CreatorProfile] = []
+    sheet_counts: dict[str, int] = {}
+    skipped_sheets: list[str] = []
+    for sheet_name, df in tables.items():
+        sheet_payload = payload.get(sheet_name, {}) if isinstance(payload, dict) else {}
+        if isinstance(sheet_payload, dict) and sheet_payload.get("enabled") is False:
+            skipped_sheets.append(sheet_name)
+            continue
+        mapping = sheet_payload.get("mapping") if isinstance(sheet_payload, dict) else None
+        if not isinstance(mapping, dict):
+            staged_sheet = next((sheet for sheet in staged.get("review", {}).get("sheets", []) if sheet.get("sheet") == sheet_name), None)
+            mapping = staged_sheet.get("mapping") if isinstance(staged_sheet, dict) and isinstance(staged_sheet.get("mapping"), dict) else infer_column_mapping(df)
+        sheet_profiles = map_dataframe_to_profiles(df, source=f"agent_import:{sheet_name}", column_mapping=mapping)
+        if not sheet_profiles:
+            skipped_sheets.append(sheet_name)
+            sheet_counts[sheet_name] = 0
+            continue
+        profiles.extend(sheet_profiles)
+        sheet_counts[sheet_name] = len(sheet_profiles)
+
+    profiles, dedupe_report = strong_dedupe_profiles(profiles)
+    profiles = enrich_profiles(profiles)
+    saved_template = None
+    if save_template:
+        saved_template = upsert_template(
+            TEMPLATE_PATH,
+            template_name or filename or "Agent 导入模板",
+            payload,
+            template_id=template_id,
+        )
+    if replace:
+        replace_profiles(DB_PATH, profiles)
+    else:
+        upsert_profiles(DB_PATH, profiles)
+    result = {
+        "import_id": import_id,
+        "filename": filename,
+        "imported": len(profiles),
+        "sheet_counts": sheet_counts,
+        "skipped_sheets": skipped_sheets,
+        "sheets": list(tables.keys()),
+        "source_object": source_object,
+        "saved_template": saved_template,
+        "quality_report": _quality_report(profiles, sheet_counts, skipped_sheets) | {"dedupe": dedupe_report},
+    }
+    _AGENT_IMPORT_STAGING.pop(import_id, None)
+    return result
+
+
 def _number_from_text(text: str) -> int:
     value = str(text or "").strip().replace(",", "")
     multiplier = 1
@@ -891,21 +1003,53 @@ async def openclaw_save_binding(payload: dict[str, Any]) -> dict[str, Any]:
     return {"binding": binding.to_dict(), "bindings": [item.to_dict() for item in load_all_bindings(DB_PATH)]}
 
 
+def _openclaw_session_payload(session: OpenClawSession) -> dict[str, Any]:
+    runs = load_openclaw_runs_for_session(DB_PATH, session.session_id)
+    events_by_run = {run.run_id: [event.to_dict() for event in load_openclaw_events_for_run(DB_PATH, run.run_id)] for run in runs}
+    return {
+        "session": session.to_dict(),
+        "runs": [run.to_dict() for run in runs],
+        "events_by_run": events_by_run,
+    }
+
+
+@app.get("/api/openclaw/sessions")
+async def openclaw_session_list() -> dict[str, Any]:
+    identity = require_internal("read")
+    if identity.user.user_type == "client":
+        raise HTTPException(status_code=403, detail="client cannot use OpenClaw")
+    sessions = load_openclaw_sessions_for_user(DB_PATH, identity.user.user_id)
+    return {"items": [session.to_dict() for session in sessions]}
+
+
 @app.post("/api/openclaw/sessions")
 async def openclaw_session_create(payload: dict[str, Any] | None = None) -> dict[str, Any]:
     identity = require_internal("project_run")
     if identity.user.user_type == "client":
         raise HTTPException(status_code=403, detail="client cannot use OpenClaw")
     payload = payload or {}
-    binding = OpenClawAdapter().binding_for_user(DB_PATH, identity.user.user_id)
-    session_id = str(payload.get("session_id") or payload.get("openclaw_session_id") or "").strip()
-    if not session_id:
-        session_id = stable_id("openclaw_session", identity.user.user_id, openclaw_now_iso(), prefix="openclaw_session")
-    binding.openclaw_session_id = session_id
+    adapter = OpenClawAdapter()
+    session = adapter.create_session(
+        DB_PATH,
+        identity.user.user_id,
+        title=str(payload.get("title") or "新对话"),
+        openclaw_session_id=str(payload.get("openclaw_session_id") or "").strip(),
+    )
+    binding = adapter.binding_for_user(DB_PATH, identity.user.user_id)
+    binding.openclaw_session_id = session.openclaw_session_id
     binding.status = "active"
     binding.updated_at = openclaw_now_iso()
     save_openclaw_binding(DB_PATH, binding)
-    return {"binding": binding.to_dict(), "session_id": session_id, "status": OpenClawAdapter().status(DB_PATH)}
+    return {"binding": binding.to_dict(), "session": session.to_dict(), "status": adapter.status(DB_PATH)}
+
+
+@app.get("/api/openclaw/sessions/{session_id}")
+async def openclaw_session_detail(session_id: str) -> dict[str, Any]:
+    identity = require_internal("read")
+    session = load_openclaw_session(DB_PATH, session_id)
+    if session is None or session.user_id != identity.user.user_id:
+        raise HTTPException(status_code=404, detail="openclaw session not found")
+    return _openclaw_session_payload(session)
 
 
 @app.post("/api/openclaw/chat")
@@ -923,7 +1067,9 @@ async def openclaw_chat(payload: dict[str, Any], background_tasks: BackgroundTas
         "user_id": identity.user.user_id,
         "message": message,
         "campaign_id": str(payload.get("campaign_id") or ""),
-        "session_id": str(payload.get("openclaw_session_id") or payload.get("session_id") or ""),
+        "session_record_id": str(payload.get("session_record_id") or payload.get("openclaw_chat_session_id") or payload.get("session_id") or ""),
+        "session_id": str(payload.get("openclaw_session_id") or ""),
+        "history": payload.get("history") if isinstance(payload.get("history"), list) else [],
     }
     if payload.get("async") is True:
         data = adapter.start_chat_async(**run_payload)
@@ -1204,6 +1350,16 @@ def _openclaw_tool_manifest() -> list[dict[str, Any]]:
             "description": "把 OpenClaw 产物保存为 Kolness Agent artifact，后续可沉淀到 Campaign 资产库。",
             "input_schema": {"title": "string", "artifact_type": "string", "payload": "object"},
         },
+        {
+            "name": "kolness.preview_creator_import",
+            "description": "预览达人表格导入结果，返回识别字段、质量提示、可导入达人数量和 import_id；不会写入达人库。",
+            "input_schema": {"filename": "string", "content_base64": "string", "template_id": "string optional"},
+        },
+        {
+            "name": "kolness.commit_creator_import",
+            "description": "确认写入一个已经预览过的达人导入任务。",
+            "input_schema": {"import_id": "string", "mappings": "object optional", "replace": "boolean optional"},
+        },
     ]
 
 
@@ -1424,6 +1580,37 @@ async def openclaw_call_tool(tool_name: str, payload: dict[str, Any], request: R
         )
         upsert_artifact(DB_PATH, artifact)
         return {"tool": name, "artifact": artifact.to_dict()}
+
+    if name == "kolness.preview_creator_import":
+        filename = str(payload.get("filename") or "agent-upload.csv").strip()
+        content_base64 = str(payload.get("content_base64") or "").strip()
+        if not content_base64:
+            raise HTTPException(status_code=400, detail="content_base64 is required")
+        try:
+            content = base64.b64decode(content_base64, validate=True)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="content_base64 must be valid base64") from exc
+        review = _preview_creator_import(
+            content,
+            filename,
+            template_id=str(payload.get("template_id") or "").strip() or None,
+            created_by=identity.user.user_id,
+        )
+        return {"tool": name, "review": review}
+
+    if name == "kolness.commit_creator_import":
+        import_id = str(payload.get("import_id") or "").strip()
+        if not import_id:
+            raise HTTPException(status_code=400, detail="import_id is required")
+        result = _commit_creator_import(
+            import_id,
+            mappings=payload.get("mappings") if isinstance(payload.get("mappings"), dict) else None,
+            replace=bool(payload.get("replace")),
+            save_template=bool(payload.get("save_template")),
+            template_name=str(payload.get("template_name") or ""),
+            template_id=str(payload.get("template_id") or "").strip() or None,
+        )
+        return {"tool": name, "result": result}
 
     raise HTTPException(status_code=404, detail="unknown OpenClaw tool")
 
@@ -2975,6 +3162,26 @@ async def preview_file_import(file: UploadFile = File(...), template_id: Optiona
     review["filename"] = file.filename or "upload"
     review["matched_template"] = {"id": template.get("id"), "name": template.get("name"), "score": match_score} if template else None
     return review
+
+
+@app.post("/api/agent/import/preview")
+async def preview_agent_creator_import(request: Request, file: UploadFile = File(...), template_id: Optional[str] = Form(None)) -> dict[str, Any]:
+    identity = require_internal("write")
+    content = await file.read()
+    return _preview_creator_import(content, file.filename or "upload", template_id=template_id, created_by=identity.user.user_id)
+
+
+@app.post("/api/agent/import/{import_id}/commit")
+async def commit_agent_creator_import(import_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    require_internal("write")
+    return _commit_creator_import(
+        import_id,
+        mappings=payload.get("mappings") if isinstance(payload.get("mappings"), dict) else None,
+        replace=bool(payload.get("replace")),
+        save_template=bool(payload.get("save_template")),
+        template_name=str(payload.get("template_name") or ""),
+        template_id=str(payload.get("template_id") or "").strip() or None,
+    )
 
 
 @app.post("/api/import/file/commit")

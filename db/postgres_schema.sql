@@ -43,10 +43,23 @@ CREATE TABLE IF NOT EXISTS openclaw_user_bindings (
     PRIMARY KEY (tenant_id, binding_id)
 );
 
+CREATE TABLE IF NOT EXISTS openclaw_sessions (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    session_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    openclaw_agent_id TEXT NOT NULL DEFAULT '',
+    openclaw_session_id TEXT NOT NULL DEFAULT '',
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, session_id)
+);
+
 CREATE TABLE IF NOT EXISTS openclaw_runs (
     tenant_id TEXT NOT NULL DEFAULT 'default',
     run_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
+    session_id TEXT NOT NULL DEFAULT '',
     openclaw_agent_id TEXT NOT NULL DEFAULT '',
     openclaw_session_id TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL,
@@ -54,6 +67,8 @@ CREATE TABLE IF NOT EXISTS openclaw_runs (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (tenant_id, run_id)
 );
+
+ALTER TABLE openclaw_runs ADD COLUMN IF NOT EXISTS session_id TEXT NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS openclaw_events (
     tenant_id TEXT NOT NULL DEFAULT 'default',

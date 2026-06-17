@@ -24,6 +24,7 @@ const state = {
   activeAgentGraphNodeId: "",
   activeAgentToolName: "",
   agentFloatOpen: localStorage.getItem("pr_ai_os_agent_float_open") === "1",
+  agentFloatFrame: loadAgentFloatFrame(),
   agentPollTimer: null,
   agentEventSource: null,
   agentRuntime: null,
@@ -32,8 +33,11 @@ const state = {
   openClawDiagnostics: null,
   openClawMe: null,
   activeOpenClawRun: null,
+  openClawSessions: loadOpenClawSessions(),
+  activeOpenClawSessionId: localStorage.getItem("pr_ai_os_openclaw_active_session") || "",
   openClawConversation: [],
   activeOpenClawCampaignTarget: null,
+  activeAgentImportPreview: null,
   openClawEventSource: null,
   openClawPollTimer: null,
   knowledgeDocuments: [],
@@ -271,6 +275,72 @@ function hideAccessGate() {
   $("#accessGate")?.classList.add("hidden");
 }
 
+function loadAgentFloatFrame() {
+  try {
+    const frame = JSON.parse(localStorage.getItem("pr_ai_os_agent_float_frame") || "null");
+    if (!frame || typeof frame !== "object") return null;
+    return {
+      left: Number(frame.left) || 0,
+      top: Number(frame.top) || 0,
+      width: Number(frame.width) || 0,
+      height: Number(frame.height) || 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function clampAgentFloatFrame(frame) {
+  const minWidth = 560;
+  const minHeight = 460;
+  const margin = 16;
+  const maxWidth = Math.max(minWidth, window.innerWidth - margin * 2);
+  const maxHeight = Math.max(minHeight, window.innerHeight - margin * 2);
+  const width = Math.min(Math.max(Number(frame?.width) || 880, minWidth), maxWidth);
+  const height = Math.min(Math.max(Number(frame?.height) || 680, minHeight), maxHeight);
+  const left = Math.min(Math.max(Number(frame?.left) || window.innerWidth - width - 22, margin), window.innerWidth - width - margin);
+  const top = Math.min(Math.max(Number(frame?.top) || window.innerHeight - height - 22, margin), window.innerHeight - height - margin);
+  return { left, top, width, height };
+}
+
+function saveAgentFloatFrame(frame) {
+  state.agentFloatFrame = clampAgentFloatFrame(frame);
+  localStorage.setItem("pr_ai_os_agent_float_frame", JSON.stringify(state.agentFloatFrame));
+  applyAgentFloatFrame();
+}
+
+function applyAgentFloatFrame() {
+  const dock = $("#agentFloatDock");
+  const panel = $("#agentFloatPanel");
+  if (!dock || !panel) return;
+  if (window.innerWidth <= 760 || !state.agentFloatFrame) {
+    dock.classList.remove("agent-float-custom-frame");
+    dock.style.removeProperty("--agent-float-left");
+    dock.style.removeProperty("--agent-float-top");
+    panel.style.removeProperty("--agent-float-width");
+    panel.style.removeProperty("--agent-float-height");
+    return;
+  }
+  const frame = clampAgentFloatFrame(state.agentFloatFrame);
+  state.agentFloatFrame = frame;
+  dock.classList.add("agent-float-custom-frame");
+  dock.style.setProperty("--agent-float-left", `${frame.left}px`);
+  dock.style.setProperty("--agent-float-top", `${frame.top}px`);
+  panel.style.setProperty("--agent-float-width", `${frame.width}px`);
+  panel.style.setProperty("--agent-float-height", `${frame.height}px`);
+}
+
+function frameFromFloatElement(element) {
+  const rect = element.getBoundingClientRect();
+  const existing = state.agentFloatFrame || {};
+  return clampAgentFloatFrame({
+    left: rect.left,
+    top: rect.top,
+    width: existing.width || 880,
+    height: existing.height || 680,
+  });
+}
+
 async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
   headers.set("X-Tenant-ID", state.tenant || "default");
@@ -287,6 +357,19 @@ async function api(path, options = {}) {
   return data;
 }
 
+async function apiWithTimeout(path, options = {}, timeoutMs = 20000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await api(path, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error("请求超时，请稍后重试");
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function fmtNumber(value) {
   if (value === null || value === undefined || value === "") return "-";
   const n = Number(value);
@@ -300,6 +383,225 @@ function escapeHTML(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function loadOpenClawSessions() {
+  try {
+    const raw = JSON.parse(localStorage.getItem("pr_ai_os_openclaw_sessions") || "[]");
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((item) => item && item.id)
+      .map((item) => ({
+        id: String(item.id),
+        title: String(item.title || "新对话"),
+        status: String(item.status || "ready"),
+        openclawSessionId: String(item.openclawSessionId || ""),
+        conversation: Array.isArray(item.conversation) ? item.conversation : [],
+        activeRun: item.activeRun || null,
+        importPreview: item.importPreview || null,
+        createdAt: item.createdAt || new Date().toISOString(),
+        updatedAt: item.updatedAt || item.createdAt || new Date().toISOString(),
+      }))
+      .slice(0, 20);
+  } catch {
+    return [];
+  }
+}
+
+function normalizeOpenClawSession(item) {
+  const sessionId = item?.session_id || item?.id || "";
+  if (!sessionId) return null;
+  return {
+    id: String(sessionId),
+    title: String(item.title || "新对话"),
+    status: String(item.status || "ready"),
+    openclawSessionId: String(item.openclaw_session_id || item.openclawSessionId || ""),
+    conversation: Array.isArray(item.conversation) ? item.conversation : [],
+    activeRun: item.activeRun || null,
+    importPreview: item.importPreview || null,
+    createdAt: item.created_at || item.createdAt || new Date().toISOString(),
+    updatedAt: item.updated_at || item.updatedAt || item.created_at || item.createdAt || new Date().toISOString(),
+  };
+}
+
+async function loadOpenClawSessionsFromServer() {
+  if (state.currentIdentity?.user?.user_type === "client") return;
+  const data = await api("/api/openclaw/sessions").catch(() => null);
+  if (!data) return;
+  const localById = new Map((state.openClawSessions || []).map((session) => [session.id, session]));
+  const sessions = (data.items || [])
+    .map(normalizeOpenClawSession)
+    .filter(Boolean)
+    .map((session) => ({ ...session, importPreview: localById.get(session.id)?.importPreview || session.importPreview || null }));
+  state.openClawSessions = sessions;
+  if (!sessions.some((session) => session.id === state.activeOpenClawSessionId)) {
+    state.activeOpenClawSessionId = sessions[0]?.id || "";
+    state.openClawConversation = [];
+    state.activeOpenClawRun = null;
+  }
+  saveOpenClawSessions();
+  renderOpenClawSessionList();
+}
+
+function openClawConversationFromDetail(detail) {
+  const runs = detail?.runs || [];
+  const eventsByRun = detail?.events_by_run || {};
+  return runs.map((run) => {
+    const events = eventsByRun[run.run_id] || [];
+    return {
+      runId: run.run_id,
+      user: stripOpenClawDisplayMessage(run.message || ""),
+      assistant: run.response || run.error ? formatOpenClawChatResponse(run.response || run.error) : "",
+      status: run.status || "running",
+      eventCount: events.length,
+      pending: false,
+    };
+  });
+}
+
+function activeRunFromSessionDetail(detail) {
+  const runs = detail?.runs || [];
+  const last = runs[runs.length - 1];
+  if (!last) return null;
+  return { run: last, events: (detail?.events_by_run || {})[last.run_id] || [] };
+}
+
+async function loadOpenClawSessionDetail(sessionId) {
+  const detail = await api(`/api/openclaw/sessions/${encodeURIComponent(sessionId)}`);
+  const session = normalizeOpenClawSession(detail.session || {});
+  if (!session) return null;
+  session.conversation = openClawConversationFromDetail(detail);
+  session.activeRun = activeRunFromSessionDetail(detail);
+  session.importPreview = state.openClawSessions.find((item) => item.id === session.id)?.importPreview || null;
+  const index = state.openClawSessions.findIndex((item) => item.id === session.id);
+  if (index >= 0) state.openClawSessions[index] = { ...state.openClawSessions[index], ...session };
+  else state.openClawSessions.unshift(session);
+  saveOpenClawSessions();
+  return session;
+}
+
+function saveOpenClawSessions() {
+  localStorage.setItem("pr_ai_os_openclaw_sessions", JSON.stringify((state.openClawSessions || []).slice(0, 20)));
+  localStorage.setItem("pr_ai_os_openclaw_active_session", state.activeOpenClawSessionId || "");
+}
+
+function openClawSessionId() {
+  return `openclaw_chat_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function openClawSessionTitleFromText(text) {
+  const value = String(text || "").replace(/\s+/g, " ").trim();
+  return value ? value.slice(0, 24) : "新对话";
+}
+
+function ensureOpenClawSession() {
+  let session = (state.openClawSessions || []).find((item) => item.id === state.activeOpenClawSessionId);
+  if (!session) {
+    session = {
+      id: openClawSessionId(),
+      title: "新对话",
+      status: "ready",
+      openclawSessionId: "",
+      conversation: [],
+      activeRun: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    state.openClawSessions = [session, ...(state.openClawSessions || [])].slice(0, 20);
+    state.activeOpenClawSessionId = session.id;
+    state.openClawConversation = [];
+    state.activeOpenClawRun = null;
+    saveOpenClawSessions();
+  } else if (!state.activeOpenClawRun && !(state.openClawConversation || []).length) {
+    state.openClawConversation = Array.isArray(session.conversation) ? session.conversation : [];
+    state.activeOpenClawRun = session.activeRun || null;
+  }
+  return session;
+}
+
+function syncActiveOpenClawSession(patch = {}) {
+  const session = ensureOpenClawSession();
+  const run = state.activeOpenClawRun?.run || {};
+  if (run.session_id && run.session_id !== session.id) {
+    session.id = run.session_id;
+  }
+  session.conversation = state.openClawConversation || [];
+  session.activeRun = state.activeOpenClawRun || null;
+  session.importPreview = state.activeAgentImportPreview || null;
+  session.status = patch.status || run.status || session.status || "ready";
+  session.openclawSessionId = patch.openclawSessionId || run.openclaw_session_id || session.openclawSessionId || "";
+  const firstUser = session.conversation.find((item) => item.user)?.user || "";
+  if (!session.title || session.title === "新对话") session.title = openClawSessionTitleFromText(firstUser);
+  session.updatedAt = new Date().toISOString();
+  state.openClawSessions = [session, ...state.openClawSessions.filter((item) => item.id !== session.id)].slice(0, 20);
+  state.activeOpenClawSessionId = session.id;
+  saveOpenClawSessions();
+  renderOpenClawSessionList();
+}
+
+async function activateOpenClawSession(sessionId) {
+  const session = (state.openClawSessions || []).find((item) => item.id === sessionId);
+  if (!session) return;
+  stopOpenClawPolling();
+  state.activeOpenClawSessionId = session.id;
+  state.openClawConversation = Array.isArray(session.conversation) ? session.conversation : [];
+  state.activeOpenClawRun = session.activeRun || null;
+  state.activeAgentImportPreview = session.importPreview || null;
+  state.activeOpenClawCampaignTarget = null;
+  saveOpenClawSessions();
+  renderAgentFloatDock();
+  if (session.activeRun?.run?.status === "running" && session.activeRun?.run?.run_id) startOpenClawPolling(session.activeRun.run.run_id);
+  loadOpenClawSessionDetail(sessionId)
+    .then((freshSession) => {
+      if (!freshSession || state.activeOpenClawSessionId !== sessionId) return;
+      state.openClawConversation = Array.isArray(freshSession.conversation) ? freshSession.conversation : [];
+      state.activeOpenClawRun = freshSession.activeRun || null;
+      state.activeAgentImportPreview = freshSession.importPreview || null;
+      saveOpenClawSessions();
+      renderAgentFloatDock();
+      if (freshSession.activeRun?.run?.status === "running" && freshSession.activeRun?.run?.run_id) startOpenClawPolling(freshSession.activeRun.run.run_id);
+    })
+    .catch(() => {});
+}
+
+function ensureOpenClawSessionShell() {
+  const panel = $("#agentFloatPanel");
+  const messages = $("#agentFloatMessages");
+  if (!panel || !messages) return;
+  if ($("#agentFloatSessionList")) return;
+  const shell = document.createElement("div");
+  shell.className = "agent-float-session-shell";
+  const sessions = document.createElement("aside");
+  sessions.className = "agent-float-sessions";
+  sessions.setAttribute("aria-label", "OpenClaw 对话 Sessions");
+  sessions.innerHTML = `
+    <div class="agent-float-sessions-head">
+      <span>Sessions</span>
+    </div>
+    <div id="agentFloatSessionList" class="agent-float-session-list"></div>
+  `;
+  messages.parentNode?.insertBefore(shell, messages);
+  shell.appendChild(sessions);
+  shell.appendChild(messages);
+}
+
+function renderOpenClawSessionList() {
+  ensureOpenClawSessionShell();
+  const node = $("#agentFloatSessionList");
+  if (!node) return;
+  ensureOpenClawSession();
+  node.innerHTML = (state.openClawSessions || [])
+    .map((session) => {
+      const active = session.id === state.activeOpenClawSessionId;
+      const count = (session.conversation || []).length;
+      return `
+        <button class="agent-float-session-item ${active ? "active" : ""}" type="button" data-openclaw-session="${escapeHTML(session.id)}">
+          <strong>${escapeHTML(session.title || "新对话")}</strong>
+          <span>${escapeHTML(session.status || "ready")} · ${fmtNumber(count)} 条</span>
+        </button>
+      `;
+    })
+    .join("");
 }
 
 function setView(viewId) {
@@ -534,6 +836,7 @@ async function loadAgentRuntime() {
   if (openClaw) state.openClaw = { ...(state.openClaw || {}), ...openClaw };
   state.openClawMe = openClawMe;
   if (openClawDiagnostics) state.openClawDiagnostics = openClawDiagnostics;
+  await loadOpenClawSessionsFromServer();
   renderAgentRuntimeControls();
 }
 
@@ -2180,6 +2483,7 @@ function renderAgentFloatDock() {
   const toggle = $("#agentFloatToggle");
   if (panel) panel.classList.toggle("hidden", !state.agentFloatOpen);
   if (toggle) toggle.setAttribute("aria-expanded", state.agentFloatOpen ? "true" : "false");
+  applyAgentFloatFrame();
   renderAgentFloatContent();
 }
 
@@ -2189,10 +2493,118 @@ function setAgentFloatOpen(open) {
   renderAgentFloatDock();
 }
 
+function initAgentFloatFrameControls() {
+  const panel = $("#agentFloatPanel");
+  const dock = $("#agentFloatDock");
+  const toggle = $("#agentFloatToggle");
+  const head = panel?.querySelector(".agent-float-head");
+  if (!panel || !dock || !head || panel.dataset.frameControlsReady === "1") return;
+  panel.dataset.frameControlsReady = "1";
+
+  const frameFromPanel = () => {
+    const rect = panel.getBoundingClientRect();
+    return clampAgentFloatFrame({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+  };
+
+  const startMove = (event, sourceElement, frame) => {
+    if (window.innerWidth <= 760) return;
+    const startFrame = frame || frameFromPanel();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    panel.classList.add("agent-float-moving");
+    sourceElement.setPointerCapture?.(event.pointerId);
+    const onMove = (moveEvent) => {
+      saveAgentFloatFrame({
+        ...startFrame,
+        left: startFrame.left + moveEvent.clientX - startX,
+        top: startFrame.top + moveEvent.clientY - startY,
+      });
+    };
+    const onUp = () => {
+      panel.classList.remove("agent-float-moving");
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  };
+
+  head.addEventListener("pointerdown", (event) => {
+    if (event.target.closest("button, input, select, textarea, a, summary")) return;
+    startMove(event, head, frameFromPanel());
+  });
+
+  toggle?.addEventListener("pointerdown", (event) => {
+    if (event.target.closest("input, select, textarea, a")) return;
+    const startFrame = state.agentFloatFrame || frameFromFloatElement(toggle);
+    let moved = false;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const onFirstMove = (moveEvent) => {
+      if (Math.abs(moveEvent.clientX - startX) + Math.abs(moveEvent.clientY - startY) < 4) return;
+      moved = true;
+      toggle.dataset.suppressClick = "1";
+      window.removeEventListener("pointermove", onFirstMove);
+      startMove(event, toggle, startFrame);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onFirstMove);
+      window.removeEventListener("pointerup", onUp);
+      if (moved) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    window.addEventListener("pointermove", onFirstMove);
+    window.addEventListener("pointerup", onUp);
+  });
+
+  panel.querySelectorAll("[data-agent-float-resize]").forEach((resize) => {
+    resize.addEventListener("pointerdown", (event) => {
+    if (window.innerWidth <= 760) return;
+    event.preventDefault();
+    const mode = resize.dataset.agentFloatResize || "corner";
+    const startFrame = frameFromPanel();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    panel.classList.add("agent-float-resizing");
+    resize.setPointerCapture?.(event.pointerId);
+    const onMove = (moveEvent) => {
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+      saveAgentFloatFrame({
+        ...startFrame,
+        width: mode === "bottom" ? startFrame.width : startFrame.width + dx,
+        height: mode === "right" ? startFrame.height : startFrame.height + dy,
+      });
+    };
+    const onUp = () => {
+      panel.classList.remove("agent-float-resizing");
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    });
+  });
+
+  window.addEventListener("resize", () => {
+    if (!state.agentFloatFrame) return;
+    saveAgentFloatFrame(state.agentFloatFrame);
+  });
+}
+
 function renderAgentFloatContent() {
   const summary = $("#agentFloatSummary");
+  $("#agentFloatPanel")?.classList.toggle("agent-float-has-sessions", activeFloatRuntime() === "openclaw");
   renderAgentFloatActions();
   if (activeFloatRuntime() === "openclaw") {
+    ensureOpenClawSession();
+    renderOpenClawSessionList();
     renderOpenClawFloatContent(summary);
     return;
   }
@@ -2238,8 +2650,24 @@ function stripOpenClawDisplayMessage(value) {
 }
 
 function enrichOpenClawPayload(payload) {
+  const session = ensureOpenClawSession();
   const message = String(payload.message || payload.brief || "").trim();
-  return { ...payload, message };
+  const history = (state.openClawConversation || [])
+    .filter((item) => !item.pending)
+    .flatMap((item) => {
+      const rows = [];
+      if (item.user) rows.push({ role: "user", content: item.user });
+      if (item.assistant) rows.push({ role: "assistant", content: item.assistant });
+      return rows;
+    })
+    .slice(-12);
+  return {
+    ...payload,
+    message,
+    history,
+    session_id: session.id,
+    openclaw_session_id: session.openclawSessionId || payload.openclaw_session_id || "",
+  };
 }
 
 function optimisticOpenClawRun(payload) {
@@ -2294,18 +2722,103 @@ function openClawStepStatus(event, run) {
   return run?.status === "running" ? "running" : "completed";
 }
 
+function hasRealKolnessToolEvent(events) {
+  return (events || []).some((event) => {
+    const type = String(event?.event_type || "");
+    const payload = event?.payload || {};
+    const toolName = String(payload.tool_name || "");
+    if (payload.source === "agent_response") return false;
+    return /kolness/i.test(toolName) || (type.startsWith("tool.") && /kolness/i.test(JSON.stringify(payload)));
+  });
+}
+
 function buildOpenClawSteps(run, events) {
   const baseSteps = [
-    { label: "解析 PR brief", status: events.length ? "completed" : "running", meta: "brand / audience / channel" },
-    { label: "读取 Kolness 达人库", status: run?.status === "running" ? "running" : "completed", meta: "profile / tags / risks" },
-    { label: "调用 KOL 匹配工具", status: run?.response ? "completed" : run?.status === "failed" ? "failed" : "running", meta: "kolness MCP" },
+    { label: "接收 brief", status: events.length ? "completed" : "running", meta: "user message" },
+    {
+      label: "连接 OpenClaw Gateway",
+      status: run?.status === "failed" ? "failed" : events.some((event) => event.event_type === "gateway.started") ? "completed" : "running",
+      meta: "agent runtime",
+    },
   ];
+  if (hasRealKolnessToolEvent(events)) {
+    baseSteps.push({ label: "调用 Kolness 工具", status: run?.status === "running" ? "running" : "completed", meta: "MCP / tools" });
+  }
   const eventSteps = (events || []).slice(-5).map((event) => ({
     label: openClawStepLabel(event),
     status: openClawStepStatus(event, run),
     meta: event?.payload?.tool_name || event?.event_type || "",
   }));
   return [...baseSteps, ...eventSteps].slice(-7);
+}
+
+function openClawRunElapsedSeconds(run) {
+  const started = Date.parse(run?.created_at || run?.updated_at || "");
+  if (!Number.isFinite(started)) return 0;
+  return Math.max(0, Math.round((Date.now() - started) / 1000));
+}
+
+function currentOpenClawStep(run, events) {
+  const steps = buildOpenClawSteps(run, events);
+  const running = steps.findLast?.((step) => step.status === "running") || [...steps].reverse().find((step) => step.status === "running");
+  if (running) return running;
+  if (run?.status === "completed") return { label: "完成任务", status: "completed", meta: "ready" };
+  if (run?.status === "failed") return { label: "任务失败", status: "failed", meta: run.error || "error" };
+  return steps[steps.length - 1] || { label: "准备执行", status: "running", meta: "queued" };
+}
+
+function openClawWaitingText(run, events) {
+  if (run?.status === "failed") return "这条消息执行失败，请稍后重试。";
+  const step = currentOpenClawStep(run, events);
+  const label = step.label || "";
+  if (/brief|接收/.test(label)) return "我正在读取 brief，提取预算、平台和目标人群。";
+  if (/Gateway|连接/.test(label)) return "我正在连接 OpenClaw，并准备调用 Kolness 工具。";
+  if (/匹配|Kolness|工具|达人/.test(label)) return "我正在读取达人库并匹配 KOL。";
+  if (/推荐|结论|完成/.test(label)) return "我正在整理推荐理由、风险和下一步动作。";
+  return `正在处理：${label || "Agent 执行中"}`;
+}
+
+function renderOpenClawLiveCard(run, events) {
+  const status = run?.status || "running";
+  const steps = buildOpenClawSteps(run, events).slice(-5);
+  const current = currentOpenClawStep(run, events);
+  const elapsed = openClawRunElapsedSeconds(run);
+  return `
+    <article class="agent-float-live-card ${escapeHTML(status)}">
+      <div class="agent-float-live-head">
+        <div>
+          <span>Agent running</span>
+          <strong>${escapeHTML(current.label || "处理中")}</strong>
+        </div>
+        <em>${fmtNumber(elapsed)}s · ${fmtNumber((events || []).length)} events</em>
+      </div>
+      <p>${escapeHTML(openClawWaitingText(run, events))}</p>
+      <div class="agent-float-live-steps">
+        ${steps
+          .map(
+            (step) => `
+              <div class="agent-float-live-step ${escapeHTML(step.status || "pending")}">
+                <i></i>
+                <span>${escapeHTML(step.label || "任务步骤")}</span>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    </article>
+  `;
+}
+
+function renderOpenClawQuickActions(run) {
+  const status = run?.status || "";
+  if (status !== "completed") return "";
+  return `
+    <div class="agent-float-quick-actions">
+      <button class="secondary" type="button" data-agent-openclaw-action="save-campaign">保存到 Campaign</button>
+      <button class="secondary" type="button" data-agent-openclaw-action="view-assets">查看资产</button>
+      <button class="secondary" type="button" data-agent-prompt="继续基于这次结果，帮我补充预算分配、风险控制和客户沟通话术。">继续追问</button>
+    </div>
+  `;
 }
 
 function extractOpenClawKols(text) {
@@ -2416,17 +2929,85 @@ function summarizeOpenClawResponse(response, events = []) {
   return lines.join("\n");
 }
 
+function formatOpenClawChatResponse(response) {
+  return String(response || "").trim();
+}
+
 function renderOpenClawFloatContent(summary) {
   const run = state.activeOpenClawRun?.run || {};
   const events = state.activeOpenClawRun?.events || [];
   if (summary) {
-    const hasToolEvent = events.some((event) => event.event_type === "kolness.match.completed");
+    const hasToolEvent = hasRealKolnessToolEvent(events);
+    const currentStep = currentOpenClawStep(run, events);
+    const statusLabel =
+      run.status === "completed"
+        ? "Agent 已返回"
+        : run.status === "failed"
+          ? "执行失败"
+          : hasToolEvent
+            ? `正在执行 · ${currentStep.label || "Kolness 工具"}`
+            : run.status === "running"
+              ? `正在执行 · ${currentStep.label || "准备任务"}`
+              : run.status || "ready";
     summary.innerHTML = `
       <strong>${escapeHTML(displayOpenClawMessage(run) || "和 PR Agent 对话")}</strong>
-      <span>${escapeHTML(hasToolEvent ? `已调用 KOL 工具 · ${run.status || "idle"}` : run.status || "ready")}</span>
+      <span>${escapeHTML(statusLabel)}</span>
     `;
   }
   renderOpenClawFloatMessages();
+}
+
+function summarizeImportPreview(review) {
+  const sheets = Array.isArray(review?.sheets) ? review.sheets : [];
+  const totals = review?.totals || {};
+  return {
+    filename: review?.filename || "上传文件",
+    importId: review?.import_id || "",
+    sheetCount: Number(totals.sheets || sheets.length || 0),
+    rowCount: Number(totals.rows || sheets.reduce((sum, sheet) => sum + Number(sheet.rows || 0), 0)),
+    profileCount: Number(totals.detected_profiles || sheets.reduce((sum, sheet) => sum + Number(sheet.detected_profiles || 0), 0)),
+    flags: sheets.flatMap((sheet) => sheet.quality_flags || []).filter(Boolean),
+  };
+}
+
+function renderAgentImportPreviewCard(review) {
+  if (!review?.import_id) return "";
+  const summary = summarizeImportPreview(review);
+  const committed = review.status === "committed";
+  const failed = review.status === "failed";
+  const sheets = (review.sheets || []).slice(0, 4);
+  const flagText = summary.flags.length ? Array.from(new Set(summary.flags)).slice(0, 4).join("、") : "字段识别正常";
+  return `
+    <article class="agent-float-import-card ${committed ? "committed" : ""} ${failed ? "failed" : ""}">
+      <div class="agent-float-import-head">
+        <div>
+          <span>达人导入预览</span>
+          <strong>${escapeHTML(summary.filename)}</strong>
+        </div>
+        <em>${escapeHTML(committed ? "已导入" : failed ? "导入失败" : "待确认")}</em>
+      </div>
+      <div class="agent-float-import-metrics">
+        <span><b>${fmtNumber(summary.profileCount)}</b> 可导入达人</span>
+        <span><b>${fmtNumber(summary.rowCount)}</b> 行</span>
+        <span><b>${fmtNumber(summary.sheetCount)}</b> sheets</span>
+      </div>
+      <p>${escapeHTML(flagText)}</p>
+      ${
+        sheets.length
+          ? `<ul>${sheets
+              .map((sheet) => `<li>${escapeHTML(sheet.sheet || "Sheet")} · ${fmtNumber(sheet.detected_profiles || 0)} 达人 · ${escapeHTML((sheet.quality_flags || []).join("、") || "OK")}</li>`)
+              .join("")}</ul>`
+          : ""
+      }
+      ${
+        committed
+          ? `<p>已写入 ${fmtNumber(review.imported || 0)} 个达人，达人库已刷新。</p>`
+          : failed
+            ? `<p>${escapeHTML(review.error || "导入失败，请重新上传。")}</p>`
+            : `<button class="primary" type="button" data-agent-import-commit="${escapeHTML(summary.importId)}">确认导入达人库</button>`
+      }
+    </article>
+  `;
 }
 
 function renderOpenClawFloatMessages() {
@@ -2435,7 +3016,7 @@ function renderOpenClawFloatMessages() {
   const run = state.activeOpenClawRun?.run || {};
   const events = state.activeOpenClawRun?.events || [];
   const conversation = state.openClawConversation || [];
-  if (!conversation.length && !run.run_id) {
+  if (!conversation.length && !run.run_id && !state.activeAgentImportPreview) {
     node.classList.remove("agent-float-openclaw-space");
     node.innerHTML = `
       <article class="agent-float-welcome">
@@ -2452,13 +3033,15 @@ function renderOpenClawFloatMessages() {
   node.classList.remove("agent-float-openclaw-space");
   const rows = conversation.length
     ? conversation
-    : [
+    : run.run_id
+      ? [
         {
           user: displayOpenClawMessage(run),
-          assistant: run.response || run.error ? summarizeOpenClawResponse(run.response || run.error, events) : "",
+          assistant: run.response || run.error ? formatOpenClawChatResponse(run.response || run.error) : "",
           status: run.status || "running",
         },
-      ];
+      ]
+      : [];
   node.innerHTML = `
     <section class="agent-float-transcript">
       ${rows
@@ -2471,12 +3054,15 @@ function renderOpenClawFloatMessages() {
             }
             ${
               item.assistant
-                ? `<article class="agent-float-message assistant"><span>Agent</span><p>${escapeHTML(item.assistant)}</p></article>`
-                : `<article class="agent-float-message assistant thinking"><span>Agent</span><p>${escapeHTML(item.status === "failed" ? "这条消息执行失败，请稍后重试。" : "正在处理这条消息。")}</p></article>`
+                ? `<article class="agent-float-message assistant"><span>Agent</span><p>${escapeHTML(item.assistant)}</p>${item.runId === run.run_id ? renderOpenClawQuickActions(run) : ""}</article>`
+                : item.runId === run.run_id
+                  ? renderOpenClawLiveCard(run, events)
+                  : `<article class="agent-float-message assistant thinking"><span>Agent</span><p>${escapeHTML(item.status === "failed" ? "这条消息执行失败，请稍后重试。" : "正在处理这条消息。")}</p></article>`
             }
           `
         )
         .join("")}
+      ${renderAgentImportPreviewCard(state.activeAgentImportPreview)}
     </section>
   `;
   node.scrollTop = node.scrollHeight;
@@ -2488,7 +3074,7 @@ function upsertOpenClawConversation(data, fallbackMessage = "") {
   const runId = run.run_id || data?.run_id || "";
   if (!runId) return;
   const user = stripOpenClawDisplayMessage(fallbackMessage || data.displayMessage || run.display_message || run.message || "");
-  const assistant = run.response || run.error ? summarizeOpenClawResponse(run.response || run.error, events) : "";
+  const assistant = run.response || run.error ? formatOpenClawChatResponse(run.response || run.error) : "";
   const index = state.openClawConversation.findIndex((item) => item.runId === runId || (item.pending && user && item.user === user));
   const item = {
     runId,
@@ -2515,10 +3101,11 @@ function renderOpenClawMainMessages() {
   const status = run.status || "running";
   const displayMessage = displayOpenClawMessage(run);
   const response = run.response || run.error || "";
-  const assistantSummary = summarizeOpenClawResponse(response, events);
+  const assistantResponse = formatOpenClawChatResponse(response);
+  const currentStep = currentOpenClawStep(run, events);
   const meta = $("#agentThreadMeta");
   if (meta) {
-    meta.textContent = `${displayMessage || "OpenClaw 深度任务"} · ${status} · ${fmtNumber(events.length)} events`;
+    meta.textContent = `${displayMessage || "OpenClaw 深度任务"} · ${status} · ${currentStep.label || "执行中"} · ${fmtNumber(events.length)} events`;
   }
   list.classList.add("openclaw-thread");
   list.innerHTML = `
@@ -2532,12 +3119,11 @@ function renderOpenClawMainMessages() {
     <article class="agent-message assistant ${escapeHTML(status)}">
       <div class="agent-message-role">Agent</div>
       <div>
-        <p>${
-          assistantSummary
-            ? escapeHTML(assistantSummary)
-            : "我正在调用 Kolness 工具：解析 brief、读取达人库、匹配 KOL、生成风险和客户可读结论。"
-        }</p>
-        <span>${escapeHTML(status)} · ${fmtNumber(events.length)} events</span>
+        ${
+          assistantResponse
+            ? `<p>${escapeHTML(assistantResponse)}</p><span>${escapeHTML(status)} · ${fmtNumber(events.length)} events</span>${renderOpenClawQuickActions(run)}`
+            : `<div class="agent-main-live-card">${renderOpenClawLiveCard(run, events)}</div>`
+        }
       </div>
     </article>
     <div class="agent-main-openclaw-space">
@@ -2719,6 +3305,7 @@ async function runAgentFromPayload(payload) {
 
 async function runOpenClawFromPayload(payload) {
   stopOpenClawPolling();
+  ensureOpenClawSession();
   const displayMessage = String(payload.message || payload.brief || "").trim();
   state.activeOpenClawRun = optimisticOpenClawRun(payload);
   state.openClawConversation.push({
@@ -2729,25 +3316,106 @@ async function runOpenClawFromPayload(payload) {
     eventCount: state.activeOpenClawRun.events.length,
     pending: true,
   });
+  syncActiveOpenClawSession({ status: "running" });
   state.activeOpenClawCampaignTarget = null;
   renderAgentMessages();
   renderAgentFloatDock();
   renderAgentOpenClawStatus();
   const openClawPayload = enrichOpenClawPayload(payload);
-  const data = await api("/api/openclaw/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...openClawPayload, async: true }),
-  });
+  let data;
+  try {
+    data = await apiWithTimeout(
+      "/api/openclaw/chat",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...openClawPayload, async: true }),
+      },
+      20000
+    );
+  } catch (error) {
+    state.activeOpenClawRun = {
+      ...state.activeOpenClawRun,
+      run: {
+        ...(state.activeOpenClawRun?.run || {}),
+        status: "failed",
+        error: error.message || "OpenClaw 请求失败",
+        updated_at: new Date().toISOString(),
+      },
+    };
+    upsertOpenClawConversation(state.activeOpenClawRun, displayMessage);
+    syncActiveOpenClawSession({ status: "failed" });
+    renderAgentMessages();
+    renderAgentFloatDock();
+    renderAgentOpenClawStatus();
+    throw error;
+  }
   data.displayMessage = displayMessage;
   state.activeOpenClawRun = data;
   upsertOpenClawConversation(data, displayMessage);
+  syncActiveOpenClawSession({ status: data.run?.status || "running", openclawSessionId: data.run?.openclaw_session_id || "" });
   state.activeOpenClawCampaignTarget = null;
   renderAgentMessages();
   renderAgentFloatDock();
   renderAgentOpenClawStatus();
   if (data.run?.run_id && data.run?.status === "running") startOpenClawPolling(data.run.run_id);
   await refreshWorkspaceHistoryIfVisible();
+  return data;
+}
+
+async function previewAgentCreatorImport(file, message = "") {
+  const session = ensureOpenClawSession();
+  const form = new FormData();
+  form.append("file", file);
+  const data = await api("/api/agent/import/preview", { method: "POST", body: form });
+  state.activeAgentImportPreview = data;
+  state.openClawConversation = [
+    ...(state.openClawConversation || []),
+    {
+      runId: data.import_id,
+      user: message ? `${message}\n\n附件：${file.name}` : `上传达人文件：${file.name}`,
+      assistant: "已生成达人导入预览。请先检查字段识别和数量，再确认导入达人库。",
+      status: "preview",
+      pending: false,
+    },
+  ].slice(-20);
+  session.importPreview = data;
+  syncActiveOpenClawSession({ status: "preview" });
+  renderAgentFloatDock();
+  return data;
+}
+
+async function commitAgentCreatorImport(importId) {
+  const review = state.activeAgentImportPreview;
+  if (!review?.import_id || review.import_id !== importId) throw new Error("找不到当前导入预览，请重新上传文件");
+  const mappings = {};
+  (review.sheets || []).forEach((sheet) => {
+    mappings[sheet.sheet] = { enabled: true, mapping: sheet.mapping || {} };
+  });
+  const data = await api(`/api/agent/import/${encodeURIComponent(importId)}/commit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mappings, replace: false }),
+  });
+  state.activeAgentImportPreview = {
+    ...review,
+    status: "committed",
+    imported: data.imported || 0,
+    quality_report: data.quality_report || null,
+  };
+  state.openClawConversation = [
+    ...(state.openClawConversation || []),
+    {
+      runId: `${importId}:commit`,
+      user: "",
+      assistant: `已导入 ${fmtNumber(data.imported || 0)} 个达人，达人库已刷新。`,
+      status: "committed",
+      pending: false,
+    },
+  ].slice(-20);
+  syncActiveOpenClawSession({ status: "committed" });
+  await reloadAll();
+  renderAgentFloatDock();
   return data;
 }
 
@@ -3281,6 +3949,7 @@ function startOpenClawPolling(runId) {
       const data = JSON.parse(event.data || "{}");
       state.activeOpenClawRun = data;
       upsertOpenClawConversation(data);
+      syncActiveOpenClawSession({ status: data.run?.status || "running", openclawSessionId: data.run?.openclaw_session_id || "" });
       renderAgentMessages();
       renderAgentFloatDock();
       renderAgentOpenClawStatus();
@@ -3313,6 +3982,7 @@ function startOpenClawPollFallback(runId) {
       const data = await api(`/api/openclaw/runs/${encodeURIComponent(runId)}/events`);
       state.activeOpenClawRun = data;
       upsertOpenClawConversation(data);
+      syncActiveOpenClawSession({ status: data.run?.status || "running", openclawSessionId: data.run?.openclaw_session_id || "" });
       renderAgentMessages();
       renderAgentFloatDock();
       renderAgentOpenClawStatus();
@@ -3337,6 +4007,7 @@ async function refreshOpenClawRun(runId) {
   const data = await api(`/api/openclaw/runs/${encodeURIComponent(runId)}/events`);
   state.activeOpenClawRun = data;
   upsertOpenClawConversation(data);
+  syncActiveOpenClawSession({ status: data.run?.status || "running", openclawSessionId: data.run?.openclaw_session_id || "" });
   renderAgentMessages();
   renderAgentFloatDock();
   renderAgentOpenClawStatus();
@@ -5618,8 +6289,10 @@ function bindEvents() {
     state.activeAgentArtifacts = [];
     state.agentRuntimeComparison = null;
     state.activeOpenClawRun = null;
+    state.activeOpenClawSessionId = "";
     state.openClawConversation = [];
     state.activeOpenClawCampaignTarget = null;
+    ensureOpenClawSession();
     renderAgentTasks();
     renderAgentRun({ events: [], artifacts: [], run: {}, task: {} });
     renderAgentRuntimeComparison();
@@ -5738,21 +6411,40 @@ function bindEvents() {
       }
     }
   });
-  $("#agentFloatToggle")?.addEventListener("click", () => setAgentFloatOpen(!state.agentFloatOpen));
+  $("#agentFloatToggle")?.addEventListener("click", (event) => {
+    if (event.currentTarget.dataset.suppressClick === "1") {
+      delete event.currentTarget.dataset.suppressClick;
+      return;
+    }
+    setAgentFloatOpen(!state.agentFloatOpen);
+  });
   $("#agentFloatCloseBtn")?.addEventListener("click", () => setAgentFloatOpen(false));
   $("#openAgentFloatFromWorkspaceBtn")?.addEventListener("click", () => setAgentFloatOpen(true));
+  initAgentFloatFrameControls();
   $("#agentFloatNewTaskBtn")?.addEventListener("click", async () => {
     try {
       stopOpenClawPolling();
       state.activeOpenClawRun = null;
+      state.activeOpenClawSessionId = "";
       state.openClawConversation = [];
       state.activeOpenClawCampaignTarget = null;
+      state.activeAgentImportPreview = null;
+      const session = ensureOpenClawSession();
       if (activeFloatRuntime() === "openclaw") {
-        await api("/api/openclaw/sessions", {
+        const data = await api("/api/openclaw/sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({}),
         });
+        if (data.session) {
+          const serverSession = normalizeOpenClawSession(data.session);
+          if (serverSession) {
+            state.activeOpenClawSessionId = serverSession.id;
+            state.openClawSessions = [serverSession, ...state.openClawSessions.filter((item) => item.id !== session.id && item.id !== serverSession.id)].slice(0, 20);
+          }
+        }
+        session.openclawSessionId = data.session?.openclaw_session_id || session.openclawSessionId || "";
+        syncActiveOpenClawSession({ status: "ready", openclawSessionId: session.openclawSessionId });
       }
       renderAgentFloatDock();
       toast("已准备新的 OpenClaw 任务");
@@ -5802,20 +6494,33 @@ function bindEvents() {
   });
   $("#agentFloatForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const payload = formToObject(event.currentTarget);
+    const form = event.currentTarget;
+    const payload = formToObject(form);
+    const fileInput = form.elements.file;
+    const file = fileInput?.files?.[0] || null;
+    delete payload.file;
     const button = $("#agentFloatRunBtn");
     try {
+      if (!String(payload.message || "").trim() && !file) {
+        toast("请输入消息或上传 KOL 表格", true);
+        return;
+      }
       if (button) {
         button.disabled = true;
-        button.textContent = "跑...";
+        button.textContent = file ? "解析中..." : "发送中...";
       }
-      if (payload.runtime === "openclaw") {
+      if (file) {
+        await previewAgentCreatorImport(file, String(payload.message || "").trim());
+        if (fileInput) fileInput.value = "";
+        const fileNameNode = $("#agentFloatFileName");
+        if (fileNameNode) fileNameNode.textContent = "未选择文件";
+      } else if (payload.runtime === "openclaw") {
         await runOpenClawFromPayload(payload);
       } else {
         await runAgentFromPayload(payload);
       }
       renderAgentFloatDock();
-      toast("Agent 已在浮窗启动");
+      toast(file ? "已生成导入预览" : "Agent 已在浮窗启动");
     } catch (error) {
       toast(error.message, true);
     } finally {
@@ -5825,8 +6530,46 @@ function bindEvents() {
       }
     }
   });
+  $("#agentFloatFileInput")?.addEventListener("change", (event) => {
+    const file = event.currentTarget.files?.[0];
+    const fileNameNode = $("#agentFloatFileName");
+    if (fileNameNode) fileNameNode.textContent = file ? file.name : "未选择文件";
+  });
   $("#agentFloatRuntimeSelect")?.addEventListener("change", () => renderAgentFloatContent());
-  $("#agentFloatPanel")?.addEventListener("click", (event) => {
+  $("#agentFloatPanel")?.addEventListener("click", async (event) => {
+    const sessionBtn = event.target.closest("[data-openclaw-session]");
+    if (sessionBtn) {
+      activateOpenClawSession(sessionBtn.dataset.openclawSession || "").catch((error) => toast(error.message || "加载 OpenClaw session 失败", true));
+      return;
+    }
+    const commitBtn = event.target.closest("[data-agent-import-commit]");
+    if (commitBtn) {
+      commitBtn.disabled = true;
+      commitBtn.textContent = "导入中...";
+      commitAgentCreatorImport(commitBtn.dataset.agentImportCommit || "").then(
+        (data) => toast(`已导入 ${fmtNumber(data.imported || 0)} 个达人`),
+        (error) => toast(error.message || "导入失败", true)
+      );
+      return;
+    }
+    const openClawAction = event.target.closest("[data-agent-openclaw-action]");
+    if (openClawAction) {
+      const action = openClawAction.dataset.agentOpenclawAction || "";
+      try {
+        openClawAction.disabled = true;
+        if (action === "save-campaign") {
+          await saveActiveOpenClawRunToCampaign("#agentFloatForm");
+          toast("OpenClaw 任务已保存到 Campaign");
+        } else if (action === "view-assets") {
+          await viewActiveOpenClawAssets();
+        }
+      } catch (error) {
+        toast(error.message || "操作失败", true);
+      } finally {
+        openClawAction.disabled = false;
+      }
+      return;
+    }
     const prompt = event.target.closest("[data-agent-prompt]");
     if (!prompt) return;
     const textarea = $("#agentFloatForm textarea[name='message']");

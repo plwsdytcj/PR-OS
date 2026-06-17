@@ -59,23 +59,20 @@ def main() -> None:
         "message.created",
         "gateway.started",
         "gateway.completed",
-        "kolness.match.completed",
-        "artifact.preview.created",
         "message.completed",
         "run.completed",
     ]
     assert completed["run"]["status"] == "completed", completed
     assert event_types == expected, event_types
 
-    match_event = next(event for event in completed["events"] if event["event_type"] == "kolness.match.completed")
-    kols = match_event["payload"]["recommended_kols"]
-    assert kols == ["贵州数码王", "西南数码王"], kols
+    response = completed["run"]["response"]
+    assert "贵州数码王" in response and "西南数码王" in response, response
 
     binding = load_binding(DB_PATH, "smoke@kolness.local")
     assert binding is not None
     assert binding.openclaw_session_id == "smoke_session_001", binding
 
-    print(f"OK openclaw_async events={len(event_types)} kols={','.join(kols)}")
+    print(f"OK openclaw_async events={len(event_types)}")
 
 
 if __name__ == "__main__":

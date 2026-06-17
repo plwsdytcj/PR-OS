@@ -1089,6 +1089,13 @@ button {
   pointer-events: none;
 }
 
+.agent-float-dock.agent-float-custom-frame {
+  left: var(--agent-float-left);
+  top: var(--agent-float-top);
+  right: auto;
+  bottom: auto;
+}
+
 .agent-float-dock:has(.agent-float-panel:not(.hidden))::before {
   content: "";
   position: fixed;
@@ -1144,8 +1151,8 @@ button {
 
 .agent-float-panel {
   position: relative;
-  width: min(1040px, calc(100vw - 32px));
-  height: min(760px, calc(100vh - 64px));
+  width: var(--agent-float-width, min(1040px, calc(100vw - 32px)));
+  height: var(--agent-float-height, min(760px, calc(100vh - 64px)));
   overflow: hidden;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
@@ -1156,6 +1163,61 @@ button {
   background: #fffaf0;
   box-shadow: 0 24px 70px rgba(17, 16, 12, 0.28);
   isolation: isolate;
+}
+
+.agent-float-head {
+  cursor: grab;
+  user-select: none;
+}
+
+.agent-float-head button,
+.agent-float-head input,
+.agent-float-head select {
+  cursor: pointer;
+}
+
+.agent-float-panel.agent-float-moving .agent-float-head {
+  cursor: grabbing;
+}
+
+.agent-float-resize {
+  position: absolute;
+  border: 0;
+  background: transparent;
+  z-index: 4;
+  padding: 0;
+}
+
+.agent-float-resize-right {
+  right: 0;
+  top: 0;
+  width: 12px;
+  height: 100%;
+  cursor: ew-resize;
+}
+
+.agent-float-resize-bottom {
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 12px;
+  cursor: ns-resize;
+}
+
+.agent-float-resize-corner {
+  right: 8px;
+  bottom: 8px;
+  width: 20px;
+  height: 20px;
+  border-right: 3px solid rgba(17, 16, 12, 0.5);
+  border-bottom: 3px solid rgba(17, 16, 12, 0.5);
+  cursor: nwse-resize;
+  z-index: 5;
+}
+
+.agent-float-panel.agent-float-resizing,
+.agent-float-panel.agent-float-moving {
+  transition: none;
 }
 
 .agent-float-panel::before {
@@ -1245,6 +1307,86 @@ button {
   border-radius: 8px;
   background: #fffdf6;
   box-shadow: inset 0 0 0 1px rgba(17, 16, 12, 0.03);
+}
+
+.agent-float-session-shell {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  gap: 10px;
+  min-height: 0;
+}
+
+.agent-float-panel:not(.agent-float-has-sessions) .agent-float-session-shell {
+  grid-template-columns: 1fr;
+}
+
+.agent-float-panel:not(.agent-float-has-sessions) .agent-float-sessions {
+  display: none;
+}
+
+.agent-float-sessions {
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgba(17, 16, 12, 0.14);
+  border-radius: 8px;
+  background: #fff9e9;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.agent-float-sessions-head {
+  padding: 10px 10px 8px;
+  border-bottom: 1px solid rgba(17, 16, 12, 0.12);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.agent-float-session-list {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  overflow: auto;
+  padding: 8px;
+}
+
+.agent-float-session-item {
+  width: 100%;
+  min-height: 58px;
+  border: 1px solid rgba(17, 16, 12, 0.14);
+  border-radius: 6px;
+  background: rgba(255, 253, 246, 0.92);
+  color: var(--ink);
+  text-align: left;
+  padding: 8px;
+  cursor: pointer;
+}
+
+.agent-float-session-item:hover,
+.agent-float-session-item.active {
+  border-color: var(--ink);
+  background: #ffe06a;
+}
+
+.agent-float-session-item strong,
+.agent-float-session-item span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-float-session-item strong {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.agent-float-session-item span {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .agent-float-openclaw-space {
@@ -1393,6 +1535,112 @@ button {
   color: #fffdf6;
 }
 
+.agent-float-live-card {
+  width: min(100%, 620px);
+  justify-self: start;
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(17, 16, 12, 0.18);
+  border-left: 4px solid #7b4dff;
+  border-radius: 8px;
+  background: #11100c;
+  color: #fffdf6;
+  padding: 12px;
+}
+
+.agent-float-live-card.failed {
+  border-left-color: var(--coral);
+}
+
+.agent-float-live-card.completed {
+  border-left-color: #57e0b1;
+}
+
+.agent-float-live-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: start;
+}
+
+.agent-float-live-head span {
+  display: block;
+  color: var(--coral);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.agent-float-live-head strong {
+  display: block;
+  margin-top: 4px;
+  color: #fffdf6;
+  font-size: 19px;
+}
+
+.agent-float-live-head em {
+  flex: 0 0 auto;
+  color: #ffe06a;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.agent-float-live-card p {
+  margin: 0;
+  color: rgba(255, 253, 246, 0.78);
+  font-weight: 760;
+}
+
+.agent-float-live-steps {
+  display: grid;
+  gap: 7px;
+}
+
+.agent-float-live-step {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  color: rgba(255, 253, 246, 0.72);
+  font-weight: 850;
+}
+
+.agent-float-live-step i {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(255, 253, 246, 0.6);
+  border-radius: 999px;
+}
+
+.agent-float-live-step.running i {
+  border-color: #ffe06a;
+  background: #7b4dff;
+  box-shadow: 0 0 0 4px rgba(123, 77, 255, 0.22);
+}
+
+.agent-float-live-step.completed i {
+  border-color: #57e0b1;
+  background: #57e0b1;
+}
+
+.agent-float-live-step.failed i {
+  border-color: var(--coral);
+  background: var(--coral);
+}
+
+.agent-float-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.agent-float-quick-actions button {
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
 .agent-float-message span {
   display: inline-block;
   margin-bottom: 6px;
@@ -1405,7 +1653,8 @@ button {
 
 .agent-float-message p,
 .agent-float-welcome p,
-.agent-float-run-card p {
+.agent-float-run-card p,
+.agent-float-import-card p {
   margin: 0;
   color: var(--muted);
   font-weight: 750;
@@ -1423,6 +1672,92 @@ button {
   display: block;
   margin-bottom: 6px;
   font-size: 22px;
+}
+
+.agent-float-import-card {
+  width: min(100%, 620px);
+  justify-self: start;
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(17, 16, 12, 0.18);
+  border-left: 4px solid #ffe06a;
+  border-radius: 8px;
+  background: #fff9e9;
+  padding: 12px;
+}
+
+.agent-float-import-card.committed {
+  border-left-color: #57e0b1;
+}
+
+.agent-float-import-card.failed {
+  border-left-color: var(--coral);
+}
+
+.agent-float-import-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: start;
+}
+
+.agent-float-import-head span {
+  display: block;
+  color: var(--coral);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.agent-float-import-head strong {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  font-size: 18px;
+}
+
+.agent-float-import-head em {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-style: normal;
+  font-weight: 900;
+}
+
+.agent-float-import-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.agent-float-import-metrics span {
+  min-width: 0;
+  border: 1px solid rgba(17, 16, 12, 0.14);
+  border-radius: 6px;
+  background: #fffdf6;
+  padding: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.agent-float-import-metrics b {
+  display: block;
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.agent-float-import-card ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.agent-float-import-card button {
+  justify-self: start;
 }
 
 .agent-float-suggestions {
@@ -1629,6 +1964,39 @@ button {
   min-height: 72px;
 }
 
+.agent-float-upload-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(120px, auto);
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.agent-float-upload-row label {
+  min-height: 38px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--ink);
+  border-radius: 6px;
+  background: #ffe06a;
+  padding: 0 10px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.agent-float-upload-row input[type="file"] {
+  min-width: 0;
+}
+
+.agent-float-upload-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
 @media (max-width: 760px) {
   .agent-float-dock {
     right: 12px;
@@ -1648,6 +2016,21 @@ button {
     max-height: calc(100vh - 24px);
     padding: 12px;
     box-shadow: 0 18px 48px rgba(17, 16, 12, 0.3);
+  }
+
+  .agent-float-dock.agent-float-custom-frame {
+    left: 12px;
+    top: auto;
+    right: 12px;
+    bottom: 12px;
+  }
+
+  .agent-float-resize {
+    display: none;
+  }
+
+  .agent-float-head {
+    cursor: default;
   }
 
   .agent-float-head {
@@ -1671,12 +2054,28 @@ button {
 
   .agent-float-settings-grid,
   .agent-float-composer-main,
+  .agent-float-session-shell,
+  .agent-float-upload-row,
   .agent-float-openclaw-space {
     grid-template-columns: 1fr;
   }
 
+  .agent-float-session-list {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(148px, 1fr);
+    overflow-x: auto;
+  }
+
   .agent-float-composer-main button {
     min-height: 52px;
+  }
+
+  .agent-float-upload-row span {
+    text-align: left;
+  }
+
+  .agent-float-import-metrics {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -2433,6 +2832,21 @@ button {
   border-radius: 6px;
   color: #17120d;
   padding: 10px 12px;
+}
+
+.agent-message.assistant.running > div:last-child {
+  background: transparent;
+  border-color: transparent;
+  padding: 0;
+}
+
+.agent-main-live-card .agent-float-live-card {
+  width: min(720px, 100%);
+}
+
+.agent-message.assistant.completed .agent-float-quick-actions,
+.agent-message.assistant.failed .agent-float-quick-actions {
+  margin-top: 14px;
 }
 
 .agent-message.user > div:last-child {
@@ -8087,8 +8501,8 @@ textarea {
 
 /* The floating agent is a quick chat surface, not a second workspace. */
 .agent-float-panel {
-  width: min(720px, calc(100vw - 32px));
-  height: min(680px, calc(100vh - 64px));
+  width: var(--agent-float-width, min(880px, calc(100vw - 32px)));
+  height: var(--agent-float-height, min(680px, calc(100vh - 64px)));
 }
 
 .agent-float-head h2 {

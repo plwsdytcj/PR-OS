@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260615-2" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260615-8" />
   </head>
   <body>
     <div class="app-shell">
@@ -1889,7 +1889,15 @@
           </div>
         </div>
         <div id="agentFloatSummary" class="agent-float-summary">等待输入 PR brief。</div>
-        <div id="agentFloatMessages" class="agent-float-feed agent-float-chat"></div>
+        <div class="agent-float-session-shell">
+          <aside class="agent-float-sessions" aria-label="OpenClaw 对话 Sessions">
+            <div class="agent-float-sessions-head">
+              <span>Sessions</span>
+            </div>
+            <div id="agentFloatSessionList" class="agent-float-session-list"></div>
+          </aside>
+          <div id="agentFloatMessages" class="agent-float-feed agent-float-chat"></div>
+        </div>
         <form id="agentFloatForm" class="agent-float-composer">
           <details class="agent-float-settings">
             <summary>任务设置</summary>
@@ -1906,10 +1914,18 @@
             </div>
           </details>
           <div class="agent-float-composer-main">
-            <textarea name="message" required placeholder="把甲方 brief 粘进来，或直接说你想找什么 KOL。">预算50万，新能源SUV上市预热，目标年轻用户，平台优先小红书和抖音。需要推荐KOL、生成客户可看的方案，并说明主要风险。</textarea>
+            <textarea name="message" placeholder="把甲方 brief 粘进来，或直接说你想找什么 KOL。">预算50万，新能源SUV上市预热，目标年轻用户，平台优先小红书和抖音。需要推荐KOL、生成客户可看的方案，并说明主要风险。</textarea>
             <button id="agentFloatRunBtn" class="primary" type="submit">发送</button>
           </div>
+          <div class="agent-float-upload-row">
+            <label for="agentFloatFileInput">上传 KOL 表格</label>
+            <input id="agentFloatFileInput" name="file" type="file" accept=".csv,.tsv,.xlsx,.xls" />
+            <span id="agentFloatFileName">未选择文件</span>
+          </div>
         </form>
+        <button class="agent-float-resize agent-float-resize-right" type="button" data-agent-float-resize="right" aria-label="调整 Agent 浮窗宽度"></button>
+        <button class="agent-float-resize agent-float-resize-bottom" type="button" data-agent-float-resize="bottom" aria-label="调整 Agent 浮窗高度"></button>
+        <button id="agentFloatResizeHandle" class="agent-float-resize agent-float-resize-corner" type="button" data-agent-float-resize="corner" aria-label="调整 Agent 浮窗大小"></button>
       </section>
     </div>
     <div id="toast" class="toast"></div>
@@ -1926,6 +1942,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260615-4"></script>
+    <script src="/static/app.js?v=20260615-15"></script>
   </body>
 </html>

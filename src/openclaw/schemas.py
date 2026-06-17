@@ -20,6 +20,10 @@ def run_id_for(user_id: str, message: str) -> str:
     return stable_id("openclaw_run", user_id, message.strip()[:240], now_iso(), prefix="openclaw_run")
 
 
+def session_id_for(user_id: str, title: str = "") -> str:
+    return stable_id("openclaw_session", user_id, title.strip()[:120], now_iso(), prefix="openclaw_session")
+
+
 def event_id_for(run_id: str, sequence: int, event_type: str) -> str:
     return stable_id(run_id, str(sequence), event_type, prefix="openclaw_event")
 
@@ -74,14 +78,39 @@ class OpenClawUserBinding:
 
 
 @dataclass
+class OpenClawSession:
+    session_id: str
+    user_id: str
+    title: str = "新对话"
+    openclaw_agent_id: str = ""
+    openclaw_session_id: str = ""
+    status: str = "ready"
+    created_at: str = field(default_factory=now_iso)
+    updated_at: str = field(default_factory=now_iso)
+
+    def to_json(self) -> str:
+        return json.dumps(asdict(self), ensure_ascii=False)
+
+    @classmethod
+    def from_json(cls, value: str) -> "OpenClawSession":
+        data = json.loads(value)
+        return cls(**data)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class OpenClawRun:
     run_id: str
     user_id: str
+    session_id: str = ""
     campaign_id: str = ""
     openclaw_agent_id: str = ""
     openclaw_session_id: str = ""
     status: str = "running"
     message: str = ""
+    history: list[dict[str, str]] = field(default_factory=list)
     response: str = ""
     error: str = ""
     created_at: str = field(default_factory=now_iso)
@@ -92,7 +121,10 @@ class OpenClawRun:
 
     @classmethod
     def from_json(cls, value: str) -> "OpenClawRun":
-        return cls(**json.loads(value))
+        data = json.loads(value)
+        data.setdefault("session_id", "")
+        data.setdefault("history", [])
+        return cls(**data)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -116,4 +148,3 @@ class OpenClawEvent:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
-

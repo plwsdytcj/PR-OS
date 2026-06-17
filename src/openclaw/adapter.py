@@ -21,12 +21,14 @@ from src.openclaw.schemas import (
     OpenClawConfig,
     OpenClawEvent,
     OpenClawRun,
+    OpenClawSession,
     OpenClawUserBinding,
     binding_id_for,
     event_id_for,
     run_id_for,
+    session_id_for,
 )
-from src.openclaw.storage import load_binding, load_config, load_events_for_run, load_run, save_binding, save_event, save_run
+from src.openclaw.storage import load_binding, load_config, load_events_for_run, load_run, load_session, save_binding, save_event, save_run, save_session
 
 
 class OpenClawAdapter:
@@ -63,30 +65,88 @@ class OpenClawAdapter:
         save_binding(db_path, binding)
         return binding
 
-    def create_chat(self, db_path: Path, user_id: str, message: str, campaign_id: str = "", session_id: str = "") -> OpenClawRun:
+    def create_session(self, db_path: Path, user_id: str, title: str = "", openclaw_session_id: str = "") -> OpenClawSession:
         config = load_config(db_path)
         binding = self.binding_for_user(db_path, user_id)
-        if session_id:
-            binding.openclaw_session_id = session_id
+        session = OpenClawSession(
+            session_id=session_id_for(user_id, title),
+            user_id=user_id,
+            title=title.strip()[:80] or "新对话",
+            openclaw_agent_id=binding.openclaw_agent_id or config.default_agent_id,
+            openclaw_session_id=openclaw_session_id.strip(),
+            status="ready",
+        )
+        save_session(db_path, session)
+        return session
+
+    def session_for_chat(self, db_path: Path, user_id: str, session_record_id: str = "", title: str = "", openclaw_session_id: str = "") -> OpenClawSession:
+        if session_record_id:
+            existing = load_session(db_path, session_record_id)
+            if existing and existing.user_id == user_id:
+                if openclaw_session_id and not existing.openclaw_session_id:
+                    existing.openclaw_session_id = openclaw_session_id
+                    existing.updated_at = now_iso()
+                    save_session(db_path, existing)
+                return existing
+        return self.create_session(db_path, user_id, title=title, openclaw_session_id=openclaw_session_id)
+
+    def create_chat(
+        self,
+        db_path: Path,
+        user_id: str,
+        message: str,
+        campaign_id: str = "",
+        session_id: str = "",
+        session_record_id: str = "",
+        history: list[dict[str, str]] | None = None,
+    ) -> OpenClawRun:
+        config = load_config(db_path)
+        binding = self.binding_for_user(db_path, user_id)
+        session = self.session_for_chat(db_path, user_id, session_record_id=session_record_id, title=message, openclaw_session_id=session_id)
+        if session.openclaw_session_id:
+            binding.openclaw_session_id = session.openclaw_session_id
         run = OpenClawRun(
             run_id=run_id_for(user_id, message),
             user_id=user_id,
+            session_id=session.session_id,
             campaign_id=campaign_id,
-            openclaw_agent_id=binding.openclaw_agent_id or config.default_agent_id,
-            openclaw_session_id=binding.openclaw_session_id,
+            openclaw_agent_id=session.openclaw_agent_id or binding.openclaw_agent_id or config.default_agent_id,
+            openclaw_session_id=session.openclaw_session_id,
             status="running",
             message=message,
+            history=self._normalize_history(history or []),
         )
+        session.status = "running"
+        session.updated_at = now_iso()
+        save_session(db_path, session)
         save_run(db_path, run)
         self._event(db_path, run.run_id, 1, "message.created", {"role": "user", "content": message})
         return run
 
-    def start_chat(self, db_path: Path, user_id: str, message: str, campaign_id: str = "", session_id: str = "") -> dict[str, Any]:
-        run = self.create_chat(db_path, user_id, message, campaign_id=campaign_id, session_id=session_id)
+    def start_chat(
+        self,
+        db_path: Path,
+        user_id: str,
+        message: str,
+        campaign_id: str = "",
+        session_id: str = "",
+        session_record_id: str = "",
+        history: list[dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
+        run = self.create_chat(db_path, user_id, message, campaign_id=campaign_id, session_id=session_id, session_record_id=session_record_id, history=history)
         return self.complete_chat(db_path, run.run_id)
 
-    def start_chat_async(self, db_path: Path, user_id: str, message: str, campaign_id: str = "", session_id: str = "") -> dict[str, Any]:
-        run = self.create_chat(db_path, user_id, message, campaign_id=campaign_id, session_id=session_id)
+    def start_chat_async(
+        self,
+        db_path: Path,
+        user_id: str,
+        message: str,
+        campaign_id: str = "",
+        session_id: str = "",
+        session_record_id: str = "",
+        history: list[dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
+        run = self.create_chat(db_path, user_id, message, campaign_id=campaign_id, session_id=session_id, session_record_id=session_record_id, history=history)
         return self.payload(db_path, run.run_id)
 
     def complete_chat(self, db_path: Path, run_id: str) -> dict[str, Any]:
@@ -102,6 +162,7 @@ class OpenClawAdapter:
             run.error = "OpenClaw 未启用或未配置 Gateway URL。"
             run.updated_at = now_iso()
             save_run(db_path, run)
+            self._update_session_from_run(db_path, run)
             self._event(db_path, run.run_id, self._next_sequence(db_path, run.run_id), "run.failed", {"error": run.error})
             return self.payload(db_path, run.run_id)
 
@@ -114,18 +175,21 @@ class OpenClawAdapter:
             binding.updated_at = now_iso()
             save_binding(db_path, binding)
             save_run(db_path, run)
+            self._update_session_from_run(db_path, run)
             self._event(db_path, run.run_id, self._next_sequence(db_path, run.run_id), "gateway.completed", {"tool_name": "openclaw.gateway", "agent_id": run.openclaw_agent_id})
-            next_sequence = self._record_response_events(db_path, run, response, start_sequence=self._next_sequence(db_path, run.run_id))
+            next_sequence = self._next_sequence(db_path, run.run_id)
             self._event(db_path, run.run_id, next_sequence, "message.completed", {"role": "assistant", "content": run.response})
             self._event(db_path, run.run_id, next_sequence + 1, "run.completed", {"session_id": run.openclaw_session_id})
             run.status = "completed"
             run.updated_at = now_iso()
             save_run(db_path, run)
+            self._update_session_from_run(db_path, run)
         except Exception as exc:
             run.status = "failed"
             run.error = str(exc)
             run.updated_at = now_iso()
             save_run(db_path, run)
+            self._update_session_from_run(db_path, run)
             sequence = self._next_sequence(db_path, run.run_id)
             self._event(db_path, run.run_id, sequence, "tool.failed", {"tool_name": "openclaw.gateway", "error": run.error})
             self._event(db_path, run.run_id, sequence + 1, "run.failed", {"error": run.error})
@@ -137,6 +201,19 @@ class OpenClawAdapter:
             return {}
         events = [item.to_dict() for item in load_events_for_run(db_path, run_id)]
         return {"run": run.to_dict(), "events": events}
+
+    def _update_session_from_run(self, db_path: Path, run: OpenClawRun) -> None:
+        if not run.session_id:
+            return
+        session = load_session(db_path, run.session_id)
+        if session is None:
+            return
+        session.status = run.status
+        session.openclaw_session_id = run.openclaw_session_id or session.openclaw_session_id
+        if session.title == "新对话" and run.message:
+            session.title = run.message.strip().replace("\n", " ")[:80]
+        session.updated_at = now_iso()
+        save_session(db_path, session)
 
     def _send_message(self, config: OpenClawConfig, run: OpenClawRun, message: str) -> dict[str, Any]:
         url = config.gateway_url.rstrip("/")
@@ -166,20 +243,9 @@ class OpenClawAdapter:
         headers = {"Content-Type": "application/json"}
         if config.admin_token:
             headers["Authorization"] = f"Bearer {config.admin_token}"
-        # OpenClaw deployments can expose different HTTP facades. Try the explicit Kolness bridge first,
-        # then the official OpenAI-compatible Gateway endpoint, then common chat/message paths.
+        # The production path is the real OpenClaw Gateway. Kolness only supplies tools/MCP;
+        # it must not answer through the local bridge before OpenClaw has a chance to run.
         errors: list[str] = []
-        for path in ("/api/kolness/chat",):
-            try:
-                response = requests.post(f"{url}{path}", json=bridge_payload, headers=headers, timeout=self.timeout)
-                if response.status_code == 404:
-                    errors.append(f"{path}: 404")
-                    continue
-                response.raise_for_status()
-                data = response.json() if response.content else {}
-                return data if isinstance(data, dict) else {"response": str(data)}
-            except requests.RequestException as exc:
-                errors.append(f"{path}: {exc}")
         try:
             return self._send_chat_completions(url, headers, run, message)
         except requests.RequestException as exc:
@@ -200,18 +266,24 @@ class OpenClawAdapter:
         raise RuntimeError("OpenClaw Gateway 调用失败：" + " | ".join(errors[-3:]))
 
     def _send_chat_completions(self, url: str, headers: dict[str, str], run: OpenClawRun, message: str) -> dict[str, Any]:
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are Kolness PR Agent. Help PR teams turn briefs into KOL recommendations, "
+                    "risk notes, and client-readable next steps. Use the available Kolness tools when "
+                    "the user asks for creator data, KOL matching, proposals, client pages, or campaign assets. "
+                    "Do not answer with a plan or say you will do the work later. Return concrete deliverables in "
+                    "the current response: recommended KOLs, matching reasons, budget guidance, risks, and next steps. "
+                    "If the required Kolness tools or data are unavailable, say that clearly and ask for the missing input."
+                ),
+            },
+        ]
+        messages.extend(self._normalize_history(run.history))
+        messages.append({"role": "user", "content": message})
         payload = {
-            "model": f"openclaw/{run.openclaw_agent_id}" if run.openclaw_agent_id else "openclaw/default",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are Kolness PR Agent. Help PR teams turn briefs into KOL recommendations, "
-                        "risk notes, and client-readable next steps. Use Kolness context from the user message."
-                    ),
-                },
-                {"role": "user", "content": message},
-            ],
+            "model": "openclaw",
+            "messages": messages,
             "user": run.openclaw_session_id or run.run_id,
             "stream": False,
         }
@@ -232,39 +304,15 @@ class OpenClawAdapter:
         session_id = response.headers.get("x-openclaw-session-key") or run.openclaw_session_id
         return {"response": content or "OpenClaw 已完成任务。", "session_id": session_id, "raw": data}
 
-    def _record_response_events(self, db_path: Path, run: OpenClawRun, response: dict[str, Any], start_sequence: int) -> int:
-        sequence = start_sequence
-        text = str(response.get("message") or response.get("response") or response.get("content") or run.response or "")
-        recommended_kols = self._extract_kol_names(text)
-        if recommended_kols:
-            self._event(
-                db_path,
-                run.run_id,
-                sequence,
-                "kolness.match.completed",
-                {
-                    "tool_name": "kolness.match_kol",
-                    "source": "agent_response",
-                    "result_count": len(recommended_kols),
-                    "recommended_kols": recommended_kols,
-                },
-            )
-            sequence += 1
-        if text:
-            self._event(
-                db_path,
-                run.run_id,
-                sequence,
-                "artifact.preview.created",
-                {
-                    "artifact_type": "kol_recommendation",
-                    "source": "agent_response",
-                    "title": "KOL 推荐结果",
-                    "preview": text[:900],
-                },
-            )
-            sequence += 1
-        return sequence
+    def _normalize_history(self, history: list[dict[str, str]]) -> list[dict[str, str]]:
+        messages: list[dict[str, str]] = []
+        for item in history[-12:]:
+            role = str(item.get("role") or "").strip().lower()
+            content = str(item.get("content") or "").strip()
+            if role not in {"user", "assistant"} or not content:
+                continue
+            messages.append({"role": role, "content": content[:4000]})
+        return messages
 
     def _extract_kol_names(self, text: str) -> list[str]:
         names: list[str] = []

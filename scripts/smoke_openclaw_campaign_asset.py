@@ -69,7 +69,7 @@ def main() -> None:
     )
     run = run_payload["run"]
     assert run["status"] == "completed", run
-    assert any(event["event_type"] == "kolness.match.completed" for event in run_payload["events"]), run_payload["events"]
+    assert any(event["event_type"] == "message.completed" for event in run_payload["events"]), run_payload["events"]
 
     saved = assert_ok(
         client.post(
@@ -93,7 +93,7 @@ def main() -> None:
     assert event_payload["run_id"] == run["run_id"]
     assert event_payload["status"] == "completed"
     assert "城市车生活" in event_payload["response"]
-    assert any(event["event_type"] == "kolness.match.completed" for event in event_payload["events"])
+    assert any(event["event_type"] == "message.completed" for event in event_payload["events"])
 
     history = assert_ok(client.get("/api/history/workspace", headers=HEADERS), "workspace history")
     item = next((entry for entry in history["items"] if entry["id"] == campaign_id), None)
