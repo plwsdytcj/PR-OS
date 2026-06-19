@@ -1125,8 +1125,13 @@ button {
   box-shadow: 0 10px 24px rgba(17, 16, 12, 0.18);
   font-weight: 900;
   letter-spacing: 0;
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
   transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.agent-float-dock.agent-float-toggle-moving .agent-float-toggle {
+  cursor: grabbing;
 }
 
 .agent-float-toggle:hover {

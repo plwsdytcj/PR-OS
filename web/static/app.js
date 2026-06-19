@@ -303,8 +303,27 @@ function clampAgentFloatFrame(frame) {
   return { left, top, width, height };
 }
 
+function clampAgentFloatPosition(frame, boxWidth = 320, boxHeight = 92) {
+  const margin = 16;
+  const left = Math.min(Math.max(Number(frame?.left) || window.innerWidth - boxWidth - 22, margin), Math.max(margin, window.innerWidth - boxWidth - margin));
+  const top = Math.min(Math.max(Number(frame?.top) || window.innerHeight - boxHeight - 22, margin), Math.max(margin, window.innerHeight - boxHeight - margin));
+  return { ...(frame || {}), left, top };
+}
+
 function saveAgentFloatFrame(frame) {
-  state.agentFloatFrame = clampAgentFloatFrame(frame);
+  const panel = $("#agentFloatPanel");
+  const toggle = $("#agentFloatToggle");
+  if (state.agentFloatOpen && panel && !panel.classList.contains("hidden")) {
+    state.agentFloatFrame = clampAgentFloatFrame(frame);
+  } else {
+    const rect = toggle?.getBoundingClientRect();
+    const positioned = clampAgentFloatPosition(frame, rect?.width || 320, rect?.height || 92);
+    state.agentFloatFrame = {
+      ...positioned,
+      width: Number(frame?.width) || Number(state.agentFloatFrame?.width) || 880,
+      height: Number(frame?.height) || Number(state.agentFloatFrame?.height) || 680,
+    };
+  }
   localStorage.setItem("pr_ai_os_agent_float_frame", JSON.stringify(state.agentFloatFrame));
   applyAgentFloatFrame();
 }
@@ -321,7 +340,7 @@ function applyAgentFloatFrame() {
     panel.style.removeProperty("--agent-float-height");
     return;
   }
-  const frame = clampAgentFloatFrame(state.agentFloatFrame);
+  const frame = state.agentFloatOpen ? clampAgentFloatFrame(state.agentFloatFrame) : clampAgentFloatPosition(state.agentFloatFrame, $("#agentFloatToggle")?.offsetWidth || 320, $("#agentFloatToggle")?.offsetHeight || 92);
   state.agentFloatFrame = frame;
   dock.classList.add("agent-float-custom-frame");
   dock.style.setProperty("--agent-float-left", `${frame.left}px`);
@@ -333,12 +352,12 @@ function applyAgentFloatFrame() {
 function frameFromFloatElement(element) {
   const rect = element.getBoundingClientRect();
   const existing = state.agentFloatFrame || {};
-  return clampAgentFloatFrame({
+  return clampAgentFloatPosition({
     left: rect.left,
     top: rect.top,
     width: existing.width || 880,
     height: existing.height || 680,
-  });
+  }, rect.width || 320, rect.height || 92);
 }
 
 async function api(path, options = {}) {
@@ -2500,6 +2519,10 @@ function initAgentFloatFrameControls() {
   const head = panel?.querySelector(".agent-float-head");
   if (!panel || !dock || !head || panel.dataset.frameControlsReady === "1") return;
   panel.dataset.frameControlsReady = "1";
+  if (toggle) {
+    toggle.draggable = false;
+    toggle.addEventListener("dragstart", (event) => event.preventDefault());
+  }
 
   const frameFromPanel = () => {
     const rect = panel.getBoundingClientRect();
@@ -2542,23 +2565,33 @@ function initAgentFloatFrameControls() {
     let moved = false;
     const startX = event.clientX;
     const startY = event.clientY;
-    const onFirstMove = (moveEvent) => {
-      if (Math.abs(moveEvent.clientX - startX) + Math.abs(moveEvent.clientY - startY) < 4) return;
+    toggle.setPointerCapture?.(event.pointerId);
+    const onMove = (moveEvent) => {
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+      if (!moved && Math.abs(dx) + Math.abs(dy) < 4) return;
       moved = true;
       toggle.dataset.suppressClick = "1";
-      window.removeEventListener("pointermove", onFirstMove);
-      startMove(event, toggle, startFrame);
+      dock.classList.add("agent-float-toggle-moving");
+      saveAgentFloatFrame({
+        ...startFrame,
+        left: startFrame.left + dx,
+        top: startFrame.top + dy,
+      });
     };
     const onUp = () => {
-      window.removeEventListener("pointermove", onFirstMove);
+      window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      dock.classList.remove("agent-float-toggle-moving");
       if (moved) {
         event.preventDefault();
         event.stopPropagation();
       }
     };
-    window.addEventListener("pointermove", onFirstMove);
+    window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   });
 
   panel.querySelectorAll("[data-agent-float-resize]").forEach((resize) => {
