@@ -1,0 +1,60 @@
+name: pr-ai-os
+
+services:
+  app:
+    build: .
+    container_name: pr-ai-os-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://pr_ai_os:pr_ai_os@postgres:5432/pr_ai_os
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - default
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      - "traefik.http.routers.pr-ai-os-ip.rule=Host(`47.251.179.91`)"
+      - "traefik.http.routers.pr-ai-os-ip.entrypoints=web"
+      - "traefik.http.routers.pr-ai-os-ip.priority=100"
+      - "traefik.http.routers.pr-ai-os-domain.rule=Host(`chinahoteldiscount.com`) || Host(`www.chinahoteldiscount.com`) || Host(`kolness.com`) || Host(`www.kolness.com`)"
+      - "traefik.http.routers.pr-ai-os-domain.entrypoints=web"
+      - "traefik.http.routers.pr-ai-os-domain.middlewares=pr-ai-os-redirect-https@docker"
+      - "traefik.http.middlewares.pr-ai-os-redirect-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.pr-ai-os-domain-secure.rule=Host(`chinahoteldiscount.com`) || Host(`www.chinahoteldiscount.com`) || Host(`kolness.com`) || Host(`www.kolness.com`)"
+      - "traefik.http.routers.pr-ai-os-domain-secure.entrypoints=web-secure"
+      - "traefik.http.routers.pr-ai-os-domain-secure.tls=true"
+      - "traefik.http.routers.pr-ai-os-domain-secure.tls.certresolver=myhttpchallenge"
+      - "traefik.http.routers.pr-ai-os-domain-secure.tls.domains[0].main=chinahoteldiscount.com"
+      - "traefik.http.routers.pr-ai-os-domain-secure.tls.domains[0].sans=www.chinahoteldiscount.com,kolness.com,www.kolness.com"
+      - "traefik.http.services.pr-ai-os.loadbalancer.server.port=8601"
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: pr-ai-os-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pr_ai_os
+      POSTGRES_USER: pr_ai_os
+      POSTGRES_PASSWORD: pr_ai_os
+    volumes:
+      - pr_ai_os_postgres_data:/var/lib/postgresql/data
+      - ./db/postgres_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pr_ai_os -d pr_ai_os"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+networks:
+  traefik:
+    external: true
+
+volumes:
+  pr_ai_os_postgres_data:

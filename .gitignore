@@ -3,6 +3,17 @@ __pycache__/
 *.pyc
 .DS_Store
 
+# Python virtual environment
+.venv/
+venv/
+
+# Editor / IDE
+.vscode/
+
+# Backup files
+*.bak
+*.bak*
+
 # Local runtime data
 data/processed/
 data/objects/
