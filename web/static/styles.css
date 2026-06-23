@@ -5457,6 +5457,7 @@ td {
   border: 2px solid rgba(23, 18, 13, 0.34);
   background: rgba(255, 210, 63, 0.72);
   transform: rotate(4deg);
+  pointer-events: none;
 }
 
 .template-item:nth-child(2n)::after {
@@ -5836,9 +5837,15 @@ body.client-session #clientPortal {
   white-space: nowrap;
 }
 
-.kol-profile-card {
-  display: grid;
-  gap: 14px;
+.kol-profile-card.open-creator-card {
+  cursor: pointer;
+}
+
+.kol-profile-card.open-creator-card .open-creator-btn,
+.kol-profile-card.open-creator-card a {
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
 }
 
 .kol-card-top {

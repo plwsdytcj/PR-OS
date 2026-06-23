@@ -1,6 +1,7 @@
 const state = {
   tenant: localStorage.getItem("pr_ai_os_tenant") || "default",
   accessKey: localStorage.getItem("pr_ai_os_access_key") || "",
+  sessionToken: localStorage.getItem("pr_ai_os_session_token") || "",
   sidebarCollapsed: localStorage.getItem("pr_ai_os_sidebar_collapsed") === "1",
   authRequired: false,
   currentIdentity: null,
@@ -2156,7 +2157,7 @@ function creatorCardHtml(creator) {
     ? `<div><span>赞粉比</span><strong>${creator.like_fan_ratio ? formatLikeFanRatio(Number(creator.like_fan_ratio)) : "-"}</strong></div>`
     : `<div><span>互动率</span><strong>${creator.engagement_rate ? `${Math.round(Number(creator.engagement_rate) * 1000) / 10}%` : "-"}</strong></div>`;
   return `
-    <article class="creator-card kol-profile-card">
+    <article class="creator-card kol-profile-card open-creator-card" data-creator-id="${escapeHTML(creator.creator_id)}">
       <div class="kol-card-top">
         <div class="kol-card-avatar">${avatar}</div>
         <div>
@@ -6494,7 +6495,14 @@ async function openCreatorModal(creatorId) {
     }
     state.activeCreator = data.creator;
     state.activeCreatorEvidenceTags = data.evidence_tags || [];
-    renderCreatorModal(data.creator);
+    try {
+      renderCreatorModal(data.creator);
+    } catch (error) {
+      closeCreatorModal();
+      toast(error.message || "达人详情渲染失败", true);
+      console.error("renderCreatorModal failed", error);
+      return;
+    }
     $("#creatorModal")?.classList.remove("hidden");
   } catch (error) {
     closeCreatorModal();
@@ -6503,7 +6511,7 @@ async function openCreatorModal(creatorId) {
 }
 
 function closeCreatorModal() {
-  $("#creatorModal").classList.add("hidden");
+  $("#creatorModal")?.classList.add("hidden");
   state.activeCreator = null;
   state.activeCreatorEvidenceTags = [];
   state.activeCreatorImageSuggestion = null;
@@ -9058,9 +9066,12 @@ function bindEvents() {
   });
 
   document.addEventListener("click", async (event) => {
-    const button = event.target.closest(".open-creator-btn");
-    if (!button) return;
-    await openCreatorModal(button.dataset.creatorId);
+    if (event.target.closest("a[href]")) return;
+    const target = event.target.closest(".open-creator-btn, .open-creator-card");
+    if (!target) return;
+    const creatorId = target.dataset.creatorId;
+    if (!creatorId) return;
+    await openCreatorModal(creatorId);
   });
 
   document.addEventListener("click", async (event) => {
