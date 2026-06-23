@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260624-7" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260624-8" />
   </head>
   <body>
     <div class="app-shell">
@@ -1727,7 +1727,16 @@
                 <input name="platform_user_id" placeholder="平台 ID" />
                 <input name="homepage_url" placeholder="主页链接" />
               </div>
-              <input name="avatar_url" placeholder="头像 / 封面图片 URL" />
+              <input name="avatar_url" type="hidden" />
+              <div class="avatar-upload-row">
+                <label class="avatar-upload" for="creatorEditAvatarInput">
+                  <span id="creatorEditAvatarPreview" class="avatar-upload-preview">头像</span>
+                  <strong>上传头像图片</strong>
+                  <small>支持微信截图或本地图片，也可继续保留 URL</small>
+                </label>
+                <input id="creatorEditAvatarInput" name="avatar_file" class="sr-only" type="file" accept="image/*" />
+              </div>
+              <input name="avatar_url_display" placeholder="头像 / 封面图片 URL（可选）" />
               <div class="field-row">
                 <input name="region" placeholder="地区" />
                 <input name="contact" placeholder="联系方式" />
@@ -1757,12 +1766,26 @@
                 <h3 class="detail-heading">商业卡</h3>
                 <p class="meta">报价、合作历史和内部履约判断，用来决定能不能推荐给甲方。</p>
               </div>
-              <div class="field-row">
-                <input name="listed_price" type="number" min="0" placeholder="报价" />
-                <input name="cooperation_formats" placeholder="合作形式 / 标签，逗号分隔" />
+              <div id="creatorEditRateFields" class="platform-rate-grid" aria-live="polite"></div>
+              <input name="listed_price" type="hidden" />
+              <input name="cooperation_brands" type="hidden" />
+              <div class="tag-editor" data-tag-field="cooperation_brands">
+                <label>合作品牌</label>
+                <div class="tag-chip-list" data-tag-list></div>
+                <input data-tag-entry placeholder="输入品牌后回车，如 理想、特斯拉" />
               </div>
-              <input name="cooperation_brands" placeholder="合作品牌，逗号分隔" />
-              <textarea name="manual_notes" placeholder="媒介备注 / 履约反馈 / 风险"></textarea>
+              <input name="cooperation_formats" type="hidden" />
+              <div class="tag-editor" data-tag-field="cooperation_formats">
+                <label>合作形式</label>
+                <div class="tag-chip-list" data-tag-list></div>
+                <input data-tag-entry placeholder="输入形式后回车，如 种草、真实体验" />
+              </div>
+              <input name="manual_notes" type="hidden" />
+              <div class="tag-editor" data-tag-field="manual_notes">
+                <label>履约备注</label>
+                <div class="tag-chip-list" data-tag-list></div>
+                <input data-tag-entry placeholder="输入备注后回车，如 适合小红书搜索沉淀" />
+              </div>
             </section>
 
             <section class="creator-profile-section">
@@ -1770,12 +1793,37 @@
                 <h3 class="detail-heading">标签卡</h3>
                 <p class="meta">这些标签会进入 Brief 匹配、KOL 决策图谱和风险推演。</p>
               </div>
-              <input name="industry_fit_tags" placeholder="行业标签，逗号分隔" />
-              <input name="identity_tags" placeholder="身份标签，逗号分隔" />
-              <input name="content_capability_tags" placeholder="内容能力标签，逗号分隔" />
-              <input name="suitable_goals" placeholder="适合目标，逗号分隔" />
-              <input name="risk_tags" placeholder="风险标签，逗号分隔" />
-              <div id="creatorTags" class="tag-list"></div>
+              <input name="industry_fit_tags" type="hidden" />
+              <div class="tag-editor" data-tag-field="industry_fit_tags">
+                <label>行业标签</label>
+                <div class="tag-chip-list" data-tag-list></div>
+                <input data-tag-entry placeholder="输入行业后回车，如 文旅出行、汽车、生活方式" />
+              </div>
+              <input name="identity_tags" type="hidden" />
+              <div class="tag-editor" data-tag-field="identity_tags">
+                <label>身份标签</label>
+                <div class="tag-chip-list" data-tag-list></div>
+                <input data-tag-entry placeholder="输入身份后回车，如 记者、影评人、行业专家" />
+              </div>
+              <input name="content_capability_tags" type="hidden" />
+              <div class="tag-editor" data-tag-field="content_capability_tags">
+                <label>内容能力标签</label>
+                <div class="tag-chip-list" data-tag-list></div>
+                <input data-tag-entry placeholder="输入能力后回车，如 场景体验、测评、种草" />
+              </div>
+              <input name="suitable_goals" type="hidden" />
+              <div class="tag-editor" data-tag-field="suitable_goals">
+                <label>适合目标</label>
+                <div class="tag-chip-list" data-tag-list></div>
+                <input data-tag-entry placeholder="输入目标后回车，如 品牌背书、搜索沉淀、用户教育" />
+              </div>
+              <input name="risk_tags" type="hidden" />
+              <div class="tag-editor" data-tag-field="risk_tags">
+                <label>风险标签</label>
+                <div class="tag-chip-list" data-tag-list></div>
+                <input data-tag-entry placeholder="输入风险后回车，如 拖稿、观点强、报价波动" />
+              </div>
+              <div id="creatorTags" class="tag-list creator-tag-summary"></div>
             </section>
 
             <section class="creator-profile-section">
@@ -2052,6 +2100,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260624-7"></script>
+    <script src="/static/app.js?v=20260624-8"></script>
   </body>
 </html>

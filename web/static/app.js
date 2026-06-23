@@ -6164,8 +6164,7 @@ function getPlatformRateFields(platform) {
   return PLATFORM_RATE_FIELDS[normalizePlatformValue(platform)] || DEFAULT_PLATFORM_RATE_FIELDS;
 }
 
-function renderQuickCreatorRateFields(form, preserved = {}) {
-  const container = $("#quickCreatorRateFields");
+function renderCreatorRateFields(form, container, preserved = {}) {
   if (!container || !form) return;
   const platform = normalizePlatformValue(form.elements.platform?.value);
   const fields = getPlatformRateFields(platform);
@@ -6196,13 +6195,34 @@ function renderQuickCreatorRateFields(form, preserved = {}) {
   `;
 }
 
-function readQuickCreatorRateValues(form) {
+function renderQuickCreatorRateFields(form, preserved = {}) {
+  renderCreatorRateFields(form, $("#quickCreatorRateFields"), preserved);
+}
+
+function readCreatorRateValues(form) {
   const fields = getPlatformRateFields(form.elements.platform?.value);
   const values = {};
   fields.forEach((item) => {
     values[item.key] = Number(form.elements[item.key]?.value || 0);
   });
   return { fields, values };
+}
+
+function readQuickCreatorRateValues(form) {
+  return readCreatorRateValues(form);
+}
+
+function rateValuesFromNotes(notes, platform) {
+  const values = {};
+  getPlatformRateFields(platform).forEach((item) => {
+    const amount = extractRateFromNotes(notes, item.label);
+    if (amount) values[item.key] = amount;
+  });
+  return values;
+}
+
+function remarkTagsFromNotes(notes) {
+  return normalizeQuickTagValue(notes).filter((tag) => !isRateNoteTag(tag));
 }
 
 function rateLabelToFormat(label) {
@@ -6248,17 +6268,21 @@ function normalizeQuickTagValue(value) {
     .filter(Boolean);
 }
 
-function initQuickCreatorTagEditors(form) {
+function initCreatorTagEditors(form) {
   form.querySelectorAll(".tag-editor").forEach((editor) => {
     const fieldName = editor.dataset.tagField;
     const hidden = form.elements[fieldName];
     if (!hidden) return;
     hidden.value = normalizeQuickTagValue(hidden.value).join("，");
-    renderQuickTagEditor(editor);
+    renderCreatorTagEditor(editor);
   });
 }
 
-function renderQuickTagEditor(editor) {
+function initQuickCreatorTagEditors(form) {
+  initCreatorTagEditors(form);
+}
+
+function renderCreatorTagEditor(editor) {
   const form = editor.closest("form");
   const fieldName = editor.dataset.tagField;
   const hidden = form?.elements[fieldName];
@@ -6301,7 +6325,7 @@ function renderQuickTagEditor(editor) {
   if (wrap) wrap.innerHTML = suggestions;
 }
 
-function addQuickCreatorTag(editor, value) {
+function addCreatorTag(editor, value) {
   const form = editor.closest("form");
   const fieldName = editor.dataset.tagField;
   const hidden = form?.elements[fieldName];
@@ -6316,10 +6340,14 @@ function addQuickCreatorTag(editor, value) {
   rememberQuickCreatorTags(fieldName, incoming);
   const entry = editor.querySelector("[data-tag-entry]");
   if (entry) entry.value = "";
-  renderQuickTagEditor(editor);
+  renderCreatorTagEditor(editor);
 }
 
-function removeQuickCreatorTag(editor, value) {
+function addQuickCreatorTag(editor, value) {
+  addCreatorTag(editor, value);
+}
+
+function removeCreatorTag(editor, value) {
   const form = editor.closest("form");
   const fieldName = editor.dataset.tagField;
   const hidden = form?.elements[fieldName];
