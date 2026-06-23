@@ -572,6 +572,16 @@ function clearAuthSession() {
   localStorage.removeItem("pr_ai_os_session_token");
 }
 
+function hydrateAuthSessionFromLocation() {
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const query = new URLSearchParams(window.location.search);
+  const token = String(hash.get("session") || query.get("session") || "").trim();
+  if (!token) return;
+  persistAuthSession({ session_id: token });
+  const cleanUrl = `${window.location.pathname}${query.has("v") ? `?v=${encodeURIComponent(query.get("v"))}` : ""}`;
+  window.history.replaceState({}, document.title, cleanUrl);
+}
+
 async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
   headers.set("X-Tenant-ID", state.tenant || "default");
@@ -592,7 +602,26 @@ async function api(path, options = {}) {
 }
 
 function isAuthBlocked() {
-  return state.authRequired && !state.currentIdentity?.user && !state.accessKey;
+  return state.authRequired && !state.currentIdentity?.user && !state.accessKey && !state.sessionToken;
+}
+
+function resolveCreatorIdFromClick(event) {
+  if (event.target.closest("a[href]")) return "";
+  const target = event.target.closest(".open-creator-btn, .open-creator-card, [data-creator-id]");
+  if (!target) return "";
+  return String(target.dataset.creatorId || "").trim();
+}
+
+async function handleCreatorOpenClick(event) {
+  const creatorId = resolveCreatorIdFromClick(event);
+  if (!creatorId) return;
+  event.preventDefault();
+  event.stopPropagation();
+  try {
+    await openCreatorModal(creatorId);
+  } catch (error) {
+    toast(error.message || "打不开达人详情", true);
+  }
 }
 
 async function apiWithTimeout(path, options = {}, timeoutMs = 20000) {
@@ -6509,12 +6538,8 @@ async function openCreatorModal(creatorId) {
     toast("缺少达人 ID", true);
     return;
   }
-  if (isAuthBlocked()) {
-    showAccessGate("请先登录后查看达人详情。");
-    toast("请先登录后查看达人详情", true);
-    return;
-  }
   showCreatorModalLoading(creatorId);
+  $("#creatorModal")?.classList.remove("hidden");
   try {
     const data = await api(`/api/creators/${encodeURIComponent(creatorId)}`);
     if (!data?.creator) {
@@ -6527,10 +6552,12 @@ async function openCreatorModal(creatorId) {
     try {
       renderCreatorModal(data.creator);
     } catch (error) {
-      closeCreatorModal();
-      toast(error.message || "达人详情渲染失败", true);
+      const summary = $("#creatorProfileSummary");
+      if (summary) {
+        summary.textContent = `详情渲染部分失败：${error.message || "未知错误"}。可刷新后重试，或联系管理员。`;
+      }
+      toast(error.message || "达人详情部分渲染失败", true);
       console.error("renderCreatorModal failed", error);
-      return;
     }
     $("#creatorModal")?.classList.remove("hidden");
   } catch (error) {
@@ -7482,39 +7509,43 @@ async function saveManualCreator(form, { openDetail = false } = {}) {
   return data;
 }
 
+function setCreatorFormField(form, name, value) {
+  const field = form?.elements?.[name];
+  if (!field) return;
+  field.value = value == null ? "" : value;
+}
+
 function renderCreatorModal(creator) {
   const form = $("#creatorEditForm");
   if (!form || !creator) {
-    toast("达人详情表单未就绪", true);
-    return;
+    throw new Error("达人详情表单未就绪");
   }
-  const fields = form.elements;
   $("#creatorModalTitle").textContent = creator.name || "未命名达人";
   $("#creatorModalMeta").textContent = `${creator.platform || "未知平台"} · ${creator.creator_id || ""}`;
   renderCreatorProfileHeader(creator);
-  fields.creator_id.value = creator.creator_id || "";
-  fields.name.value = creator.name || "";
-  fields.platform.value = normalizePlatformValue(creator.platform || PLATFORM_OPTIONS[0]);
-  renderPlatformSelectOptions(fields.platform, fields.platform.value);
-  fields.platform_user_id.value = creator.platform_user_id || "";
-  fields.homepage_url.value = creator.homepage_url || "";
-  fields.avatar_url.value = creator.avatar_url || "";
+  setCreatorFormField(form, "creator_id", creator.creator_id || "");
+  setCreatorFormField(form, "name", creator.name || "");
+  setCreatorFormField(form, "platform", normalizePlatformValue(creator.platform || PLATFORM_OPTIONS[0]));
+  renderPlatformSelectOptions(form.elements.platform, normalizePlatformValue(creator.platform || PLATFORM_OPTIONS[0]));
+  setCreatorFormField(form, "platform_user_id", creator.platform_user_id || "");
+  setCreatorFormField(form, "homepage_url", creator.homepage_url || "");
+  setCreatorFormField(form, "avatar_url", creator.avatar_url || "");
   syncCreatorAvatarPreview(form, creator.avatar_url || "");
-  fields.follower_count.value = creator.follower_count || "";
-  fields.listed_price.value = creator.listed_price || "";
-  fields.total_likes.value = creator.total_likes || "";
-  fields.engagement_rate.value = creator.engagement_rate || "";
-  if (fields.like_fan_ratio) fields.like_fan_ratio.value = creator.like_fan_ratio || "";
-  fields.avg_likes.value = creator.avg_likes || "";
-  fields.avg_comments.value = creator.avg_comments || "";
-  fields.avg_shares.value = creator.avg_shares || "";
-  fields.region.value = creator.region || "";
-  fields.contact.value = creator.contact || "";
-  fields.cooperation_brands.value = asTagList(creator.cooperation_brands).join("，");
-  fields.cooperation_formats.value = asTagList(creator.cooperation_formats).join("，");
+  setCreatorFormField(form, "follower_count", creator.follower_count || "");
+  setCreatorFormField(form, "listed_price", creator.listed_price || "");
+  setCreatorFormField(form, "total_likes", creator.total_likes || "");
+  setCreatorFormField(form, "engagement_rate", creator.engagement_rate || "");
+  setCreatorFormField(form, "like_fan_ratio", creator.like_fan_ratio || "");
+  setCreatorFormField(form, "avg_likes", creator.avg_likes || "");
+  setCreatorFormField(form, "avg_comments", creator.avg_comments || "");
+  setCreatorFormField(form, "avg_shares", creator.avg_shares || "");
+  setCreatorFormField(form, "region", creator.region || "");
+  setCreatorFormField(form, "contact", creator.contact || "");
+  setCreatorFormField(form, "cooperation_brands", asTagList(creator.cooperation_brands).join("，"));
+  setCreatorFormField(form, "cooperation_formats", asTagList(creator.cooperation_formats).join("，"));
   hydrateCreatorTagHubFromCreator(form, creator);
-  fields.bio.value = creator.bio || "";
-  fields.manual_notes.value = remarkTagsFromNotes(creator.manual_notes || "").join("，");
+  setCreatorFormField(form, "bio", creator.bio || "");
+  setCreatorFormField(form, "manual_notes", remarkTagsFromNotes(creator.manual_notes || "").join("，"));
   renderCreatorRateFields(form, $("#creatorEditRateFields"), rateValuesFromNotes(creator.manual_notes || "", creator.platform));
   initCreatorTagEditors(form);
   const kitOutput = $("#creatorCommercialKitOutput");
@@ -7524,9 +7555,13 @@ function renderCreatorModal(creator) {
   }
   renderCreatorMediaAssets(creator);
   renderCreatorImageAnalysis(null);
-  $("#creatorDataSources").innerHTML = (creator.data_sources || [])
-    .map((source) => `<span class="tag">${escapeHTML(source)}</span>`)
-    .join("") || '<span class="meta">暂无来源</span>';
+  const dataSourcesNode = $("#creatorDataSources");
+  if (dataSourcesNode) {
+    const sources = asTagList(creator.data_sources);
+    dataSourcesNode.innerHTML = sources.length
+      ? sources.map((source) => `<span class="tag">${escapeHTML(source)}</span>`).join("")
+      : '<span class="meta">暂无来源</span>';
+  }
   renderCreatorEvidenceTags(state.activeCreatorEvidenceTags);
   syncCreatorDataCardPanel(form);
 }
@@ -7590,7 +7625,7 @@ function renderCreatorEvidenceTags(tags = state.activeCreatorEvidenceTags, optio
 function renderCreatorMediaAssets(creator) {
   const node = $("#creatorMediaAssets");
   if (!node) return;
-  const assets = (creator.media_assets || []).slice(-6).reverse();
+  const assets = Array.isArray(creator.media_assets) ? creator.media_assets.slice(-6).reverse() : [];
   node.innerHTML = assets.length
     ? assets
         .map((asset) => {
@@ -8134,17 +8169,13 @@ async function copyText(value) {
 }
 
 function bindCreatorCardClicks(root) {
-  root?.addEventListener("click", async (event) => {
-    if (event.target.closest("a[href]")) return;
-    const target = event.target.closest(".open-creator-btn, .open-creator-card");
-    if (!target) return;
-    const creatorId = target.dataset.creatorId;
-    if (!creatorId) return;
-    await openCreatorModal(creatorId);
+  root?.addEventListener("click", (event) => {
+    handleCreatorOpenClick(event);
   });
 }
 
 function bindEvents() {
+  document.addEventListener("click", handleCreatorOpenClick, true);
   initPlatformSelects();
   initCreatorListShell();
   renderTenantStatus();
@@ -10386,6 +10417,7 @@ function bindEvents() {
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
+  hydrateAuthSessionFromLocation();
   applySidebarState();
   decorateViews();
   bindEvents();
