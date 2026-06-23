@@ -13,10 +13,16 @@ PLATFORM_HINTS = {
     "xhslink": "小红书",
     "bilibili": "B站",
     "b23": "B站",
-    "kuaishou": "快手",
     "weibo": "微博",
-    "weixin": "公众号",
+    "weixin": "微信公众号",
+    "mp.weixin": "微信公众号",
     "channels.weixin": "视频号",
+    "zhihu": "知乎",
+    "douban": "豆瓣",
+    "toutiao": "今日头条",
+    "snssdk": "今日头条",
+    "twitter": "推特",
+    "x.com": "推特",
 }
 
 

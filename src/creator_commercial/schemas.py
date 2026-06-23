@@ -47,23 +47,33 @@ class CreatorCase:
     case_id: str
     creator_id: str
     brand_name: str
+    creator_name: str = ""
     industry: str = ""
+    product: str = ""
     platform: str = ""
     content_format: str = ""
     content_url: str = ""
+    content_topic: str = ""
     cooperation_goal: str = ""
+    active_tags: list[str] = field(default_factory=list)
     performance: dict[str, Any] = field(default_factory=dict)
     comment_feedback: str = ""
+    is_successful: str = ""
+    reuse_suggestion: str = ""
     visibility: str = "client_summary"
-    verification_status: str = "pending_review"
+    verification_status: str = "approved"
     created_at: str = field(default_factory=now_iso)
+    updated_at: str = field(default_factory=now_iso)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "CreatorCase":
-        return cls(**data)
+        payload = dict(data)
+        payload.setdefault("active_tags", [])
+        payload.setdefault("performance", {})
+        return cls(**payload)
 
 
 @dataclass

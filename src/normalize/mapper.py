@@ -23,11 +23,12 @@ FIELD_ALIASES = {
         "小红书昵称",
         "微信视频账号",
         "快手账号名称",
-        "懂车帝账号",
+        "知乎账号",
     ],
     "platform": ["platform", "平台", "渠道", "分发平台"],
-    "platform_user_id": ["id", "账号id", "账号ID", "抖音号", "小红书号", "小红书号", "视频号ID", "UID", "主页id", "account_id", "懂车帝账号"],
+    "platform_user_id": ["id", "账号id", "账号ID", "抖音号", "小红书号", "小红书号", "视频号ID", "UID", "主页id", "account_id", "知乎账号"],
     "homepage_url": ["homepage", "homepage_url", "主页", "主页链接", "链接", "url", "账号链接", "达人主页", "抖音主页链接", "星图主页链接", "蒲公英主页", "主页链接", "红书链接", "抖音链接"],
+    "avatar_url": ["avatar_url", "头像", "头像链接", "头像URL", "头像图片", "封面图片"],
     "bio": ["bio", "简介", "账号简介", "达人简介", "账号简介", "内容方向", "description"],
     "region": ["region", "地区", "城市", "所在地"],
     "follower_count": ["fans", "followers", "follower_count", "粉丝", "粉丝数", "粉丝量", "粉丝量（W）", "粉丝量(W)", "粉丝数(万)", "粉丝（W）", "粉丝量 （W）"],
@@ -35,10 +36,15 @@ FIELD_ALIASES = {
     "avg_comments": ["avg_comments", "平均评论", "评均", "评论均值"],
     "avg_shares": ["avg_shares", "平均分享", "分享均值"],
     "avg_collections": ["avg_collections", "平均收藏", "收藏均值"],
-    "listed_price": ["price", "listed_price", "报价", "刊例价", "价格", "合作报价", "星图价格 （21-60s）", "星图价格 （60s+）", "21-60s植入价", "60s+定制价", "视频号价格", "快手21-60s", "定制视频", "报备视频（单品）", "小红书定制视频", "懂车帝价格"],
+    "listed_price": ["price", "listed_price", "报价", "刊例价", "价格", "合作报价", "星图价格 （21-60s）", "星图价格 （60s+）", "21-60s植入价", "60s+定制价", "视频号价格", "快手21-60s", "定制视频", "报备视频（单品）", "小红书定制视频", "知乎价格"],
     "contact": ["contact", "联系方式", "微信", "商务联系方式"],
     "cooperation_brands": ["cooperation_brands", "合作品牌", "历史合作品牌", "品牌案例", "部分合作客户", "优秀广告案例"],
     "cooperation_formats": ["cooperation_formats", "合作形式", "内容形式", "类型", "品类", "标签", "达人标签", "账号标签"],
+    "identity_tags": ["identity_tags", "身份标签", "身份", "角色", "人设", "博主身份"],
+    "industry_fit_tags": ["industry_fit_tags", "行业标签", "领域", "适合行业", "行业", "赛道"],
+    "content_capability_tags": ["content_capability_tags", "内容能力标签", "内容能力", "内容标签", "标签"],
+    "suitable_goals": ["suitable_goals", "适合目标", "叙事角色", "叙事标签", "传播角色", "适合叙事"],
+    "risk_tags": ["risk_tags", "风险标签", "风险", "风险点"],
     "manual_notes": ["manual_notes", "备注", "媒介备注", "风险备注", "履约反馈"],
 }
 
@@ -102,15 +108,25 @@ def _clean_platform(value: Any, source: str, columns: object) -> str:
         "小红书",
         "b站",
         "bilibili",
-        "快手",
         "微博",
         "视频号",
+        "微信公众号",
         "公众号",
         "微信",
-        "懂车帝",
+        "知乎",
+        "豆瓣",
+        "今日头条",
+        "推特",
+        "twitter",
     }
     if normalized in known:
-        return "B站" if normalized in {"b站", "bilibili"} else ("公众号" if normalized == "微信" else text)
+        if normalized in {"b站", "bilibili"}:
+            return "B站"
+        if normalized in {"微信", "公众号"}:
+            return "微信公众号"
+        if normalized in {"twitter"}:
+            return "推特"
+        return text
     return _infer_platform(source, columns)
 
 
@@ -146,6 +162,7 @@ def map_dataframe_to_profiles(df: pd.DataFrame, source: str, column_mapping: dic
                 platform=platform or "未知",
                 platform_user_id=platform_user_id if platform_user_id.lower() != "nan" else "",
                 homepage_url=homepage if homepage.lower() != "nan" else "",
+                avatar_url=str(row.get(columns["avatar_url"], "")).strip() if columns.get("avatar_url") else "",
                 bio=str(row.get(columns["bio"], "")).strip() if columns.get("bio") else "",
                 region=str(row.get(columns["region"], "")).strip() if columns.get("region") else "",
                 follower_count=_parse_int(row.get(columns["follower_count"])) if columns.get("follower_count") else 0,
@@ -158,6 +175,11 @@ def map_dataframe_to_profiles(df: pd.DataFrame, source: str, column_mapping: dic
                 contact=str(row.get(columns["contact"], "")).strip() if columns.get("contact") else "",
                 cooperation_brands=split_tags(row.get(columns["cooperation_brands"])) if columns.get("cooperation_brands") else [],
                 cooperation_formats=split_tags(row.get(columns["cooperation_formats"])) if columns.get("cooperation_formats") else [],
+                identity_tags=split_tags(row.get(columns["identity_tags"])) if columns.get("identity_tags") else [],
+                industry_fit_tags=split_tags(row.get(columns["industry_fit_tags"])) if columns.get("industry_fit_tags") else [],
+                content_capability_tags=split_tags(row.get(columns["content_capability_tags"])) if columns.get("content_capability_tags") else [],
+                suitable_goals=split_tags(row.get(columns["suitable_goals"])) if columns.get("suitable_goals") else [],
+                risk_tags=split_tags(row.get(columns["risk_tags"])) if columns.get("risk_tags") else [],
                 manual_notes=str(row.get(columns["manual_notes"], "")).strip() if columns.get("manual_notes") else "",
                 data_sources=[source],
             )
@@ -173,14 +195,18 @@ def _infer_platform(source: str, columns: object) -> str:
         return "抖音"
     if "B站" in text or "bilibili" in text.lower() or "UID" in text:
         return "B站"
-    if "快手" in text:
-        return "快手"
     if "视频号" in text or "微信视频" in text:
         return "视频号"
     if "微博" in text:
         return "微博"
     if "微信" in text or "公众号" in text:
-        return "公众号"
-    if "懂车帝" in text:
-        return "懂车帝"
+        return "微信公众号"
+    if "知乎" in text or "zhihu" in text.lower():
+        return "知乎"
+    if "豆瓣" in text or "douban" in text.lower():
+        return "豆瓣"
+    if "今日头条" in text or "头条" in text or "toutiao" in text.lower():
+        return "今日头条"
+    if "推特" in text or "twitter" in text.lower() or "x.com" in text.lower():
+        return "推特"
     return "未知"

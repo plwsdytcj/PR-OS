@@ -106,12 +106,16 @@ from src.creator_commercial.service import (
     create_creator_submission,
     mark_invitation_opened,
     review_creator_submission,
+    save_creator_case,
 )
 from src.creator_commercial.storage import (
+    delete_case,
     init_creator_commercial_db,
+    load_all_cases,
     load_all_commercial_profiles,
     load_all_invitations,
     load_all_submissions,
+    load_case,
     load_commercial_profile,
     load_invitation,
     load_invitation_by_token,
@@ -172,7 +176,7 @@ from src.schemas import CreatorProfile, split_tags, stable_id
 from src.simulation.llm_fallback import LlmFallbackStressTest
 from src.simulation.mirofish_adapter import MiroFishCliAdapter
 from src.llm.glm_client import GlmClient
-from src.storage.db import count_profiles, init_db, load_profile, load_profiles, merge_profiles, replace_profiles, save_profile, upsert_profiles
+from src.storage.db import count_profiles, delete_profiles, init_db, load_profile, load_profiles, merge_profiles, replace_profiles, save_profile, upsert_profiles
 from src.storage.import_templates import (
     apply_template_mapping,
     delete_template,
@@ -476,6 +480,7 @@ def profile_payload(profile: CreatorProfile) -> dict[str, Any]:
     data = asdict(profile)
     data["tags"] = {
         "industry": profile.industry_fit_tags,
+        "identity": getattr(profile, "identity_tags", []),
         "capability": profile.content_capability_tags,
         "goal": profile.suitable_goals,
         "stage": profile.suitable_stages,
@@ -714,9 +719,30 @@ def _parse_creator_text(text: str, fallback_name: str = "") -> dict[str, Any]:
         name = re.sub(r"^(达人|账号|名称|name)\s*[:：]\s*", "", lines[0], flags=re.IGNORECASE).strip()
     platform = _field_after_label(text, ["平台", "渠道", "platform"])
     if not platform:
-        for candidate in ["小红书", "抖音", "B站", "bilibili", "快手", "微博", "视频号", "公众号"]:
+        for candidate in [
+            "小红书",
+            "抖音",
+            "B站",
+            "bilibili",
+            "微博",
+            "视频号",
+            "微信公众号",
+            "公众号",
+            "知乎",
+            "豆瓣",
+            "今日头条",
+            "推特",
+            "twitter",
+        ]:
             if candidate.lower() in text.lower():
-                platform = "B站" if candidate.lower() == "bilibili" else candidate
+                if candidate.lower() == "bilibili":
+                    platform = "B站"
+                elif candidate in {"公众号"}:
+                    platform = "微信公众号"
+                elif candidate.lower() == "twitter":
+                    platform = "推特"
+                else:
+                    platform = candidate
                 break
     follower_count = _number_from_text(_field_after_label(text, ["粉丝", "粉丝数", "粉丝量", "followers", "fans"]))
     listed_price = _number_from_text(_field_after_label(text, ["报价", "价格", "刊例", "price"]))
@@ -2771,6 +2797,7 @@ async def update_creator(creator_id: str, payload: dict[str, Any]) -> dict[str, 
         "negotiation_space",
         "manual_notes",
         "industry_fit_tags",
+        "identity_tags",
         "content_capability_tags",
         "suitable_goals",
         "suitable_stages",
@@ -2786,7 +2813,7 @@ async def update_creator(creator_id: str, payload: dict[str, Any]) -> dict[str, 
             data[field] = int(value or 0)
         elif field in {"engagement_rate", "delivery_rating", "communication_rating"}:
             data[field] = float(value or 0)
-        elif field in {"cooperation_brands", "cooperation_formats", "industry_fit_tags", "content_capability_tags", "suitable_goals", "suitable_stages", "budget_fit_tags", "risk_tags"}:
+        elif field in {"cooperation_brands", "cooperation_formats", "industry_fit_tags", "identity_tags", "content_capability_tags", "suitable_goals", "suitable_stages", "budget_fit_tags", "risk_tags"}:
             if isinstance(value, list):
                 data[field] = [str(item).strip() for item in value if str(item).strip()]
             else:
@@ -2796,6 +2823,85 @@ async def update_creator(creator_id: str, payload: dict[str, Any]) -> dict[str, 
     updated = enrich_profiles([CreatorProfile(**data)])[0]
     save_profile(DB_PATH, updated)
     return {"creator": profile_payload(updated)}
+
+
+@app.delete("/api/creators/{creator_id}")
+async def delete_creator(creator_id: str) -> dict[str, Any]:
+    profile = load_profile(DB_PATH, creator_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="creator not found")
+    delete_profiles(DB_PATH, [creator_id])
+    return {"deleted": True, "creator_id": creator_id, "name": profile.name}
+
+
+def _case_payload(case: object) -> dict[str, Any]:
+    from src.creator_commercial.schemas import CreatorCase
+
+    return case.to_dict() if isinstance(case, CreatorCase) else asdict(case)
+
+
+@app.get("/api/cases")
+def list_creator_cases(q: str = "", creator_id: str = "") -> dict[str, Any]:
+    items = load_all_cases(DB_PATH)
+    if creator_id:
+        items = [item for item in items if item.creator_id == creator_id]
+    if q:
+        query = q.strip().lower()
+        items = [
+            item
+            for item in items
+            if query
+            in " ".join(
+                [
+                    item.creator_name,
+                    item.brand_name,
+                    item.industry,
+                    item.product,
+                    item.platform,
+                    item.content_format,
+                    item.content_topic,
+                    item.cooperation_goal,
+                    item.comment_feedback,
+                    item.reuse_suggestion,
+                    " ".join(item.active_tags),
+                ]
+            ).lower()
+        ]
+    return {"items": [_case_payload(item) for item in items], "total": len(items)}
+
+
+@app.post("/api/cases")
+async def create_creator_case(payload: dict[str, Any]) -> dict[str, Any]:
+    creator_id = str(payload.get("creator_id") or "").strip()
+    if not creator_id:
+        raise HTTPException(status_code=400, detail="creator_id is required")
+    creator = load_profile(DB_PATH, creator_id)
+    if creator is None:
+        raise HTTPException(status_code=404, detail="creator not found")
+    case = save_creator_case(DB_PATH, creator, payload)
+    return {"case": _case_payload(case)}
+
+
+@app.patch("/api/cases/{case_id}")
+async def update_creator_case(case_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    existing = load_case(DB_PATH, case_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="case not found")
+    creator = load_profile(DB_PATH, str(payload.get("creator_id") or existing.creator_id))
+    if creator is None:
+        raise HTTPException(status_code=404, detail="creator not found")
+    merged = {**existing.to_dict(), **payload, "case_id": case_id}
+    case = save_creator_case(DB_PATH, creator, merged)
+    return {"case": _case_payload(case)}
+
+
+@app.delete("/api/cases/{case_id}")
+async def remove_creator_case(case_id: str) -> dict[str, Any]:
+    existing = load_case(DB_PATH, case_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="case not found")
+    delete_case(DB_PATH, case_id)
+    return {"deleted": True, "case_id": case_id, "brand_name": existing.brand_name}
 
 
 @app.get("/api/governance/summary")

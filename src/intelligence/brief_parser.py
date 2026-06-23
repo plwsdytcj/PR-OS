@@ -6,7 +6,7 @@ from src.intelligence.profiling import INDUSTRY_KEYWORDS
 from src.schemas import BrandBrief
 
 
-PLATFORMS = ["抖音", "小红书", "B站", "快手", "微博", "视频号", "公众号", "懂车帝"]
+PLATFORMS = ["抖音", "小红书", "B站", "微博", "视频号", "微信公众号", "知乎", "豆瓣", "今日头条", "推特"]
 GOALS = ["曝光", "种草", "转化", "新品预热", "品牌背书", "公关破圈", "舆情修复", "搜索沉淀", "用户教育"]
 CONTENT_PREFS = ["科技感", "智能化", "高端感", "真实体验", "专业测评", "成分科技", "口播解释", "视觉大片", "生活方式"]
 

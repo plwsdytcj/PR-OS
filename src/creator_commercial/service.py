@@ -16,7 +16,7 @@ from src.creator_commercial.schemas import (
     now_iso,
     submission_id_for,
 )
-from src.creator_commercial.storage import upsert_commercial_profile, upsert_invitation, upsert_submission
+from src.creator_commercial.storage import upsert_case, upsert_commercial_profile, upsert_invitation, upsert_submission
 from src.intelligence.profiling import enrich_profiles
 from src.schemas import CreatorProfile, split_tags
 from src.storage.db import save_profile
@@ -141,6 +141,12 @@ def review_creator_submission(
     commercial.reviewed_by = reviewed_by
     commercial.updated_at = now_iso()
     upsert_commercial_profile(db_path, commercial)
+    for case in submission.cases:
+        enriched = _case_from_payload(submission.creator_id, case.to_dict())
+        enriched.creator_name = creator.name
+        enriched.platform = enriched.platform or creator.platform
+        enriched.verification_status = "approved"
+        upsert_case(db_path, enriched)
     updated = merge_commercial_into_creator(creator, submission, commercial)
     save_profile(db_path, updated)
     upsert_submission(db_path, submission)
@@ -188,6 +194,19 @@ def normalize_profile_fields(fields: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def save_creator_case(db_path: Path, creator: CreatorProfile, payload: dict[str, Any]) -> CreatorCase:
+    merged = {
+        **payload,
+        "creator_id": creator.creator_id,
+        "creator_name": creator.name,
+        "platform": str(payload.get("platform") or creator.platform or ""),
+    }
+    case = _case_from_payload(creator.creator_id, merged)
+    case.updated_at = now_iso()
+    upsert_case(db_path, case)
+    return case
+
+
 def case_summary(case: CreatorCase) -> str:
     parts = [case.brand_name, case.industry, case.content_format, case.cooperation_goal]
     base = " / ".join([part for part in parts if part])
@@ -198,22 +217,28 @@ def case_summary(case: CreatorCase) -> str:
 def _case_from_payload(creator_id: str, data: dict[str, Any]) -> CreatorCase:
     brand = str(data.get("brand_name") or data.get("brand") or "未命名品牌").strip()
     performance = data.get("performance") if isinstance(data.get("performance"), dict) else {}
-    for key in ["exposure", "views", "likes", "comments", "sales"]:
+    for key in ["exposure", "views", "likes", "comments", "sales", "reads"]:
         if data.get(key):
             performance[key] = data[key]
     return CreatorCase(
-        case_id=str(data.get("case_id") or case_id_for(creator_id, brand)),
+        case_id=str(data.get("case_id") or case_id_for(creator_id or brand, brand)),
         creator_id=creator_id,
+        creator_name=str(data.get("creator_name") or ""),
         brand_name=brand,
         industry=str(data.get("industry") or ""),
+        product=str(data.get("product") or ""),
         platform=str(data.get("platform") or ""),
         content_format=str(data.get("content_format") or data.get("format") or ""),
         content_url=str(data.get("content_url") or data.get("url") or ""),
+        content_topic=str(data.get("content_topic") or data.get("topic") or ""),
         cooperation_goal=str(data.get("cooperation_goal") or data.get("goal") or ""),
+        active_tags=split_tags(data.get("active_tags")),
         performance=performance,
         comment_feedback=str(data.get("comment_feedback") or ""),
+        is_successful=str(data.get("is_successful") or ""),
+        reuse_suggestion=str(data.get("reuse_suggestion") or ""),
         visibility=str(data.get("visibility") or "client_summary"),
-        verification_status=str(data.get("verification_status") or "pending_review"),
+        verification_status=str(data.get("verification_status") or "approved"),
     )
 
 

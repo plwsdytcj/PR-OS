@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260615-8" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260624-6" />
   </head>
   <body>
     <div class="app-shell">
@@ -25,6 +25,7 @@
             <button class="nav-item" data-view="projectRun">新建 PR 需求</button>
             <button class="nav-item" data-view="history">Campaign 资产</button>
             <button class="nav-item" data-view="creators">达人库</button>
+            <button class="nav-item" data-view="caseLibrary">案例库</button>
             <button class="nav-item" data-view="agentWorkspace">AI Agent</button>
           </div>
 
@@ -573,15 +574,7 @@
               <form id="manualForm" class="form">
                 <div class="field-row">
                   <input name="name" placeholder="达人名称" required />
-                  <select name="platform">
-                    <option>抖音</option>
-                    <option>小红书</option>
-                    <option>B站</option>
-                    <option>快手</option>
-                    <option>微博</option>
-                    <option>视频号</option>
-                    <option>公众号</option>
-                  </select>
+                  <select name="platform" data-platform-select></select>
                 </div>
                 <input name="homepage_url" placeholder="主页链接" />
                 <div class="field-row">
@@ -634,13 +627,7 @@
                   <option value="mock">Mock API</option>
                   <option value="oneapi">OneAPI</option>
                 </select>
-                <select name="platform">
-                  <option>抖音</option>
-                  <option>小红书</option>
-                  <option>B站</option>
-                  <option>快手</option>
-                  <option>微博</option>
-                </select>
+                <select name="platform" data-platform-select></select>
               </div>
               <input name="identifier" autocomplete="username" placeholder="达人 ID / handle / 主页链接" required />
               <input name="api_key" type="password" autocomplete="current-password" placeholder="OneAPI Key，可选" />
@@ -662,6 +649,27 @@
               </div>
             </div>
             <div id="creatorList" class="creator-grid"></div>
+          </div>
+        </section>
+
+        <section id="caseLibrary" class="view">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>案例库</h2>
+                <p>沉淀达人历史合作案例，支持按品牌、行业、达人检索，供 Brief 匹配和方案背书引用。</p>
+              </div>
+              <div class="button-row">
+                <button id="openCaseModalBtn" class="primary" type="button">+ 新增案例</button>
+                <input id="caseSearch" class="search" placeholder="搜索达人、品牌、行业、产品、主题" />
+              </div>
+            </div>
+            <div class="metrics case-metrics">
+              <div class="metric"><span>案例总数</span><strong id="caseTotalCount">0</strong></div>
+              <div class="metric"><span>覆盖品牌</span><strong id="caseBrandCount">0</strong></div>
+              <div class="metric"><span>覆盖达人</span><strong id="caseCreatorCount">0</strong></div>
+            </div>
+            <div id="caseList" class="case-grid"></div>
           </div>
         </section>
 
@@ -880,7 +888,7 @@
           <div class="grid brief-grid">
             <div class="panel">
               <h2>甲方 Brief</h2>
-              <textarea id="briefInput" class="brief-input">我们是新能源汽车品牌，预算50万，准备做新能源SUV新品上市预热。目标用户是25-40岁一二线城市男性，希望突出科技感、智能化和高端感。平台优先抖音、小红书、懂车帝。</textarea>
+              <textarea id="briefInput" class="brief-input">我们是新能源汽车品牌，预算50万，准备做新能源SUV新品上市预热。目标用户是25-40岁一二线城市男性，希望突出科技感、智能化和高端感。平台优先抖音、小红书、知乎。</textarea>
               <div class="field-row">
                 <input id="budgetInput" type="number" placeholder="预算覆盖，可选" />
                 <button id="recommendBtn" class="primary">生成推荐</button>
@@ -933,7 +941,7 @@
                   <input name="client_name" placeholder="客户名称" value="某新能源汽车品牌" required />
                   <input name="project_name" placeholder="项目名称" value="新能源 SUV 新品上市预热" required />
                 </div>
-                <textarea name="brief" placeholder="甲方 Brief" required>预算50万，准备做新能源SUV新品上市预热。目标用户是25-40岁一二线城市男性，希望突出科技感、智能化和高端感。平台优先抖音、小红书、懂车帝。</textarea>
+                <textarea name="brief" placeholder="甲方 Brief" required>预算50万，准备做新能源SUV新品上市预热。目标用户是25-40岁一二线城市男性，希望突出科技感、智能化和高端感。平台优先抖音、小红书、知乎。</textarea>
                 <div class="field-row">
                   <input name="top_n" type="number" value="12" min="3" max="50" />
                   <button class="primary" type="submit">生成协作方案</button>
@@ -1397,13 +1405,7 @@
                   <option value="excel">Excel / CSV</option>
                 </select>
                 <div class="field-row">
-                  <select name="platform">
-                    <option>小红书</option>
-                    <option>抖音</option>
-                    <option>B站</option>
-                    <option>快手</option>
-                    <option>微博</option>
-                  </select>
+                  <select name="platform" data-platform-select></select>
                   <input name="identifier" placeholder="平台 ID，可选" />
                 </div>
                 <input name="api_key" type="password" placeholder="API Key，可选；为空则读环境变量" />
@@ -1719,17 +1721,7 @@
               </div>
               <div class="field-row">
                 <input name="name" placeholder="达人名称" required />
-                <select name="platform">
-                  <option>抖音</option>
-                  <option>小红书</option>
-                  <option>B站</option>
-                  <option>快手</option>
-                  <option>微博</option>
-                  <option>视频号</option>
-                  <option>公众号</option>
-                  <option>懂车帝</option>
-                  <option>未知</option>
-                </select>
+                <select name="platform" data-platform-select></select>
               </div>
               <div class="field-row">
                 <input name="platform_user_id" placeholder="平台 ID" />
@@ -1779,6 +1771,7 @@
                 <p class="meta">这些标签会进入 Brief 匹配、KOL 决策图谱和风险推演。</p>
               </div>
               <input name="industry_fit_tags" placeholder="行业标签，逗号分隔" />
+              <input name="identity_tags" placeholder="身份标签，逗号分隔" />
               <input name="content_capability_tags" placeholder="内容能力标签，逗号分隔" />
               <input name="suitable_goals" placeholder="适合目标，逗号分隔" />
               <input name="risk_tags" placeholder="风险标签，逗号分隔" />
@@ -1819,7 +1812,77 @@
               </div>
             </section>
           </div>
+          <section class="creator-commercial-kit-section">
+            <div>
+              <h3 class="detail-heading">商业名片刊例</h3>
+              <p class="meta">根据当前达人信息、标签、报价和合作记录，生成可复制给微信或下载留档的商业化名片。</p>
+            </div>
+            <div class="button-row">
+              <button id="generateCreatorKitBtn" class="primary" type="button">生成名片刊例</button>
+              <button id="copyCreatorKitBtn" class="secondary" type="button">复制</button>
+              <button id="downloadCreatorKitBtn" class="secondary" type="button">下载</button>
+            </div>
+            <div id="creatorCommercialKitOutput" class="commercial-kit-output">
+              <div class="commercial-card-empty">点击生成后，会在这里出现卡片式商业名片刊例。</div>
+            </div>
+          </section>
           <button class="primary" type="submit">保存并重新画像</button>
+        </form>
+        <div class="danger-zone creator-delete-zone">
+          <div>
+            <strong>删除达人</strong>
+            <p>从达人库永久移除这张达人卡片，相关本地档案会一并删除。</p>
+          </div>
+          <button id="deleteCreatorBtn" class="danger-btn" type="button">删除这个达人</button>
+        </div>
+      </section>
+    </div>
+    <div id="caseModal" class="modal hidden">
+      <div class="modal-backdrop" data-close-case-modal="true"></div>
+      <section class="modal-panel case-modal">
+        <div class="panel-header">
+          <div>
+            <span class="card-kicker">case library</span>
+            <h2 id="caseModalTitle">新增合作案例</h2>
+            <p>记录达人历史合作，用于 Brief 匹配、方案背书和复用判断。</p>
+          </div>
+          <button id="closeCaseModalBtn" class="icon-btn" type="button" title="关闭">×</button>
+        </div>
+        <form id="caseForm" class="form">
+          <input name="case_id" type="hidden" />
+          <div class="field-row">
+            <select name="creator_id" id="caseCreatorSelect" required>
+              <option value="">选择达人</option>
+            </select>
+            <input name="brand_name" placeholder="合作品牌" required />
+          </div>
+          <div class="field-row">
+            <input name="industry" placeholder="行业" />
+            <input name="product" placeholder="产品" />
+          </div>
+          <div class="field-row">
+            <input name="content_format" placeholder="合作形式，如 深度稿 / 代发 / 专访" />
+            <input name="content_topic" placeholder="内容主题" />
+          </div>
+          <input name="content_url" placeholder="内容链接" />
+          <input name="cooperation_goal" placeholder="传播目标 / 叙事角色" />
+          <input name="active_tags" placeholder="激活标签，逗号分隔" />
+          <div class="field-row">
+            <input name="performance_views" placeholder="曝光 / 阅读" />
+            <select name="is_successful">
+              <option value="">是否成功</option>
+              <option value="success">成功</option>
+              <option value="partial">部分达成</option>
+              <option value="failed">未达预期</option>
+            </select>
+          </div>
+          <textarea name="comment_feedback" placeholder="评论反馈 / 舆情观察"></textarea>
+          <textarea name="reuse_suggestion" placeholder="复用建议，如 适合科技新品预热、不适合硬广"></textarea>
+          <div class="decision-actions">
+            <button class="primary" type="submit">保存案例</button>
+            <button id="deleteCaseBtn" class="danger-btn hidden" type="button">删除案例</button>
+            <button class="secondary" data-close-case-modal="true" type="button">取消</button>
+          </div>
         </form>
       </section>
     </div>
@@ -1837,29 +1900,54 @@
         <form id="quickCreatorForm" class="form quick-creator-form">
           <div class="field-row">
             <input name="name" placeholder="达人名称" required />
-            <select name="platform">
-              <option>抖音</option>
-              <option>小红书</option>
-              <option>B站</option>
-              <option>快手</option>
-              <option>微博</option>
-              <option>视频号</option>
-              <option>公众号</option>
-              <option>懂车帝</option>
-              <option>未知</option>
-            </select>
+            <select name="platform" data-platform-select></select>
           </div>
           <input name="homepage_url" placeholder="主页链接 / 账号链接" />
-          <input name="avatar_url" placeholder="头像 URL，可选" />
+          <div class="avatar-upload-row">
+            <input name="avatar_url" type="hidden" />
+            <label class="avatar-upload" for="quickCreatorAvatarInput">
+              <span id="quickCreatorAvatarPreview" class="avatar-upload-preview">头像</span>
+              <strong>上传头像图片</strong>
+              <small>支持微信截图或本地图片</small>
+            </label>
+            <input id="quickCreatorAvatarInput" name="avatar_file" class="sr-only" type="file" accept="image/*" />
+          </div>
           <div class="field-row">
             <input name="follower_count" type="number" min="0" placeholder="粉丝数" />
-            <input name="listed_price" type="number" min="0" placeholder="报价" />
           </div>
-          <input name="cooperation_brands" placeholder="合作品牌，逗号分隔" />
-          <input name="industry_fit_tags" placeholder="行业标签，逗号分隔" />
-          <input name="content_capability_tags" placeholder="内容能力标签，逗号分隔" />
+          <div id="quickCreatorRateFields" class="platform-rate-grid" aria-live="polite"></div>
+          <input name="listed_price" type="hidden" />
+          <input name="cooperation_brands" type="hidden" />
+          <div class="tag-editor" data-tag-field="cooperation_brands">
+            <label>服务品牌</label>
+            <div class="tag-chip-list" data-tag-list></div>
+            <input data-tag-entry placeholder="输入品牌后回车，如 腾讯、华为、美团" />
+          </div>
+          <input name="industry_fit_tags" type="hidden" />
+          <div class="tag-editor" data-tag-field="industry_fit_tags">
+            <label>领域</label>
+            <div class="tag-chip-list" data-tag-list></div>
+            <input data-tag-entry placeholder="输入领域后回车，如 科技互联网、电影、AI产业" />
+          </div>
+          <input name="identity_tags" type="hidden" />
+          <div class="tag-editor" data-tag-field="identity_tags">
+            <label>标签</label>
+            <div class="tag-chip-list" data-tag-list></div>
+            <input data-tag-entry placeholder="输入标签后回车，如 社会、科技、时政、电影娱乐" />
+          </div>
+          <input name="cooperation_formats" type="hidden" />
+          <div class="tag-editor" data-tag-field="cooperation_formats">
+            <label>擅长</label>
+            <div class="tag-chip-list" data-tag-list></div>
+            <input data-tag-entry placeholder="输入擅长后回车，如 科技、互联网、娱乐、文化" />
+          </div>
           <textarea name="bio" placeholder="简介 / 内容方向"></textarea>
-          <textarea name="manual_notes" placeholder="媒介备注 / 履约反馈 / 风险"></textarea>
+          <input name="manual_notes" type="hidden" />
+          <div class="tag-editor" data-tag-field="manual_notes">
+            <label>备注</label>
+            <div class="tag-chip-list" data-tag-list></div>
+            <input data-tag-entry placeholder="输入备注后回车，如 出稿慢、内容精品" />
+          </div>
           <div class="decision-actions">
             <button class="primary" type="submit">保存并打开档案</button>
             <button class="secondary" data-close-quick-creator="true" type="button">取消</button>
@@ -1942,6 +2030,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260615-15"></script>
+    <script src="/static/app.js?v=20260624-6"></script>
   </body>
 </html>

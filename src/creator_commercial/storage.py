@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
-from src.creator_commercial.schemas import CreatorCommercialProfile, CreatorInvitation, CreatorSubmission
+from src.creator_commercial.schemas import CreatorCase, CreatorCommercialProfile, CreatorInvitation, CreatorSubmission
 from src.storage.postgres_payload import fetch_payload, fetch_payloads, postgres_enabled, upsert_payload
 
 
@@ -38,6 +39,16 @@ def init_creator_commercial_db(path: Path) -> None:
             """
             CREATE TABLE IF NOT EXISTS creator_commercial_profiles (
                 creator_id TEXT PRIMARY KEY,
+                payload TEXT NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS creator_cases (
+                case_id TEXT PRIMARY KEY,
+                creator_id TEXT NOT NULL,
                 payload TEXT NOT NULL,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
@@ -195,3 +206,59 @@ def load_all_commercial_profiles(path: Path) -> list[CreatorCommercialProfile]:
     with sqlite3.connect(path) as conn:
         rows = conn.execute("SELECT payload FROM creator_commercial_profiles ORDER BY updated_at DESC").fetchall()
     return [CreatorCommercialProfile.from_json(row[0]) for row in rows]
+
+
+def upsert_case(path: Path, case: CreatorCase) -> None:
+    if postgres_enabled():
+        upsert_payload(
+            path,
+            "creator_cases",
+            "case_id",
+            case.case_id,
+            json.dumps(case.to_dict(), ensure_ascii=False),
+            {"creator_id": case.creator_id},
+        )
+        return
+    init_creator_commercial_db(path)
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            """
+            INSERT INTO creator_cases (case_id, creator_id, payload, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(case_id) DO UPDATE SET
+                creator_id = excluded.creator_id,
+                payload = excluded.payload,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (case.case_id, case.creator_id, json.dumps(case.to_dict(), ensure_ascii=False)),
+        )
+
+
+def load_case(path: Path, case_id: str) -> CreatorCase | None:
+    if postgres_enabled():
+        payload = fetch_payload(path, "creator_cases", "case_id", case_id)
+        return CreatorCase.from_dict(json.loads(payload)) if payload else None
+    init_creator_commercial_db(path)
+    with sqlite3.connect(path) as conn:
+        row = conn.execute("SELECT payload FROM creator_cases WHERE case_id = ?", (case_id,)).fetchone()
+    return CreatorCase.from_dict(json.loads(row[0])) if row else None
+
+
+def load_all_cases(path: Path) -> list[CreatorCase]:
+    if postgres_enabled():
+        return [CreatorCase.from_dict(json.loads(payload)) for payload in fetch_payloads(path, "creator_cases")]
+    init_creator_commercial_db(path)
+    with sqlite3.connect(path) as conn:
+        rows = conn.execute("SELECT payload FROM creator_cases ORDER BY updated_at DESC").fetchall()
+    return [CreatorCase.from_dict(json.loads(row[0])) for row in rows]
+
+
+def delete_case(path: Path, case_id: str) -> None:
+    if postgres_enabled():
+        from src.storage.postgres_payload import delete_rows
+
+        delete_rows(path, "creator_cases", "case_id", [case_id])
+        return
+    init_creator_commercial_db(path)
+    with sqlite3.connect(path) as conn:
+        conn.execute("DELETE FROM creator_cases WHERE case_id = ?", (case_id,))

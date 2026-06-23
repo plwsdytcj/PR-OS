@@ -8,6 +8,6 @@ uvicorn[standard]>=0.30
 python-multipart>=0.0.9
 psycopg[binary]>=3.2
 boto3>=1.34
-httpx2>=2.3
+httpx>=0.27
 openai-agents==0.8.4
 eval_type_backport>=0.4.0; python_version < "3.10"

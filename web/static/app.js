@@ -45,6 +45,8 @@ const state = {
   knowledgeSearchResults: [],
   clientPortalProjects: [],
   creators: [],
+  cases: [],
+  activeCase: null,
   lastProposal: "",
   lastBrand: null,
   lastSymbolicResults: [],
@@ -98,6 +100,95 @@ const state = {
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
+const PLATFORM_OPTIONS = [
+  "抖音",
+  "小红书",
+  "B站",
+  "微博",
+  "视频号",
+  "微信公众号",
+  "知乎",
+  "豆瓣",
+  "今日头条",
+  "推特",
+];
+
+function normalizePlatformValue(value) {
+  const text = String(value || "").trim();
+  if (!text || text === "未知") return PLATFORM_OPTIONS[0];
+  if (text === "公众号" || text === "微信") return "微信公众号";
+  if (text === "快手") return PLATFORM_OPTIONS[0];
+  if (text.toLowerCase() === "twitter" || text === "Twitter" || text === "X") return "推特";
+  return PLATFORM_OPTIONS.includes(text) ? text : text;
+}
+
+function renderPlatformSelectOptions(select, selected = "") {
+  if (!select) return;
+  const value = normalizePlatformValue(selected || select.value || PLATFORM_OPTIONS[0]);
+  select.innerHTML = PLATFORM_OPTIONS.map(
+    (platform) => `<option${platform === value ? " selected" : ""}>${escapeHTML(platform)}</option>`,
+  ).join("");
+}
+
+function initPlatformSelects() {
+  $$('select[name="platform"]').forEach((select) => renderPlatformSelectOptions(select, select.value));
+}
+
+const QUICK_CREATOR_TAG_PRESETS = {
+  cooperation_brands: ["腾讯", "华为", "美团", "minimax", "爱奇艺", "字节跳动", "网易", "万里汇"],
+  industry_fit_tags: ["科技互联网", "电影", "AI产业", "公关", "游戏", "消费", "法律", "新闻"],
+  identity_tags: ["社会", "科技", "时政", "电影娱乐", "记者", "影评人", "科技博主", "行业专家", "专栏作者", "公关", "网红"],
+  cooperation_formats: ["约稿", "代发", "原创发", "转发", "专栏", "深度", "影评", "专访"],
+  manual_notes: ["出稿慢", "内容精品", "响应快", "需提前沟通", "适合深稿", "报价需核实", "配合度高", "需人工复核"],
+};
+
+const PLATFORM_RATE_FIELDS = {
+  知乎: [
+    { key: "rate_repost", label: "代发报价" },
+    { key: "rate_original", label: "原创发报价", primary: true },
+  ],
+  抖音: [
+    { key: "rate_60s", label: "60秒以内报价" },
+    { key: "rate_120s", label: "120秒以内报价" },
+    { key: "rate_long", label: "长视频报价", primary: true },
+  ],
+  微博: [
+    { key: "rate_repost", label: "转发报价" },
+    { key: "rate_original", label: "原创发布报价", primary: true },
+  ],
+  微信公众号: [
+    { key: "rate_headline", label: "头条报价", primary: true },
+    { key: "rate_second", label: "次条报价" },
+    { key: "rate_other", label: "其他报价" },
+  ],
+  豆瓣: [
+    { key: "rate_short", label: "短评打分报价" },
+    { key: "rate_long_review", label: "长评报价", primary: true },
+  ],
+  小红书: [
+    { key: "rate_note", label: "笔记报价", primary: true },
+    { key: "rate_video", label: "视频报价" },
+  ],
+  今日头条: [
+    { key: "rate_micro", label: "微头条报价" },
+    { key: "rate_article", label: "图文报价", primary: true },
+  ],
+  视频号: [
+    { key: "rate_60s", label: "60秒以内报价" },
+    { key: "rate_120s", label: "120秒以内报价", primary: true },
+  ],
+  推特: [
+    { key: "rate_quote", label: "quote转发报价" },
+    { key: "rate_thread", label: "thread讨论报价" },
+    { key: "rate_original", label: "原创发布报价", primary: true },
+    { key: "rate_article", label: "推特文章报价" },
+  ],
+};
+
+const DEFAULT_PLATFORM_RATE_FIELDS = [{ key: "rate_base", label: "基础报价", primary: true }];
+
+const QUICK_CREATOR_RECENT_TAGS_KEY = "pr_os_quick_creator_recent_tags";
+
 const SYMBOLIC_EDITOR_FIELDS = {
   creator: [
     ["primary_tags", "主标签", "tags"],
@@ -136,6 +227,7 @@ const VIEW_TITLES = {
   projectRun: ["新建 PR 项目", "输入一个需求，自动跑完 brief、符号图谱、KOL 选择和 Campaign Room。"],
   ingest: ["数据接入", "把 Excel、链接和 API 变成统一 KOL Profile。"],
   creators: ["达人库", "扫描、修正和调用你的私有 KOL 资产。"],
+  caseLibrary: ["案例库", "沉淀达人历史合作案例，供 Brief 匹配和方案背书引用。"],
   kolIntelligence: ["KOL 决策图谱", "证据标签、图谱演进和 KOL 预测推荐。"],
   governance: ["数据治理", "清理重复、补齐字段、提高推荐可信度。"],
   brief: ["Brief 推荐", "把甲方需求转成可解释的达人组合。"],
@@ -161,6 +253,7 @@ const NAV_SHORT_LABELS = {
   history: "史",
   kolIntelligence: "KOL",
   creators: "人",
+  caseLibrary: "案",
   agentWorkspace: "AI",
   brief: "B",
   platformOS: "OS",
@@ -703,6 +796,177 @@ async function loadCreators() {
   state.creators = data.items;
   renderCreators();
   renderCreatorOptions();
+  renderCaseCreatorOptions();
+}
+
+async function loadCases() {
+  const data = await api("/api/cases");
+  state.cases = data.items || [];
+  renderCases();
+}
+
+function renderCaseCreatorOptions() {
+  const select = $("#caseCreatorSelect");
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML =
+    '<option value="">选择达人</option>' +
+    state.creators.map((creator) => `<option value="${creator.creator_id}">${escapeHTML(creator.name)} · ${escapeHTML(creator.platform)}</option>`).join("");
+  if (current) select.value = current;
+}
+
+function caseSuccessLabel(value) {
+  if (value === "success") return "成功";
+  if (value === "partial") return "部分达成";
+  if (value === "failed") return "未达预期";
+  return "待评估";
+}
+
+function renderCases() {
+  const query = ($("#caseSearch")?.value || "").toLowerCase();
+  const list = $("#caseList");
+  if (!list) return;
+  const items = state.cases.filter((item) => {
+    const text = [
+      item.creator_name,
+      item.brand_name,
+      item.industry,
+      item.product,
+      item.platform,
+      item.content_format,
+      item.content_topic,
+      item.cooperation_goal,
+      item.comment_feedback,
+      item.reuse_suggestion,
+      ...(item.active_tags || []),
+    ]
+      .join(" ")
+      .toLowerCase();
+    return text.includes(query);
+  });
+  $("#caseTotalCount").textContent = String(state.cases.length);
+  $("#caseBrandCount").textContent = String(new Set(state.cases.map((item) => item.brand_name).filter(Boolean)).size);
+  $("#caseCreatorCount").textContent = String(new Set(state.cases.map((item) => item.creator_id).filter(Boolean)).size);
+  if (!items.length) {
+    list.innerHTML = emptyState("暂无合作案例", "点击「新增案例」录入达人历史合作，或在博主商业档案审核通过后自动沉淀。");
+    return;
+  }
+  list.innerHTML = items
+    .map((item) => {
+      const tags = [...(item.active_tags || [])]
+        .slice(0, 4)
+        .map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`)
+        .join("");
+      const metrics = Object.entries(item.performance || {})
+        .filter(([, value]) => value)
+        .slice(0, 3)
+        .map(([key, value]) => `<span class="meta">${escapeHTML(key)}: ${escapeHTML(String(value))}</span>`)
+        .join("");
+      return `
+        <article class="case-card">
+          <div class="case-card-top">
+            <div>
+              <div class="card-kicker">${escapeHTML(item.industry || item.platform || "合作案例")}</div>
+              <h3>${escapeHTML(item.brand_name || "未命名品牌")}</h3>
+              <div class="meta">${escapeHTML(item.creator_name || "未关联达人")}${item.product ? ` · ${escapeHTML(item.product)}` : ""}</div>
+            </div>
+            <span class="case-status ${escapeHTML(item.is_successful || "unknown")}">${escapeHTML(caseSuccessLabel(item.is_successful))}</span>
+          </div>
+          <p>${escapeHTML(item.content_topic || item.cooperation_goal || item.content_format || "待补充案例说明")}</p>
+          <div class="case-card-meta">${metrics}</div>
+          <div class="tag-list">${tags}</div>
+          ${item.reuse_suggestion ? `<p class="meta case-reuse">复用：${escapeHTML(item.reuse_suggestion)}</p>` : ""}
+          <div class="button-row">
+            ${item.content_url ? `<a class="text-btn" href="${escapeHTML(item.content_url)}" target="_blank" rel="noreferrer">内容链接</a>` : ""}
+            <button class="secondary open-case-btn" data-case-id="${escapeHTML(item.case_id)}" type="button">编辑</button>
+            ${item.creator_id ? `<button class="secondary open-creator-from-case-btn" data-creator-id="${escapeHTML(item.creator_id)}" type="button">看达人</button>` : ""}
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function openCaseModal(caseItem = null) {
+  const modal = $("#caseModal");
+  const form = $("#caseForm");
+  if (!modal || !form) return;
+  renderCaseCreatorOptions();
+  form.reset();
+  $("#caseModalTitle").textContent = caseItem ? "编辑合作案例" : "新增合作案例";
+  $("#deleteCaseBtn")?.classList.toggle("hidden", !caseItem?.case_id);
+  state.activeCase = caseItem;
+  if (caseItem) {
+    form.elements.case_id.value = caseItem.case_id || "";
+    form.elements.creator_id.value = caseItem.creator_id || "";
+    form.elements.brand_name.value = caseItem.brand_name || "";
+    form.elements.industry.value = caseItem.industry || "";
+    form.elements.product.value = caseItem.product || "";
+    form.elements.content_format.value = caseItem.content_format || "";
+    form.elements.content_topic.value = caseItem.content_topic || "";
+    form.elements.content_url.value = caseItem.content_url || "";
+    form.elements.cooperation_goal.value = caseItem.cooperation_goal || "";
+    form.elements.active_tags.value = (caseItem.active_tags || []).join("，");
+    form.elements.performance_views.value = caseItem.performance?.views || caseItem.performance?.exposure || caseItem.performance?.reads || "";
+    form.elements.is_successful.value = caseItem.is_successful || "";
+    form.elements.comment_feedback.value = caseItem.comment_feedback || "";
+    form.elements.reuse_suggestion.value = caseItem.reuse_suggestion || "";
+  }
+  modal.classList.remove("hidden");
+}
+
+function closeCaseModal() {
+  $("#caseModal")?.classList.add("hidden");
+  state.activeCase = null;
+}
+
+function caseFormPayload(form) {
+  const performance = {};
+  const views = String(form.elements.performance_views.value || "").trim();
+  if (views) performance.views = views;
+  return {
+    case_id: form.elements.case_id.value || undefined,
+    creator_id: form.elements.creator_id.value,
+    brand_name: form.elements.brand_name.value,
+    industry: form.elements.industry.value,
+    product: form.elements.product.value,
+    content_format: form.elements.content_format.value,
+    content_topic: form.elements.content_topic.value,
+    content_url: form.elements.content_url.value,
+    cooperation_goal: form.elements.cooperation_goal.value,
+    active_tags: form.elements.active_tags.value,
+    performance,
+    is_successful: form.elements.is_successful.value,
+    comment_feedback: form.elements.comment_feedback.value,
+    reuse_suggestion: form.elements.reuse_suggestion.value,
+  };
+}
+
+async function saveCaseForm(form) {
+  const payload = caseFormPayload(form);
+  if (!payload.creator_id) return toast("请选择达人", true);
+  if (!payload.brand_name?.trim()) return toast("请填写合作品牌", true);
+  const isEdit = Boolean(payload.case_id);
+  const data = await api(isEdit ? `/api/cases/${encodeURIComponent(payload.case_id)}` : "/api/cases", {
+    method: isEdit ? "PATCH" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  closeCaseModal();
+  await loadCases();
+  toast(isEdit ? "案例已更新" : "案例已新增");
+  return data.case;
+}
+
+async function deleteActiveCase() {
+  const caseItem = state.activeCase;
+  if (!caseItem?.case_id) return;
+  const confirmed = window.confirm(`确认删除「${caseItem.brand_name || "这个案例"}」吗？`);
+  if (!confirmed) return;
+  await api(`/api/cases/${encodeURIComponent(caseItem.case_id)}`, { method: "DELETE" });
+  closeCaseModal();
+  await loadCases();
+  toast("案例已删除");
 }
 
 async function loadImportTemplates() {
@@ -1668,7 +1932,10 @@ function renderCreators() {
       creator.platform,
       creator.ai_summary,
       ...(creator.industry_fit_tags || []),
+      ...(creator.identity_tags || []),
       ...(creator.content_capability_tags || []),
+      ...(creator.suitable_goals || []),
+      ...(creator.risk_tags || []),
     ]
       .join(" ")
       .toLowerCase();
@@ -1680,7 +1947,12 @@ function renderCreators() {
   }
   list.innerHTML = items
     .map((creator) => {
-      const tags = [...(creator.industry_fit_tags || []), ...(creator.content_capability_tags || [])]
+      const tags = [
+        ...(creator.industry_fit_tags || []),
+        ...(creator.identity_tags || []),
+        ...(creator.content_capability_tags || []),
+        ...(creator.suitable_goals || []),
+      ]
         .slice(0, 6)
         .map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`)
         .join("");
@@ -4039,6 +4311,7 @@ async function reloadAll() {
     return;
   }
   await loadCreators();
+  await loadCases();
   await loadImportTemplates();
   await loadGovernance();
   await loadSymbolicEngines();
@@ -5846,21 +6119,294 @@ function closeCreatorModal() {
   state.activeCreatorImageSuggestion = null;
 }
 
+async function deleteActiveCreator() {
+  const creator = state.activeCreator;
+  if (!creator?.creator_id) return toast("没有正在打开的达人", true);
+  const confirmed = window.confirm(`确认删除「${creator.name || "这个达人"}」吗？删除后会从本地达人库移除。`);
+  if (!confirmed) return;
+  const button = $("#deleteCreatorBtn");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "删除中...";
+  }
+  try {
+    await api(`/api/creators/${encodeURIComponent(creator.creator_id)}`, { method: "DELETE" });
+    closeCreatorModal();
+    await reloadAll();
+    toast(`已删除：${creator.name || creator.creator_id}`);
+  } catch (error) {
+    toast(error.message || "删除达人失败", true);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "删除这个达人";
+    }
+  }
+}
+
 function openQuickCreatorModal() {
   const modal = $("#quickCreatorModal");
   const form = $("#quickCreatorForm");
   if (!modal || !form) return;
   form.reset();
+  resetQuickCreatorAvatar(form);
+  initPlatformSelects();
+  renderQuickCreatorRateFields(form);
+  initQuickCreatorTagEditors(form);
   modal.classList.remove("hidden");
   form.elements.name?.focus();
+}
+
+function getPlatformRateFields(platform) {
+  return PLATFORM_RATE_FIELDS[normalizePlatformValue(platform)] || DEFAULT_PLATFORM_RATE_FIELDS;
+}
+
+function renderQuickCreatorRateFields(form, preserved = {}) {
+  const container = $("#quickCreatorRateFields");
+  if (!container || !form) return;
+  const platform = normalizePlatformValue(form.elements.platform?.value);
+  const fields = getPlatformRateFields(platform);
+  container.innerHTML = `
+    <div class="platform-rate-head">
+      <span class="card-kicker">刊例报价</span>
+      <strong>${escapeHTML(platform)} 合作方式</strong>
+    </div>
+    <div class="platform-rate-row">
+      ${fields
+        .map(
+          (item) => `
+            <label class="platform-rate-field">
+              <span>${escapeHTML(item.label)}</span>
+              <input
+                name="${escapeHTML(item.key)}"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="元"
+                value="${escapeHTML(preserved[item.key] || "")}"
+              />
+            </label>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function readQuickCreatorRateValues(form) {
+  const fields = getPlatformRateFields(form.elements.platform?.value);
+  const values = {};
+  fields.forEach((item) => {
+    values[item.key] = Number(form.elements[item.key]?.value || 0);
+  });
+  return { fields, values };
+}
+
+function rateLabelToFormat(label) {
+  return String(label || "").replace(/报价$/, "").trim();
+}
+
+function isRateNoteTag(tag) {
+  return /报价[：:]\s*\d/.test(String(tag || ""));
+}
+
+function rememberQuickCreatorTags(fieldName, tags) {
+  if (!fieldName || !tags.length) return;
+  try {
+    const store = JSON.parse(localStorage.getItem(QUICK_CREATOR_RECENT_TAGS_KEY) || "{}");
+    const recent = Array.isArray(store[fieldName]) ? store[fieldName] : [];
+    const merged = [...tags, ...recent].filter((tag, index, list) => list.indexOf(tag) === index).slice(0, 12);
+    store[fieldName] = merged;
+    localStorage.setItem(QUICK_CREATOR_RECENT_TAGS_KEY, JSON.stringify(store));
+  } catch {
+    /* ignore local storage errors */
+  }
+}
+
+function loadRecentQuickCreatorTags(fieldName) {
+  try {
+    const store = JSON.parse(localStorage.getItem(QUICK_CREATOR_RECENT_TAGS_KEY) || "{}");
+    return Array.isArray(store[fieldName]) ? store[fieldName] : [];
+  } catch {
+    return [];
+  }
 }
 
 function closeQuickCreatorModal() {
   $("#quickCreatorModal")?.classList.add("hidden");
 }
 
+function normalizeQuickTagValue(value) {
+  return String(value || "")
+    .replaceAll("，", ",")
+    .replaceAll("、", ",")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function initQuickCreatorTagEditors(form) {
+  form.querySelectorAll(".tag-editor").forEach((editor) => {
+    const fieldName = editor.dataset.tagField;
+    const hidden = form.elements[fieldName];
+    if (!hidden) return;
+    hidden.value = normalizeQuickTagValue(hidden.value).join("，");
+    renderQuickTagEditor(editor);
+  });
+}
+
+function renderQuickTagEditor(editor) {
+  const form = editor.closest("form");
+  const fieldName = editor.dataset.tagField;
+  const hidden = form?.elements[fieldName];
+  const list = editor.querySelector("[data-tag-list]");
+  if (!hidden || !list) return;
+  const tags = normalizeQuickTagValue(hidden.value);
+  const selected = new Set(tags);
+  const chips = tags
+    .map(
+      (tag) => `
+        <button class="tag-chip" data-tag-remove="${escapeHTML(tag)}" type="button">
+          <span>${escapeHTML(tag)}</span><strong>×</strong>
+        </button>
+      `,
+    )
+    .join("");
+  const suggestions = [...loadRecentQuickCreatorTags(fieldName), ...(QUICK_CREATOR_TAG_PRESETS[fieldName] || [])]
+    .filter((tag, index, list) => list.indexOf(tag) === index)
+    .filter((tag) => !selected.has(tag))
+    .slice(0, 12)
+    .map((tag) => `<button class="tag-suggestion" data-tag-add="${escapeHTML(tag)}" type="button">${escapeHTML(tag)}</button>`)
+    .join("");
+  list.innerHTML = chips || '<span class="meta">还没有标签，输入后回车添加</span>';
+  let suggestionsNode = editor.querySelector("[data-tag-suggestions]");
+  if (!suggestionsNode) {
+    suggestionsNode = document.createElement("div");
+    suggestionsNode.className = "tag-suggestion-list";
+    suggestionsNode.dataset.tagSuggestions = "true";
+    const label = document.createElement("div");
+    label.className = "tag-suggestion-label";
+    label.textContent = "最近使用 / 常用标签";
+    suggestionsNode.appendChild(label);
+    const wrap = document.createElement("div");
+    wrap.className = "tag-suggestion-wrap";
+    wrap.dataset.tagSuggestionWrap = "true";
+    suggestionsNode.appendChild(wrap);
+    editor.appendChild(suggestionsNode);
+  }
+  const wrap = suggestionsNode.querySelector("[data-tag-suggestion-wrap]");
+  if (wrap) wrap.innerHTML = suggestions;
+}
+
+function addQuickCreatorTag(editor, value) {
+  const form = editor.closest("form");
+  const fieldName = editor.dataset.tagField;
+  const hidden = form?.elements[fieldName];
+  if (!hidden) return;
+  const incoming = normalizeQuickTagValue(value);
+  if (!incoming.length) return;
+  const tags = normalizeQuickTagValue(hidden.value);
+  incoming.forEach((tag) => {
+    if (!tags.includes(tag)) tags.push(tag);
+  });
+  hidden.value = tags.join("，");
+  rememberQuickCreatorTags(fieldName, incoming);
+  const entry = editor.querySelector("[data-tag-entry]");
+  if (entry) entry.value = "";
+  renderQuickTagEditor(editor);
+}
+
+function removeQuickCreatorTag(editor, value) {
+  const form = editor.closest("form");
+  const fieldName = editor.dataset.tagField;
+  const hidden = form?.elements[fieldName];
+  if (!hidden) return;
+  hidden.value = normalizeQuickTagValue(hidden.value)
+    .filter((tag) => tag !== value)
+    .join("，");
+  renderQuickTagEditor(editor);
+}
+
+function resetQuickCreatorAvatar(form) {
+  if (form.elements.avatar_url) form.elements.avatar_url.value = "";
+  const preview = $("#quickCreatorAvatarPreview");
+  if (preview) {
+    preview.textContent = "头像";
+    preview.style.backgroundImage = "";
+    preview.classList.remove("has-image");
+  }
+}
+
+async function setQuickCreatorAvatar(file, form) {
+  if (!file || !form?.elements.avatar_url) return;
+  const dataUrl = await imageFileToDataUrl(file, 360);
+  form.elements.avatar_url.value = dataUrl;
+  const preview = $("#quickCreatorAvatarPreview");
+  if (preview) {
+    preview.textContent = "";
+    preview.style.backgroundImage = `url("${dataUrl}")`;
+    preview.classList.add("has-image");
+  }
+}
+
+function imageFileToDataUrl(file, maxSize = 360) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("头像读取失败"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("头像图片无法解析"));
+      img.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        const context = canvas.getContext("2d");
+        context.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function prepareQuickCreatorPayload(form) {
+  initQuickCreatorTagEditors(form);
+  const { fields, values } = readQuickCreatorRateValues(form);
+  const notesEditor = form.querySelector('[data-tag-field="manual_notes"]');
+  const formatsEditor = form.querySelector('[data-tag-field="cooperation_formats"]');
+  const noteTags = normalizeQuickTagValue(form.elements.manual_notes?.value).filter((tag) => !isRateNoteTag(tag));
+  const formatTags = normalizeQuickTagValue(form.elements.cooperation_formats?.value);
+  const rateTags = [];
+  const cooperationFormats = new Set(formatTags);
+  let primaryPrice = 0;
+
+  fields.forEach((item) => {
+    const amount = Number(values[item.key] || 0);
+    if (!amount) return;
+    rateTags.push(`${item.label}：${amount}`);
+    const formatName = rateLabelToFormat(item.label);
+    if (formatName) cooperationFormats.add(formatName);
+    if (item.primary) primaryPrice = amount;
+  });
+  if (!primaryPrice) {
+    primaryPrice = Object.values(values).find((value) => Number(value) > 0) || 0;
+  }
+  if (form.elements.listed_price) form.elements.listed_price.value = String(primaryPrice || "");
+  if (form.elements.manual_notes) form.elements.manual_notes.value = [...noteTags, ...rateTags].join("，");
+  if (form.elements.cooperation_formats) form.elements.cooperation_formats.value = [...cooperationFormats].join("，");
+  if (notesEditor) renderQuickTagEditor(notesEditor);
+  if (formatsEditor) renderQuickTagEditor(formatsEditor);
+}
+
 async function saveManualCreator(form, { openDetail = false } = {}) {
+  if (form.id === "quickCreatorForm") prepareQuickCreatorPayload(form);
   const payload = formToObject(form);
+  delete payload.avatar_file;
+  Object.keys(payload).forEach((key) => {
+    if (key.startsWith("rate_")) delete payload[key];
+  });
   const data = await api("/api/import/manual", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -5884,7 +6430,7 @@ function renderCreatorModal(creator) {
   renderCreatorProfileHeader(creator);
   fields.creator_id.value = creator.creator_id;
   fields.name.value = creator.name || "";
-  fields.platform.value = creator.platform || "未知";
+  fields.platform.value = normalizePlatformValue(creator.platform || PLATFORM_OPTIONS[0]);
   fields.platform_user_id.value = creator.platform_user_id || "";
   fields.homepage_url.value = creator.homepage_url || "";
   fields.avatar_url.value = creator.avatar_url || "";
@@ -5900,11 +6446,17 @@ function renderCreatorModal(creator) {
   fields.cooperation_brands.value = (creator.cooperation_brands || []).join("，");
   fields.cooperation_formats.value = (creator.cooperation_formats || []).join("，");
   fields.industry_fit_tags.value = (creator.industry_fit_tags || []).join("，");
+  fields.identity_tags.value = (creator.identity_tags || []).join("，");
   fields.content_capability_tags.value = (creator.content_capability_tags || []).join("，");
   fields.suitable_goals.value = (creator.suitable_goals || []).join("，");
   fields.risk_tags.value = (creator.risk_tags || []).join("，");
   fields.bio.value = creator.bio || "";
   fields.manual_notes.value = creator.manual_notes || "";
+  const kitOutput = $("#creatorCommercialKitOutput");
+  if (kitOutput) {
+    kitOutput.innerHTML = '<div class="commercial-card-empty">点击生成后，会在这里出现卡片式商业名片刊例。</div>';
+    kitOutput.dataset.copyText = "";
+  }
   renderCreatorMediaAssets(creator);
   renderCreatorImageAnalysis(null);
   $("#creatorDataSources").innerHTML = (creator.data_sources || [])
@@ -5912,6 +6464,7 @@ function renderCreatorModal(creator) {
     .join("") || '<span class="meta">暂无来源</span>';
   const tags = [
     ...(creator.industry_fit_tags || []),
+    ...(creator.identity_tags || []),
     ...(creator.content_capability_tags || []),
     ...(creator.suitable_goals || []),
     ...(creator.suitable_stages || []),
@@ -6043,12 +6596,211 @@ function creatorFormPayload(form) {
     cooperation_brands: fields.cooperation_brands.value,
     cooperation_formats: fields.cooperation_formats.value,
     industry_fit_tags: fields.industry_fit_tags.value,
+    identity_tags: fields.identity_tags.value,
     content_capability_tags: fields.content_capability_tags.value,
     suitable_goals: fields.suitable_goals.value,
     risk_tags: fields.risk_tags.value,
     bio: fields.bio.value,
     manual_notes: fields.manual_notes.value,
   };
+}
+
+function creatorDraftFromCurrentForm() {
+  const form = $("#creatorEditForm");
+  if (!form || !state.activeCreator) return null;
+  const payload = creatorFormPayload(form);
+  return {
+    ...state.activeCreator,
+    ...payload,
+    cooperation_brands: splitInputList(payload.cooperation_brands),
+    cooperation_formats: splitInputList(payload.cooperation_formats),
+    industry_fit_tags: splitInputList(payload.industry_fit_tags),
+    identity_tags: splitInputList(payload.identity_tags),
+    content_capability_tags: splitInputList(payload.content_capability_tags),
+    suitable_goals: splitInputList(payload.suitable_goals),
+    risk_tags: splitInputList(payload.risk_tags),
+  };
+}
+
+function compactTextList(items, fallback = "待补充") {
+  const list = Array.isArray(items) ? items.filter(Boolean) : splitInputList(items);
+  return list.length ? list.join("、") : fallback;
+}
+
+function cleanList(items) {
+  return Array.isArray(items) ? items.filter(Boolean) : splitInputList(items);
+}
+
+function hasValue(value) {
+  if (Array.isArray(value)) return value.filter(Boolean).length > 0;
+  return String(value || "").trim() !== "" && String(value || "").trim() !== "0";
+}
+
+function extractRateFromNotes(notes, label) {
+  const match = String(notes || "").match(new RegExp(`${label}[：:]\\s*([0-9]+)`));
+  return match ? Number(match[1]) : 0;
+}
+
+function extractPlatformRates(creator) {
+  const fields = getPlatformRateFields(creator.platform);
+  const notes = creator.manual_notes || "";
+  const rates = fields
+    .map((item) => {
+      const amount = extractRateFromNotes(notes, item.label);
+      return amount ? [item.label.replace(/报价$/, ""), `${fmtNumber(amount)} 元`] : null;
+    })
+    .filter(Boolean);
+  const fallback = Number(creator.listed_price || 0);
+  if (!rates.length && fallback) rates.push(["报价", `${fmtNumber(fallback)} 元`]);
+  return rates;
+}
+
+function creatorRateLines(creator) {
+  const lines = [];
+  const rates = extractPlatformRates(creator);
+  if (rates.length) {
+    rates.forEach(([label, value]) => lines.push(`- ${label}：${value}`));
+  } else {
+    lines.push("- 基础报价：待报价");
+  }
+  const formats = creator.cooperation_formats || [];
+  if (formats.length) lines.push(`- 可合作形式：${compactTextList(formats)}`);
+  lines.push("- 价格说明：以上为内部刊例/线索价，最终以档期、主题、交付要求和确认报价为准。");
+  return lines.join("\n");
+}
+
+function creatorCommercialKitData(creator) {
+  return {
+    name: creator.name || "",
+    platform: creator.platform || "",
+    avatar: creator.avatar_url || "",
+    homepage: creator.homepage_url || "",
+    contact: creator.contact || "",
+    followers: Number(creator.follower_count || 0),
+    bio: creator.bio || creator.ai_summary || "",
+    brands: cleanList(creator.cooperation_brands),
+    industries: cleanList(creator.industry_fit_tags),
+    identities: cleanList(creator.identity_tags),
+    capabilities: cleanList(creator.content_capability_tags),
+    formats: cleanList(creator.cooperation_formats),
+    narratives: cleanList(creator.suitable_goals),
+    risks: cleanList(creator.risk_tags),
+    notes: cleanList(creator.manual_notes).filter((item) => !isRateNoteTag(item)),
+    rates: extractPlatformRates(creator),
+  };
+}
+
+function renderCommercialChips(items, tone = "") {
+  return cleanList(items).map((item) => `<span class="commercial-chip ${tone}">${escapeHTML(item)}</span>`).join("");
+}
+
+function renderCommercialSection(title, content) {
+  if (!hasValue(content)) return "";
+  return `<section class="commercial-card-section"><h4>${escapeHTML(title)}</h4>${content}</section>`;
+}
+
+function renderCommercialTagSection(title, items, tone = "") {
+  const list = cleanList(items);
+  if (!list.length) return "";
+  return renderCommercialSection(title, `<div class="commercial-chip-row">${renderCommercialChips(list, tone)}</div>`);
+}
+
+function buildCreatorCommercialKitHtml(creator) {
+  const data = creatorCommercialKitData(creator);
+  const avatar = data.avatar
+    ? `<img src="${escapeHTML(data.avatar)}" alt="${escapeHTML(data.name)}头像" />`
+    : `<span>${escapeHTML((data.name || "KOL").slice(0, 2).toUpperCase())}</span>`;
+  const meta = [
+    data.platform ? `<span>${escapeHTML(data.platform)}</span>` : "",
+    data.followers ? `<span>${fmtNumber(data.followers)} 粉丝</span>` : "",
+    data.homepage ? `<a href="${escapeHTML(data.homepage)}" target="_blank" rel="noreferrer">主页</a>` : "",
+    data.contact ? `<span>${escapeHTML(data.contact)}</span>` : "",
+  ].filter(Boolean).join("");
+  const rateCards = data.rates.map(([label, value]) => `<div class="rate-card"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></div>`).join("");
+  return `
+    <article class="creator-commercial-card">
+      <header class="commercial-card-header">
+        <div class="commercial-card-avatar">${avatar}</div>
+        <div>
+          <div class="card-kicker">business rate card</div>
+          <h3>${escapeHTML(data.name || "未命名达人")}</h3>
+          ${meta ? `<div class="commercial-card-meta">${meta}</div>` : ""}
+        </div>
+      </header>
+      ${data.bio ? `<p class="commercial-card-bio">${escapeHTML(data.bio)}</p>` : ""}
+      ${rateCards ? `<section class="commercial-card-section"><h4>刊例报价</h4><div class="rate-card-grid">${rateCards}</div></section>` : ""}
+      ${renderCommercialTagSection("服务品牌", data.brands)}
+      ${renderCommercialTagSection("领域", data.industries)}
+      ${renderCommercialTagSection("身份", data.identities)}
+      ${renderCommercialTagSection("内容能力", data.capabilities)}
+      ${renderCommercialTagSection("合作形式", data.formats)}
+      ${renderCommercialTagSection("叙事角色", data.narratives)}
+      ${renderCommercialTagSection("履约备注", data.notes)}
+      ${renderCommercialTagSection("风险提示", data.risks, "risk")}
+    </article>
+  `;
+}
+
+function buildCreatorCommercialKitText(creator) {
+  const data = creatorCommercialKitData(creator);
+  const lines = [
+    `${data.name || "未命名达人"}｜${data.platform || "平台未填"}商业名片刊例`,
+    data.followers ? `粉丝：${fmtNumber(data.followers)}` : "",
+    data.homepage ? `主页：${data.homepage}` : "",
+    data.contact ? `联系方式：${data.contact}` : "",
+    data.rates.length ? `报价：${data.rates.map(([label, value]) => `${label}${value}`).join("；")}` : "",
+    data.brands.length ? `服务品牌：${data.brands.join("、")}` : "",
+    data.industries.length ? `领域：${data.industries.join("、")}` : "",
+    data.identities.length ? `身份：${data.identities.join("、")}` : "",
+    data.capabilities.length ? `内容能力：${data.capabilities.join("、")}` : "",
+    data.formats.length ? `合作形式：${data.formats.join("、")}` : "",
+    data.narratives.length ? `叙事角色：${data.narratives.join("、")}` : "",
+    data.notes.length ? `履约备注：${data.notes.join("、")}` : "",
+    data.risks.length ? `风险提示：${data.risks.join("、")}` : "",
+  ];
+  return lines.filter(Boolean).join("\n");
+}
+
+function generateCreatorCommercialKit() {
+  const creator = creatorDraftFromCurrentForm();
+  if (!creator) return toast("请先打开一个达人档案", true);
+  const output = $("#creatorCommercialKitOutput");
+  const html = buildCreatorCommercialKitHtml(creator);
+  const text = buildCreatorCommercialKitText(creator);
+  if (output) {
+    output.innerHTML = html;
+    output.dataset.copyText = text;
+  }
+  toast("商业名片刊例已生成");
+  return text;
+}
+
+function creatorKitFilename() {
+  const name = (state.activeCreator?.name || "达人").replace(/[\\/:*?"<>|\\s]+/g, "_");
+  return `${name}_商业名片刊例.html`;
+}
+
+function downloadCreatorCommercialKit() {
+  const output = $("#creatorCommercialKitOutput");
+  if (!output?.querySelector(".creator-commercial-card")) generateCreatorCommercialKit();
+  if (!output?.querySelector(".creator-commercial-card")) return;
+  const styles = Array.from(document.styleSheets)
+    .map((sheet) => {
+      try {
+        return Array.from(sheet.cssRules || []).map((rule) => rule.cssText).join("\n");
+      } catch {
+        return "";
+      }
+    })
+    .join("\n");
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHTML(state.activeCreator?.name || "达人")}商业名片刊例</title><style>${styles}</style></head><body><main style="max-width:920px;margin:24px auto;">${output.innerHTML}</main></body></html>`;
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = creatorKitFilename();
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function collectImportMappings() {
@@ -6101,6 +6853,7 @@ async function copyText(value) {
 }
 
 function bindEvents() {
+  initPlatformSelects();
   renderTenantStatus();
   $("#sidebarToggleBtn")?.addEventListener("click", () => {
     state.sidebarCollapsed = !state.sidebarCollapsed;
@@ -6887,8 +7640,50 @@ function bindEvents() {
     toast("产品符号档案已生成");
   });
   $("#creatorSearch").addEventListener("input", renderCreators);
+  $("#caseSearch")?.addEventListener("input", renderCases);
+  $("#openCaseModalBtn")?.addEventListener("click", () => openCaseModal());
+  $("#closeCaseModalBtn")?.addEventListener("click", closeCaseModal);
+  $("#deleteCaseBtn")?.addEventListener("click", deleteActiveCase);
+  $("#caseModal")?.addEventListener("click", (event) => {
+    if (event.target.dataset.closeCaseModal) closeCaseModal();
+  });
+  $("#caseForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = event.currentTarget.querySelector("button[type='submit']");
+    if (button) button.disabled = true;
+    try {
+      await saveCaseForm(event.currentTarget);
+    } catch (error) {
+      toast(error.message || "保存案例失败", true);
+    } finally {
+      if (button) button.disabled = false;
+    }
+  });
+  $("#caseList")?.addEventListener("click", async (event) => {
+    const caseButton = event.target.closest(".open-case-btn");
+    if (caseButton) {
+      const caseItem = state.cases.find((item) => item.case_id === caseButton.dataset.caseId);
+      if (caseItem) openCaseModal(caseItem);
+      return;
+    }
+    const creatorButton = event.target.closest(".open-creator-from-case-btn");
+    if (creatorButton) {
+      await openCreatorModal(creatorButton.dataset.creatorId);
+      setView("creators");
+    }
+  });
   $("#downloadProposalBtn").addEventListener("click", downloadProposal);
   $("#closeCreatorModalBtn").addEventListener("click", closeCreatorModal);
+  $("#deleteCreatorBtn")?.addEventListener("click", deleteActiveCreator);
+  $("#generateCreatorKitBtn")?.addEventListener("click", generateCreatorCommercialKit);
+  $("#copyCreatorKitBtn")?.addEventListener("click", async () => {
+    const output = $("#creatorCommercialKitOutput");
+    const text = output?.dataset.copyText || generateCreatorCommercialKit();
+    if (!text) return;
+    await copyText(text);
+    toast("商业名片刊例已复制");
+  });
+  $("#downloadCreatorKitBtn")?.addEventListener("click", downloadCreatorCommercialKit);
   $("#openQuickCreatorBtn")?.addEventListener("click", openQuickCreatorModal);
   $("#closeQuickCreatorBtn")?.addEventListener("click", closeQuickCreatorModal);
   $("#closeArtifactModalBtn")?.addEventListener("click", closeArtifactModal);
@@ -6900,6 +7695,50 @@ function bindEvents() {
   });
   $("#quickCreatorModal")?.addEventListener("click", (event) => {
     if (event.target.dataset.closeQuickCreator) closeQuickCreatorModal();
+  });
+  $("#quickCreatorModal")?.addEventListener("click", (event) => {
+    const addButton = event.target.closest("[data-tag-add]");
+    if (addButton) {
+      addQuickCreatorTag(addButton.closest(".tag-editor"), addButton.dataset.tagAdd);
+      return;
+    }
+    const removeButton = event.target.closest("[data-tag-remove]");
+    if (removeButton) {
+      removeQuickCreatorTag(removeButton.closest(".tag-editor"), removeButton.dataset.tagRemove);
+    }
+  });
+  $("#quickCreatorModal")?.addEventListener("keydown", (event) => {
+    const entry = event.target.closest("[data-tag-entry]");
+    if (!entry) return;
+    if (event.key === "Enter" || event.key === "," || event.key === "，") {
+      event.preventDefault();
+      addQuickCreatorTag(entry.closest(".tag-editor"), entry.value);
+    }
+  });
+  $("#quickCreatorModal")?.addEventListener(
+    "blur",
+    (event) => {
+      const entry = event.target.closest("[data-tag-entry]");
+      if (entry?.value.trim()) addQuickCreatorTag(entry.closest(".tag-editor"), entry.value);
+    },
+    true,
+  );
+  $("#quickCreatorAvatarInput")?.addEventListener("change", async (event) => {
+    const file = event.currentTarget.files?.[0];
+    if (!file) return;
+    try {
+      await setQuickCreatorAvatar(file, $("#quickCreatorForm"));
+      toast("头像已载入，保存后进入达人档案");
+    } catch (error) {
+      toast(error.message || "头像上传失败", true);
+    }
+  });
+  $("#quickCreatorForm")?.addEventListener("change", (event) => {
+    if (event.target.name === "platform") {
+      const form = event.currentTarget;
+      const preserved = readQuickCreatorRateValues(form).values;
+      renderQuickCreatorRateFields(form, preserved);
+    }
   });
   $("#quickCreatorForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();

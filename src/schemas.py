@@ -57,6 +57,7 @@ class CreatorProfile:
     manual_notes: str = ""
     data_sources: list[str] = field(default_factory=list)
     industry_fit_tags: list[str] = field(default_factory=list)
+    identity_tags: list[str] = field(default_factory=list)
     content_capability_tags: list[str] = field(default_factory=list)
     suitable_goals: list[str] = field(default_factory=list)
     suitable_stages: list[str] = field(default_factory=list)
