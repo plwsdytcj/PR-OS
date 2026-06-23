@@ -89,6 +89,17 @@ def load_evidence_tags(path: Path, creator_id: str = "") -> list[KolEvidenceTag]
     return [KolEvidenceTag.from_json(row[0]) for row in rows]
 
 
+def delete_evidence_tags_for_creator(path: Path, creator_id: str) -> None:
+    if postgres_enabled():
+        from src.storage.postgres_payload import delete_by_column
+
+        delete_by_column(path, "kol_evidence_tags", "creator_id", creator_id)
+        return
+    init_kol_intelligence_db(path)
+    with sqlite3.connect(path) as conn:
+        conn.execute("DELETE FROM kol_evidence_tags WHERE creator_id = ?", (creator_id,))
+
+
 def load_evidence_tag(path: Path, tag_id: str) -> KolEvidenceTag | None:
     if postgres_enabled():
         payload = fetch_payload(path, "kol_evidence_tags", "tag_id", tag_id)

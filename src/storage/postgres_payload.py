@@ -102,6 +102,16 @@ def upsert_payload(
             )
 
 
+def delete_by_column(path: Path | str | Any, table: str, column: str, value: str) -> None:
+    import psycopg
+
+    ensure_schema()
+    tenant = tenant_from_path(path)
+    with psycopg.connect(os.getenv("DATABASE_URL", "")) as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"DELETE FROM {table} WHERE tenant_id = %s AND {column} = %s", (tenant, value))
+
+
 def delete_rows(path: Path | str | Any, table: str, key_column: str, key_values: Iterable[str]) -> None:
     import psycopg
 

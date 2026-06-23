@@ -45,6 +45,7 @@ const state = {
   knowledgeSearchResults: [],
   clientPortalProjects: [],
   creators: [],
+  creatorsFetchAttempted: false,
   cases: [],
   activeCase: null,
   lastProposal: "",
@@ -833,6 +834,12 @@ function setView(viewId) {
     group.open = Boolean(activeNav && group.contains(activeNav));
   });
   if (viewId === "history") ensureWorkspaceHistoryLoaded();
+  if (viewId === "creators" || viewId === "creatorFilter") ensureCreatorsLoaded().catch(() => {});
+  if (viewId === "cases") {
+    ensureCreatorsLoaded().catch(() => {});
+    if (!state.cases.length) loadCases().catch(() => {});
+    else renderCases();
+  }
   renderAgentFloatDock();
 }
 
@@ -915,13 +922,52 @@ function renderAuthUser() {
   `;
 }
 
+function initCreatorListShell() {
+  const list = $("#creatorList");
+  if (!list || list.querySelector(".empty-state")) return;
+  list.innerHTML = emptyState("正在准备达人库…", "正在连接服务并拉取达人数据。");
+}
+
+function renderCreatorListAuthRequired() {
+  const list = $("#creatorList");
+  if (!list) return;
+  list.innerHTML = emptyState("请先登录", "登录后可查看、搜索和管理达人库。点击左下角「登录」。");
+}
+
 async function loadCreators() {
-  const data = await api("/api/creators");
-  state.creators = data.items;
-  renderCreators();
-  if (state.activeView === "creatorFilter") renderCreatorFilterResults();
-  renderCreatorOptions();
-  renderCaseCreatorOptions();
+  state.creatorsFetchAttempted = true;
+  setCreatorListLoading(true);
+  try {
+    const data = await api("/api/creators");
+    state.creators = data.items || [];
+    renderCreators();
+    if (state.activeView === "creatorFilter") renderCreatorFilterResults();
+    renderCreatorOptions();
+    renderCaseCreatorOptions();
+  } catch (error) {
+    const list = $("#creatorList");
+    if (list) {
+      list.innerHTML = emptyState("达人库加载失败", error.message || "请检查网络或登录状态后重试。");
+    }
+    throw error;
+  } finally {
+    setCreatorListLoading(false);
+  }
+}
+
+async function ensureCreatorsLoaded() {
+  const list = $("#creatorList");
+  if (!list) return;
+  if (list.dataset.loading === "true") return;
+  if (state.authRequired && !state.currentIdentity?.user && !state.accessKey) {
+    renderCreatorListAuthRequired();
+    return;
+  }
+  if (state.creatorsFetchAttempted) {
+    renderCreators();
+    return;
+  }
+  await loadCreators();
 }
 
 async function loadCases() {
@@ -2200,6 +2246,43 @@ function renderCreatorFilterResults() {
     return;
   }
   list.innerHTML = items.map((creator) => creatorCardHtml(creator)).join("");
+}
+
+function setCreatorListLoading(loading) {
+  const list = $("#creatorList");
+  if (!list) return;
+  list.dataset.loading = loading ? "true" : "false";
+  if (loading && !state.creators.length) {
+    list.innerHTML = emptyState("正在加载达人库…", "首次打开会稍慢，数据返回后会自动展示。");
+  }
+}
+
+function bindModalDismiss(modal, selector, closeFn) {
+  modal?.addEventListener("click", (event) => {
+    if (event.target.closest(selector)) closeFn();
+  });
+}
+
+function bindModalEscape(closeChecks) {
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    for (const [modalId, closeFn] of closeChecks) {
+      const modal = $(modalId);
+      if (modal && !modal.classList.contains("hidden")) {
+        event.preventDefault();
+        closeFn();
+        return;
+      }
+    }
+  });
+}
+
+function showCreatorModalLoading(creatorId = "") {
+  $("#creatorModal")?.classList.remove("hidden");
+  $("#creatorModalTitle").textContent = "加载达人详情…";
+  $("#creatorModalMeta").textContent = creatorId || "请稍候";
+  const summary = $("#creatorProfileSummary");
+  if (summary) summary.textContent = "正在拉取档案、标签与证据资产。";
 }
 
 function renderCreators() {
@@ -4553,11 +4636,37 @@ function formToObject(form) {
   return obj;
 }
 
-async function reloadAll() {
+async function reloadCore() {
+  await loadCreators();
+  await loadCases();
+}
+
+async function reloadSecondary() {
+  await Promise.all([
+    loadImportTemplates(),
+    loadGovernance(),
+    loadSymbolicEngines(),
+    loadAgentTasks(),
+    loadAgentRuntime(),
+    loadKnowledge(),
+    loadCollaboration(),
+    loadOrganization(),
+    loadCommercial(),
+    loadDistribution(),
+    loadPlatformDashboard(),
+    loadDataSources(),
+    loadSymbolicOS(),
+    loadKolIntelligence(),
+  ]);
+}
+
+async function reloadAll({ backgroundSecondary = false } = {}) {
   await refreshStatus();
   const auth = await loadAuthMe();
-  if (state.authRequired && !auth.authenticated && !state.accessKey) {
+  const needsLogin = state.authRequired && !auth.authenticated && !state.accessKey;
+  if (needsLogin) {
     showAccessGate("请用内部或甲方账号登录后继续使用。");
+    renderCreatorListAuthRequired();
     return;
   }
   if (state.currentIdentity?.user?.user_type === "client") {
@@ -4565,22 +4674,19 @@ async function reloadAll() {
     setView("clientPortal");
     return;
   }
-  await loadCreators();
-  await loadCases();
-  await loadImportTemplates();
-  await loadGovernance();
-  await loadSymbolicEngines();
-  await loadAgentTasks();
-  await loadAgentRuntime();
-  await loadKnowledge();
-  await loadCollaboration();
-  await loadOrganization();
-  await loadCommercial();
-  await loadDistribution();
-  await loadPlatformDashboard();
-  await loadDataSources();
-  await loadSymbolicOS();
-  await loadKolIntelligence();
+  state.creatorsFetchAttempted = false;
+  try {
+    await reloadCore();
+  } catch (error) {
+    console.error("reload core failed", error);
+  }
+  if (backgroundSecondary) {
+    reloadSecondary().catch((error) => {
+      console.error("background reload failed", error);
+    });
+    return;
+  }
+  await reloadSecondary();
 }
 
 function renderResults(data) {
@@ -6364,9 +6470,11 @@ async function openCreatorModal(creatorId) {
     toast("缺少达人 ID", true);
     return;
   }
+  showCreatorModalLoading(creatorId);
   try {
     const data = await api(`/api/creators/${encodeURIComponent(creatorId)}`);
     if (!data?.creator) {
+      closeCreatorModal();
       toast("达人不存在", true);
       return;
     }
@@ -6375,6 +6483,7 @@ async function openCreatorModal(creatorId) {
     renderCreatorModal(data.creator);
     $("#creatorModal")?.classList.remove("hidden");
   } catch (error) {
+    closeCreatorModal();
     toast(error.message || "打不开达人详情", true);
   }
 }
@@ -7971,6 +8080,7 @@ async function copyText(value) {
 
 function bindEvents() {
   initPlatformSelects();
+  initCreatorListShell();
   renderTenantStatus();
   $("#sidebarToggleBtn")?.addEventListener("click", () => {
     state.sidebarCollapsed = !state.sidebarCollapsed;
@@ -8008,10 +8118,10 @@ function bindEvents() {
           toast(error.message, true);
         }
       }
-      if (button.dataset.view === "creatorFilter") {
+      if (button.dataset.view === "creatorFilter" || button.dataset.view === "creators") {
         try {
-          await loadCreators();
-          renderCreatorFilterResults();
+          await ensureCreatorsLoaded();
+          if (button.dataset.view === "creatorFilter") renderCreatorFilterResults();
         } catch (error) {
           toast(error.message, true);
         }
@@ -8778,9 +8888,6 @@ function bindEvents() {
   $("#openCaseModalBtn")?.addEventListener("click", () => openCaseModal());
   $("#closeCaseModalBtn")?.addEventListener("click", closeCaseModal);
   $("#deleteCaseBtn")?.addEventListener("click", deleteActiveCase);
-  $("#caseModal")?.addEventListener("click", (event) => {
-    if (event.target.dataset.closeCaseModal) closeCaseModal();
-  });
   $("#caseForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = event.currentTarget.querySelector("button[type='submit']");
@@ -8836,20 +8943,21 @@ function bindEvents() {
   $("#openQuickCreatorBtn")?.addEventListener("click", openQuickCreatorModal);
   $("#closeQuickCreatorBtn")?.addEventListener("click", closeQuickCreatorModal);
   $("#closeArtifactModalBtn")?.addEventListener("click", closeArtifactModal);
-  $("#artifactModal")?.addEventListener("click", (event) => {
-    if (event.target.dataset.closeArtifactModal) closeArtifactModal();
-  });
-  $("#creatorModal")?.addEventListener("click", (event) => {
-    if (event.target.dataset.closeModal) closeCreatorModal();
-  });
+  bindModalDismiss($("#creatorModal"), "[data-close-modal]", closeCreatorModal);
   bindCreatorTagEditorEvents($("#quickCreatorModal"));
   bindCreatorTagEditorEvents($("#creatorModal"));
   bindCreatorTagHubEvents(document);
   bindCreatorDataCardEvents($("#creatorEditForm"));
   bindCreatorDataCardEvents($("#quickCreatorForm"));
-  $("#quickCreatorModal")?.addEventListener("click", (event) => {
-    if (event.target.dataset.closeQuickCreator) closeQuickCreatorModal();
-  });
+  bindModalDismiss($("#quickCreatorModal"), "[data-close-quick-creator]", closeQuickCreatorModal);
+  bindModalDismiss($("#caseModal"), "[data-close-case-modal]", closeCaseModal);
+  bindModalDismiss($("#artifactModal"), "[data-close-artifact-modal]", closeArtifactModal);
+  bindModalEscape([
+    ["#creatorModal", closeCreatorModal],
+    ["#quickCreatorModal", closeQuickCreatorModal],
+    ["#caseModal", closeCaseModal],
+    ["#artifactModal", closeArtifactModal],
+  ]);
   $("#quickCreatorAvatarInput")?.addEventListener("change", async (event) => {
     const file = event.currentTarget.files?.[0];
     if (!file) return;
@@ -9390,17 +9498,33 @@ function bindEvents() {
   $("#creatorEditForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
-    const creatorId = form.elements.creator_id.value;
-    await ensureCreatorTagsClassified(form);
-    const payload = creatorFormPayload(form);
-    const data = await api(`/api/creators/${creatorId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    renderCreatorModal(data.creator);
-    await reloadAll();
-    toast("达人已保存并重新画像");
+    const button = form.querySelector("button[type='submit']");
+    const buttonLabel = button?.textContent || "保存并重新画像";
+    if (button) {
+      button.disabled = true;
+      button.textContent = "保存中…";
+    }
+    try {
+      const creatorId = form.elements.creator_id.value;
+      await ensureCreatorTagsClassified(form);
+      const payload = creatorFormPayload(form);
+      const data = await api(`/api/creators/${creatorId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      renderCreatorModal(data.creator);
+      await reloadCore();
+      loadKolIntelligence().catch(() => {});
+      toast("达人已保存并重新画像");
+    } catch (error) {
+      toast(error.message || "保存达人失败", true);
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = buttonLabel;
+      }
+    }
   });
 
   $("#creatorImageAnalyzeBtn")?.addEventListener("click", async () => {
@@ -10190,7 +10314,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   decorateViews();
   bindEvents();
   try {
-    await reloadAll();
+    await reloadAll({ backgroundSecondary: true });
     const share = new URLSearchParams(window.location.search).get("share");
     if (share) await loadClientShare(share);
     const inviteMatch = window.location.pathname.match(/^\/creator\/invite\/([^/]+)$/);

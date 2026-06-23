@@ -264,23 +264,30 @@ def delete_case(path: Path, case_id: str) -> None:
         conn.execute("DELETE FROM creator_cases WHERE case_id = ?", (case_id,))
 
 
+def _delete_sqlite_by_creator_id(conn: sqlite3.Connection, table: str, creator_id: str) -> None:
+    conn.execute(f"DELETE FROM {table} WHERE creator_id = ?", (creator_id,))
+
+
 def delete_cases_for_creator(path: Path, creator_id: str) -> None:
     if postgres_enabled():
-        import os
+        from src.storage.postgres_payload import delete_by_column
 
-        import psycopg
-
-        from src.storage.postgres_payload import ensure_schema, tenant_from_path
-
-        ensure_schema()
-        tenant = tenant_from_path(path)
-        with psycopg.connect(os.getenv("DATABASE_URL", "")) as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "DELETE FROM creator_cases WHERE tenant_id = %s AND creator_id = %s",
-                    (tenant, creator_id),
-                )
+        delete_by_column(path, "creator_cases", "creator_id", creator_id)
         return
     init_creator_commercial_db(path)
     with sqlite3.connect(path) as conn:
-        conn.execute("DELETE FROM creator_cases WHERE creator_id = ?", (creator_id,))
+        _delete_sqlite_by_creator_id(conn, "creator_cases", creator_id)
+
+
+def delete_commercial_records_for_creator(path: Path, creator_id: str) -> None:
+    tables = ("creator_commercial_profiles", "creator_invitations", "creator_submissions")
+    if postgres_enabled():
+        from src.storage.postgres_payload import delete_by_column
+
+        for table in tables:
+            delete_by_column(path, table, "creator_id", creator_id)
+        return
+    init_creator_commercial_db(path)
+    with sqlite3.connect(path) as conn:
+        for table in tables:
+            _delete_sqlite_by_creator_id(conn, table, creator_id)

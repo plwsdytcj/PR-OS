@@ -111,6 +111,7 @@ from src.creator_commercial.service import (
 from src.creator_commercial.storage import (
     delete_case,
     delete_cases_for_creator,
+    delete_commercial_records_for_creator,
     init_creator_commercial_db,
     load_all_cases,
     load_all_commercial_profiles,
@@ -144,7 +145,7 @@ from src.kol_intelligence.service import (
     review_evidence_tag,
     run_conversational_kol_graph,
 )
-from src.kol_intelligence.storage import init_kol_intelligence_db
+from src.kol_intelligence.storage import delete_evidence_tags_for_creator, init_kol_intelligence_db
 from src.normalize.mapper import infer_column_mapping, map_dataframe_to_profiles
 from src.openclaw.adapter import OpenClawAdapter
 from src.openclaw.schemas import OpenClawConfig, OpenClawSession, OpenClawUserBinding, binding_id_for, now_iso as openclaw_now_iso
@@ -2869,6 +2870,8 @@ async def delete_creator(creator_id: str) -> dict[str, Any]:
     if profile is None:
         raise HTTPException(status_code=404, detail="creator not found")
     delete_cases_for_creator(DB_PATH, creator_id)
+    delete_commercial_records_for_creator(DB_PATH, creator_id)
+    delete_evidence_tags_for_creator(DB_PATH, creator_id)
     delete_profiles(DB_PATH, [creator_id])
     return {"deleted": True, "creator_id": creator_id, "name": profile.name}
 
