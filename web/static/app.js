@@ -1665,12 +1665,12 @@ function renderKolIntakeResult(data) {
           const summary = tagSummary.find((item) => item.creator_id === creator.creator_id) || {};
           const groupedTags = groupKolEvidenceTags(summary.tags || []);
           const profileTags = [
-            ...(creator.industry_fit_tags || []),
-            ...(creator.content_capability_tags || []),
-            ...(creator.suitable_goals || []),
-            ...(creator.delivery_tags || []),
-      ...(creator.personal_tags || []),
-      ...(creator.risk_tags || []),
+            ...asTagList(creator.industry_fit_tags),
+            ...asTagList(creator.content_capability_tags),
+            ...asTagList(creator.suitable_goals),
+            ...asTagList(creator.delivery_tags),
+            ...asTagList(creator.personal_tags),
+            ...asTagList(creator.risk_tags),
           ].slice(0, 10);
           return `
             <article class="creator-card kol-intake-card">
@@ -1682,10 +1682,10 @@ function renderKolIntakeResult(data) {
               <div class="meta">粉丝 ${fmtNumber(creator.follower_count)} · 报价 ${fmtNumber(creator.listed_price)}</div>
               <p>${escapeHTML(creator.ai_summary || creator.bio || "已完成基础画像。")}</p>
               <div class="kol-intake-field-grid">
-                <div><span>行业标签</span><strong>${escapeHTML((creator.industry_fit_tags || []).slice(0, 3).join(" / ") || "-")}</strong></div>
-                <div><span>内容能力</span><strong>${escapeHTML((creator.content_capability_tags || []).slice(0, 3).join(" / ") || "-")}</strong></div>
-                <div><span>预算适配</span><strong>${escapeHTML((creator.budget_fit_tags || []).slice(0, 2).join(" / ") || "-")}</strong></div>
-                <div><span>风险</span><strong>${escapeHTML((creator.risk_tags || []).slice(0, 2).join(" / ") || "暂无")}</strong></div>
+                <div><span>行业标签</span><strong>${escapeHTML(asTagList(creator.industry_fit_tags).slice(0, 3).join(" / ") || "-")}</strong></div>
+                <div><span>内容能力</span><strong>${escapeHTML(asTagList(creator.content_capability_tags).slice(0, 3).join(" / ") || "-")}</strong></div>
+                <div><span>预算适配</span><strong>${escapeHTML(asTagList(creator.budget_fit_tags).slice(0, 2).join(" / ") || "-")}</strong></div>
+                <div><span>风险</span><strong>${escapeHTML(asTagList(creator.risk_tags).slice(0, 2).join(" / ") || "暂无")}</strong></div>
               </div>
               <div class="tag-list">${profileTags.map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`).join("")}</div>
               ${groupedTags.length ? `<div class="kol-intake-evidence">${groupedTags.join("")}</div>` : ""}
@@ -2050,16 +2050,16 @@ function renderCreatorOptions() {
 }
 
 function creatorCardHtml(creator) {
-  const tags = [
-    ...(creator.industry_fit_tags || []),
-    ...(creator.identity_tags || []),
-    ...(creator.content_capability_tags || []),
-    ...(creator.suitable_goals || []),
-  ]
+      const tags = [
+        ...asTagList(creator.industry_fit_tags),
+        ...asTagList(creator.identity_tags),
+        ...asTagList(creator.content_capability_tags),
+        ...asTagList(creator.suitable_goals),
+      ]
     .slice(0, 6)
     .map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`)
     .join("");
-  const risks = (creator.risk_tags || [])
+      const risks = asTagList(creator.risk_tags)
     .slice(0, 2)
     .map((tag) => `<span class="tag risk">${escapeHTML(tag)}</span>`)
     .join("");
@@ -6360,11 +6360,23 @@ function renderGovernanceProfile(profile) {
 }
 
 async function openCreatorModal(creatorId) {
-  const data = await api(`/api/creators/${creatorId}`);
-  state.activeCreator = data.creator;
-  state.activeCreatorEvidenceTags = data.evidence_tags || [];
-  renderCreatorModal(data.creator);
-  $("#creatorModal").classList.remove("hidden");
+  if (!creatorId) {
+    toast("缺少达人 ID", true);
+    return;
+  }
+  try {
+    const data = await api(`/api/creators/${encodeURIComponent(creatorId)}`);
+    if (!data?.creator) {
+      toast("达人不存在", true);
+      return;
+    }
+    state.activeCreator = data.creator;
+    state.activeCreatorEvidenceTags = data.evidence_tags || [];
+    renderCreatorModal(data.creator);
+    $("#creatorModal")?.classList.remove("hidden");
+  } catch (error) {
+    toast(error.message || "打不开达人详情", true);
+  }
 }
 
 function closeCreatorModal() {
@@ -6886,19 +6898,20 @@ async function ensureCreatorTagsClassified(form) {
 function hydrateCreatorTagHubFromCreator(form, creator = {}) {
   if (!form?.querySelector("[data-creator-tag-hub]")) return;
   const personal = [
-    ...(creator.personal_tags || []),
-    ...(creator.industry_fit_tags || []),
-    ...(creator.identity_tags || []),
-    ...(creator.content_capability_tags || []),
-    ...(creator.delivery_tags || []),
-    ...(creator.risk_tags || []),
-    ...(creator.suitable_goals || []),
+    ...asTagList(creator.personal_tags),
+    ...asTagList(creator.industry_fit_tags),
+    ...asTagList(creator.identity_tags),
+    ...asTagList(creator.content_capability_tags),
+    ...asTagList(creator.delivery_tags),
+    ...asTagList(creator.risk_tags),
+    ...asTagList(creator.suitable_goals),
   ].filter((tag, index, list) => list.indexOf(tag) === index);
   if (form.elements.personal_tags) {
-    form.elements.personal_tags.value = (creator.personal_tags?.length ? creator.personal_tags : personal).join("，");
+    const savedPersonal = asTagList(creator.personal_tags);
+    form.elements.personal_tags.value = (savedPersonal.length ? savedPersonal : personal).join("，");
   }
   const assignList = (name, values = []) => {
-    if (form.elements[name]) form.elements[name].value = (values || []).join("，");
+    if (form.elements[name]) form.elements[name].value = asTagList(values).join("，");
   };
   assignList("industry_fit_tags", creator.industry_fit_tags);
   assignList("identity_tags", creator.identity_tags);
@@ -7022,7 +7035,14 @@ function normalizeQuickTagValue(value) {
     .filter(Boolean);
 }
 
+function asTagList(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  if (value == null || value === "") return [];
+  return normalizeQuickTagValue(value);
+}
+
 function initCreatorTagEditors(form) {
+  if (!form) return;
   form.querySelectorAll(".tag-editor").forEach((editor) => {
     const fieldName = editor.dataset.tagField;
     const hidden = form.elements[fieldName];
@@ -7300,11 +7320,15 @@ async function saveManualCreator(form, { openDetail = false } = {}) {
 
 function renderCreatorModal(creator) {
   const form = $("#creatorEditForm");
+  if (!form || !creator) {
+    toast("达人详情表单未就绪", true);
+    return;
+  }
   const fields = form.elements;
-  $("#creatorModalTitle").textContent = creator.name;
-  $("#creatorModalMeta").textContent = `${creator.platform} · ${creator.creator_id}`;
+  $("#creatorModalTitle").textContent = creator.name || "未命名达人";
+  $("#creatorModalMeta").textContent = `${creator.platform || "未知平台"} · ${creator.creator_id || ""}`;
   renderCreatorProfileHeader(creator);
-  fields.creator_id.value = creator.creator_id;
+  fields.creator_id.value = creator.creator_id || "";
   fields.name.value = creator.name || "";
   fields.platform.value = normalizePlatformValue(creator.platform || PLATFORM_OPTIONS[0]);
   renderPlatformSelectOptions(fields.platform, fields.platform.value);
@@ -7322,8 +7346,8 @@ function renderCreatorModal(creator) {
   fields.avg_shares.value = creator.avg_shares || "";
   fields.region.value = creator.region || "";
   fields.contact.value = creator.contact || "";
-  fields.cooperation_brands.value = (creator.cooperation_brands || []).join("，");
-  fields.cooperation_formats.value = (creator.cooperation_formats || []).join("，");
+  fields.cooperation_brands.value = asTagList(creator.cooperation_brands).join("，");
+  fields.cooperation_formats.value = asTagList(creator.cooperation_formats).join("，");
   hydrateCreatorTagHubFromCreator(form, creator);
   fields.bio.value = creator.bio || "";
   fields.manual_notes.value = remarkTagsFromNotes(creator.manual_notes || "").join("，");
@@ -7347,15 +7371,15 @@ function renderCreatorTagSummary(creator, containerId = "#creatorTags") {
   const node = $(containerId);
   if (!node) return;
   const tags = [
-    ...(creator.personal_tags || []),
-    ...(creator.industry_fit_tags || []),
-    ...(creator.identity_tags || []),
-    ...(creator.content_capability_tags || []),
-    ...(creator.delivery_tags || []),
-    ...(creator.suitable_goals || []),
-    ...(creator.suitable_stages || []),
-    ...(creator.budget_fit_tags || []),
-    ...(creator.risk_tags || []),
+    ...asTagList(creator.personal_tags),
+    ...asTagList(creator.industry_fit_tags),
+    ...asTagList(creator.identity_tags),
+    ...asTagList(creator.content_capability_tags),
+    ...asTagList(creator.delivery_tags),
+    ...asTagList(creator.suitable_goals),
+    ...asTagList(creator.suitable_stages),
+    ...asTagList(creator.budget_fit_tags),
+    ...asTagList(creator.risk_tags),
   ];
   const narrative = creator.narrative_position ? `<span class="tag narrative">${escapeHTML(creator.narrative_position)}</span>` : "";
   const tagHtml = tags.map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`).join("");
@@ -8815,7 +8839,7 @@ function bindEvents() {
   $("#artifactModal")?.addEventListener("click", (event) => {
     if (event.target.dataset.closeArtifactModal) closeArtifactModal();
   });
-  $("#creatorModal").addEventListener("click", (event) => {
+  $("#creatorModal")?.addEventListener("click", (event) => {
     if (event.target.dataset.closeModal) closeCreatorModal();
   });
   bindCreatorTagEditorEvents($("#quickCreatorModal"));

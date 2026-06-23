@@ -481,6 +481,26 @@ async def tenant_context_middleware(request: Request, call_next):
 
 def profile_payload(profile: CreatorProfile) -> dict[str, Any]:
     data = asdict(profile)
+    list_fields = (
+        "cooperation_brands",
+        "cooperation_formats",
+        "industry_fit_tags",
+        "identity_tags",
+        "content_capability_tags",
+        "suitable_goals",
+        "suitable_stages",
+        "budget_fit_tags",
+        "risk_tags",
+        "personal_tags",
+        "delivery_tags",
+        "data_sources",
+        "media_assets",
+    )
+    for field in list_fields:
+        value = data.get(field)
+        if isinstance(value, list):
+            continue
+        data[field] = split_tags(value) if value else []
     data["tags"] = {
         "industry": profile.industry_fit_tags,
         "identity": getattr(profile, "identity_tags", []),
