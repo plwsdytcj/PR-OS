@@ -926,12 +926,16 @@ function initCreatorListShell() {
   const list = $("#creatorList");
   if (!list || list.querySelector(".empty-state")) return;
   list.innerHTML = emptyState("正在准备达人库…", "正在连接服务并拉取达人数据。");
+  const summary = $("#creatorListSummary");
+  if (summary) summary.textContent = "正在准备达人库…";
 }
 
 function renderCreatorListAuthRequired() {
   const list = $("#creatorList");
   if (!list) return;
   list.innerHTML = emptyState("请先登录", "登录后可查看、搜索和管理达人库。点击左下角「登录」。");
+  const summary = $("#creatorListSummary");
+  if (summary) summary.textContent = "登录后加载达人库";
 }
 
 async function loadCreators() {
@@ -2095,6 +2099,41 @@ function renderCreatorOptions() {
   }
 }
 
+function creatorSearchText(creator) {
+  return [
+    creator.name,
+    creator.platform,
+    creator.ai_summary,
+    creator.bio,
+    ...asTagList(creator.industry_fit_tags),
+    ...asTagList(creator.identity_tags),
+    ...asTagList(creator.content_capability_tags),
+    ...asTagList(creator.suitable_goals),
+    ...asTagList(creator.delivery_tags),
+    ...asTagList(creator.personal_tags),
+    ...asTagList(creator.risk_tags),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function updateCreatorListSummary(shownCount, query = "") {
+  const summary = $("#creatorListSummary");
+  const sampleBtn = $("#creatorImportSampleBtn");
+  const total = state.creators.length;
+  if (summary) {
+    if (!total) {
+      summary.textContent = "达人库为空 · 可手动新增或导入示例数据";
+    } else if (query) {
+      summary.textContent = `搜索「${query}」· 显示 ${shownCount} / ${total} 位达人`;
+    } else {
+      summary.textContent = `共 ${total} 位达人 · 点击「详情」查看标签框架与画像`;
+    }
+  }
+  if (sampleBtn) sampleBtn.classList.toggle("hidden", total > 0);
+}
+
 function creatorCardHtml(creator) {
       const tags = [
         ...asTagList(creator.industry_fit_tags),
@@ -2183,22 +2222,7 @@ function creatorMatchesFilter(creator, criteria) {
     if (rate < criteria.minEngagement) return false;
   }
   if (criteria.query) {
-    const text = [
-      creator.name,
-      creator.platform,
-      creator.ai_summary,
-      creator.bio,
-      ...(creator.industry_fit_tags || []),
-      ...(creator.identity_tags || []),
-      ...(creator.content_capability_tags || []),
-      ...(creator.suitable_goals || []),
-      ...(creator.delivery_tags || []),
-      ...(creator.personal_tags || []),
-      ...(creator.risk_tags || []),
-    ]
-      .join(" ")
-      .toLowerCase();
-    if (!text.includes(criteria.query)) return false;
+    if (!creatorSearchText(creator).includes(criteria.query)) return false;
   }
   return true;
 }
@@ -2286,28 +2310,18 @@ function showCreatorModalLoading(creatorId = "") {
 }
 
 function renderCreators() {
-  const query = ($("#creatorSearch")?.value || "").toLowerCase();
+  const query = ($("#creatorSearch")?.value || "").trim();
+  const queryKey = query.toLowerCase();
   const list = $("#creatorList");
   if (!list) return;
-  const items = state.creators.filter((creator) => {
-    const text = [
-      creator.name,
-      creator.platform,
-      creator.ai_summary,
-      ...(creator.industry_fit_tags || []),
-      ...(creator.identity_tags || []),
-      ...(creator.content_capability_tags || []),
-      ...(creator.suitable_goals || []),
-      ...(creator.delivery_tags || []),
-      ...(creator.personal_tags || []),
-      ...(creator.risk_tags || []),
-    ]
-      .join(" ")
-      .toLowerCase();
-    return text.includes(query);
-  });
+  const items = (state.creators || []).filter((creator) => !queryKey || creatorSearchText(creator).includes(queryKey));
+  updateCreatorListSummary(items.length, query);
   if (!items.length) {
-    list.innerHTML = emptyState("暂无达人数据", "先导入 Excel / CSV 或使用示例数据启动达人雷达。");
+    const total = state.creators.length;
+    list.innerHTML = emptyState(
+      total ? "没有匹配的达人" : "暂无达人数据",
+      total ? "试试换个关键词，或清空搜索框。" : "点击「+ 新增达人」录入，或使用「导入示例达人」快速体验。",
+    );
     return;
   }
   list.innerHTML = items.map((creator) => creatorCardHtml(creator)).join("");
@@ -9341,6 +9355,17 @@ function bindEvents() {
     await api("/api/import/sample", { method: "POST" });
     await reloadAll();
     toast("示例数据已导入");
+  });
+
+  $("#creatorImportSampleBtn")?.addEventListener("click", async () => {
+    try {
+      await api("/api/import/sample", { method: "POST" });
+      state.creatorsFetchAttempted = false;
+      await loadCreators();
+      toast("示例达人已导入");
+    } catch (error) {
+      toast(error.message, true);
+    }
   });
 
   $("#homeBriefForm")?.addEventListener("submit", async (event) => {
