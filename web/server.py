@@ -230,6 +230,7 @@ TENANT_ROOT = ROOT / "data" / "processed" / "tenants"
 ACCESS_KEY = os.getenv("PR_AI_OS_ACCESS_KEY", "").strip()
 AUTH_ENABLED = os.getenv("PR_AI_OS_AUTH_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
 AUTH_COOKIE_NAME = "pr_ai_os_session"
+AUTH_SESSION_HEADER = "X-Session-Token"
 PUBLIC_PATH_PREFIXES = ("/", "/static/", "/favicon.ico", "/creator/brief/", "/creator/invite/")
 PUBLIC_API_PREFIXES = ("/api/client/share/", "/api/creator/brief/", "/api/creator/invite/")
 _TENANT_RE = re.compile(r"[^a-zA-Z0-9_-]+")
@@ -409,6 +410,14 @@ def _session_cookie_kwargs() -> dict[str, Any]:
     }
 
 
+def _session_id_from_request(request: Request) -> str:
+    cookie_session = request.cookies.get(AUTH_COOKIE_NAME, "")
+    if cookie_session:
+        return cookie_session
+    header_session = request.headers.get(AUTH_SESSION_HEADER, "").strip()
+    return header_session
+
+
 def _auth_bypass_for_access_key(request: Request) -> bool:
     return _access_key_valid(request)
 
@@ -460,7 +469,7 @@ async def tenant_context_middleware(request: Request, call_next):
     template_token = _template_path_ctx.set(template_path)
     identity_token = None
     try:
-        identity = resolve_identity(db_path, request.cookies.get(AUTH_COOKIE_NAME, ""))
+        identity = resolve_identity(db_path, _session_id_from_request(request))
         identity_token = _identity_ctx.set(identity)
         if _legacy_access_key_required_for(request.url.path) and not _auth_mode_active(db_path) and not _access_key_valid(request):
             return JSONResponse({"detail": "access key required"}, status_code=401)
@@ -2369,7 +2378,7 @@ async def auth_login(payload: dict[str, Any]) -> JSONResponse:
 
 @app.post("/api/auth/logout")
 async def auth_logout(request: Request) -> JSONResponse:
-    session_id = request.cookies.get(AUTH_COOKIE_NAME, "")
+    session_id = _session_id_from_request(request)
     if session_id:
         logout_session(DB_PATH, session_id)
     response = JSONResponse({"ok": True})

@@ -560,14 +560,28 @@ function frameFromFloatElement(element) {
   });
 }
 
+function persistAuthSession(session) {
+  const token = String(session?.session_id || "").trim();
+  if (!token) return;
+  state.sessionToken = token;
+  localStorage.setItem("pr_ai_os_session_token", token);
+}
+
+function clearAuthSession() {
+  state.sessionToken = "";
+  localStorage.removeItem("pr_ai_os_session_token");
+}
+
 async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
   headers.set("X-Tenant-ID", state.tenant || "default");
   if (state.accessKey) headers.set("X-Access-Key", state.accessKey);
-  const response = await fetch(path, { ...options, headers });
+  if (state.sessionToken) headers.set("X-Session-Token", state.sessionToken);
+  const response = await fetch(path, { ...options, headers, credentials: "include" });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (response.status === 401) {
+      if (state.sessionToken) clearAuthSession();
       showAccessGate(data.detail || "login required");
       throw new Error(data.detail === "login required" ? "需要登录" : data.detail || "需要登录");
     }
@@ -964,7 +978,7 @@ async function ensureCreatorsLoaded() {
   const list = $("#creatorList");
   if (!list) return;
   if (list.dataset.loading === "true") return;
-  if (state.authRequired && !state.currentIdentity?.user && !state.accessKey) {
+  if (state.authRequired && !state.currentIdentity?.user && !state.accessKey && !state.sessionToken) {
     renderCreatorListAuthRequired();
     return;
   }
@@ -4678,7 +4692,7 @@ async function reloadSecondary() {
 async function reloadAll({ backgroundSecondary = false } = {}) {
   await refreshStatus();
   const auth = await loadAuthMe();
-  const needsLogin = state.authRequired && !auth.authenticated && !state.accessKey;
+  const needsLogin = state.authRequired && !auth.authenticated && !state.accessKey && !state.sessionToken;
   if (needsLogin) {
     showAccessGate("请用内部或甲方账号登录后继续使用。");
     renderCreatorListAuthRequired();
@@ -8192,11 +8206,12 @@ function bindEvents() {
   $("#loginForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const payload = formToObject(event.currentTarget);
-    await api("/api/auth/login", {
+    const data = await api("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    persistAuthSession(data.session);
     hideAccessGate();
     await reloadAll();
     toast("已登录");
@@ -8205,11 +8220,12 @@ function bindEvents() {
     event.preventDefault();
     const payload = formToObject(event.currentTarget);
     if (state.accessKey) payload.access_key = state.accessKey;
-    await api("/api/auth/bootstrap-admin", {
+    const data = await api("/api/auth/bootstrap-admin", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    persistAuthSession(data.session);
     hideAccessGate();
     await reloadAll();
     toast("Admin 已创建并登录");
@@ -8246,6 +8262,7 @@ function bindEvents() {
       await api("/api/auth/logout", { method: "POST" });
       state.currentIdentity = null;
       state.accessKey = "";
+      clearAuthSession();
       localStorage.removeItem("pr_ai_os_access_key");
       renderAuthUser();
       await reloadAll();
