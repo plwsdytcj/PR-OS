@@ -1,0 +1,29 @@
+---
+description: >-
+  Kolness/PR-OS KOL 达人域主体间性守则。改达人录入、详情、标签、报价、弹窗或媒介建档时，
+  必须先读 .cursor/skills/kolness-pr-vibe/SKILL.md 并按守则执行。
+globs:
+  - web/static/**
+  - web/server.py
+  - src/schemas.py
+  - src/normalize/**
+  - src/kol_intelligence/**
+  - src/intelligence/**
+  - scripts/smoke_kol_intake.py
+  - scripts/smoke_creator_media.py
+alwaysApply: false
+---
+
+# PR KOL Vibe · 联动规则
+
+改 KOL/达人相关代码前，**先读** `.cursor/skills/kolness-pr-vibe/SKILL.md`。
+
+硬约束（摘要）：
+
+1. **媒介只录入一次** — `quickCreatorForm` 与 `creatorEditForm` 四卡字段 + 保存通路一致
+2. **只叠加不删减** — 公关字段（身份、内容能力、适合目标、风险、履约备注）不得擅自删除
+3. **单通路** — `creatorFormPayload` → `_apply_creator_payload`；禁止双轨序列化
+4. **弹窗可滚动** — 改弹窗布局后检查 `.modal-panel` overflow；用户说滚不动立刻查
+5. **Agent 负责到底** — 对照、部署、bump 缓存版本、smoke；不把监督当交付
+
+完整清单、部署命令与反思项见 skill 正文。

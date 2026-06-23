@@ -54,6 +54,54 @@ BRIEF_KEYWORDS = {
 }
 
 
+def preview_creator_intelligence(db_path: Path, profile: CreatorProfile) -> dict[str, Any]:
+    """Derive AI summary and evidence tags from a draft profile without persisting."""
+    rule_config = load_rule_config(db_path)
+    symbolic = generate_creator_symbolic_profile(profile, rule_config=rule_config)
+    evidence_tags = [tag.to_dict() for tag in _derive_tags(profile, symbolic)]
+    return {
+        "evidence_tags": evidence_tags,
+        "suggested_patch": _suggested_field_patch(profile, evidence_tags),
+    }
+
+
+def _suggested_field_patch(profile: CreatorProfile, evidence_tags: list[dict[str, Any]]) -> dict[str, Any]:
+    field_map = {
+        "industry": "industry_fit_tags",
+        "content": "content_capability_tags",
+        "goal": "suitable_goals",
+        "risk": "risk_tags",
+        "persona": "identity_tags",
+        "case": "cooperation_brands",
+        "stage": "suitable_stages",
+        "budget": "budget_fit_tags",
+    }
+    existing: dict[str, list[str]] = {
+        "industry_fit_tags": list(profile.industry_fit_tags),
+        "content_capability_tags": list(profile.content_capability_tags),
+        "suitable_goals": list(profile.suitable_goals),
+        "risk_tags": list(profile.risk_tags),
+        "identity_tags": list(profile.identity_tags),
+        "cooperation_brands": list(profile.cooperation_brands),
+        "suitable_stages": list(profile.suitable_stages),
+        "budget_fit_tags": list(profile.budget_fit_tags),
+    }
+    patch: dict[str, Any] = {}
+    if profile.ai_summary:
+        patch["ai_summary"] = profile.ai_summary
+    for item in evidence_tags:
+        field = field_map.get(str(item.get("category") or ""))
+        tag = str(item.get("tag") or "").strip()
+        if not field or not tag:
+            continue
+        merged = list(existing.get(field, []))
+        if tag not in merged:
+            merged.append(tag)
+            existing[field] = merged
+            patch[field] = merged
+    return patch
+
+
 def analyze_creator_evidence_tags(db_path: Path, creator_id: str = "", limit: int = 200) -> dict[str, Any]:
     rule_config = load_rule_config(db_path)
     creators = [load_profile(db_path, creator_id)] if creator_id else load_profiles(db_path)[: max(1, limit)]

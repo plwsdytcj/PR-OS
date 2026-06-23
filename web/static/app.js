@@ -62,6 +62,10 @@ const state = {
   activeCreator: null,
   activeCreatorEvidenceTags: [],
   activeCreatorImageSuggestion: null,
+  quickCreatorEvidenceTags: [],
+  quickCreatorImageSuggestion: null,
+  quickCreatorPendingAssets: [],
+  quickCreatorAiPreview: null,
   collabProposals: [],
   activeProposal: null,
   activeClientShare: null,
@@ -6153,11 +6157,37 @@ function openQuickCreatorModal() {
   if (!modal || !form) return;
   form.reset();
   resetQuickCreatorAvatar(form);
+  state.quickCreatorEvidenceTags = [];
+  state.quickCreatorImageSuggestion = null;
+  state.quickCreatorPendingAssets = [];
+  state.quickCreatorAiPreview = null;
+  resetQuickCreatorAuxSections();
   initPlatformSelects();
   renderQuickCreatorRateFields(form);
   initQuickCreatorTagEditors(form);
   modal.classList.remove("hidden");
   form.elements.name?.focus();
+}
+
+function resetQuickCreatorAuxSections() {
+  renderCreatorImageAnalysis(null, {
+    boxId: "#quickCreatorImageAnalysis",
+    applyBtnId: "#quickCreatorImageApplyBtn",
+    stateKey: "quickCreatorImageSuggestion",
+  });
+  const summary = $("#quickCreatorAiSummary");
+  if (summary) {
+    summary.textContent = "填写字段后点击「运行 AI 判断」，系统会生成摘要并自动补充标签。";
+  }
+  renderCreatorEvidenceTags([], { containerId: "#quickCreatorEvidenceTags", reviewable: false });
+  renderQuickCreatorMediaAssets();
+  const kitOutput = $("#quickCreatorCommercialKitOutput");
+  if (kitOutput) {
+    kitOutput.innerHTML = '<div class="commercial-card-empty">填写信息后点击生成，会在这里出现卡片式商业名片刊例预览。</div>';
+    kitOutput.dataset.copyText = "";
+  }
+  const tags = $("#quickCreatorTags");
+  if (tags) tags.innerHTML = '<span class="meta">暂无标签</span>';
 }
 
 function getPlatformRateFields(platform) {
@@ -6500,12 +6530,39 @@ async function saveManualCreator(form, { openDetail = false } = {}) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  const creatorId = data.creator?.creator_id;
+  if (creatorId && state.quickCreatorPendingAssets?.length) {
+    for (const item of state.quickCreatorPendingAssets) {
+      if (!item.file) continue;
+      try {
+        const body = new FormData();
+        body.append("file", item.file);
+        await api(`/api/creators/${encodeURIComponent(creatorId)}/media/analyze`, { method: "POST", body });
+      } catch {
+        /* non-fatal: core profile already saved */
+      }
+    }
+  }
+  if (creatorId) {
+    try {
+      await api("/api/kol-intelligence/analyze-tags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ creator_id: creatorId, limit: 1 }),
+      });
+    } catch {
+      /* non-fatal */
+    }
+  }
+  state.quickCreatorPendingAssets = [];
+  state.quickCreatorEvidenceTags = [];
+  state.quickCreatorAiPreview = null;
   form.reset();
   await reloadAll();
   toast(`已保存：${data.creator.name}`);
-  if (openDetail && data.creator?.creator_id) {
+  if (openDetail && creatorId) {
     setView("creators");
-    await openCreatorModal(data.creator.creator_id);
+    await openCreatorModal(creatorId);
   }
   return data;
 }
@@ -6554,6 +6611,13 @@ function renderCreatorModal(creator) {
   $("#creatorDataSources").innerHTML = (creator.data_sources || [])
     .map((source) => `<span class="tag">${escapeHTML(source)}</span>`)
     .join("") || '<span class="meta">暂无来源</span>';
+  renderCreatorTagSummary(creator, "#creatorTags");
+  renderCreatorEvidenceTags(state.activeCreatorEvidenceTags);
+}
+
+function renderCreatorTagSummary(creator, containerId = "#creatorTags") {
+  const node = $(containerId);
+  if (!node) return;
   const tags = [
     ...(creator.industry_fit_tags || []),
     ...(creator.identity_tags || []),
@@ -6563,21 +6627,24 @@ function renderCreatorModal(creator) {
     ...(creator.budget_fit_tags || []),
     ...(creator.risk_tags || []),
   ];
-  $("#creatorTags").innerHTML = tags.length
+  node.innerHTML = tags.length
     ? tags.map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`).join("")
     : '<span class="meta">暂无标签</span>';
-  renderCreatorEvidenceTags();
 }
 
-function renderCreatorEvidenceTags() {
-  const node = $("#creatorEvidenceTags");
+function renderCreatorEvidenceTags(tags = state.activeCreatorEvidenceTags, options = {}) {
+  const node = $(options.containerId || "#creatorEvidenceTags");
   if (!node) return;
-  const tags = state.activeCreatorEvidenceTags || [];
-  if (!tags.length) {
-    node.innerHTML = emptyState("暂无证据标签", "点击 KOL 决策图谱里的“分析达人标签”后会生成。");
+  const reviewable = options.reviewable !== false && Boolean(state.activeCreator?.creator_id);
+  const items = tags || [];
+  if (!items.length) {
+    node.innerHTML = emptyState(
+      "暂无证据标签",
+      reviewable ? "点击「运行 AI 判断」后会生成。" : "点击「运行 AI 判断」后会在此预览，保存后写入证据库。",
+    );
     return;
   }
-  node.innerHTML = tags
+  node.innerHTML = items
     .slice(0, 40)
     .map(
       (tag) => `
@@ -6588,12 +6655,16 @@ function renderCreatorEvidenceTags() {
             <span class="meta">${escapeHTML(tag.category)} · confidence ${Math.round((tag.confidence || 0) * 100)}%</span>
           </div>
           <small>${escapeHTML((tag.evidence || []).slice(0, 2).join("；"))}</small>
-          <div class="button-row">
+          ${
+            reviewable
+              ? `<div class="button-row">
             <button class="secondary creator-evidence-review-btn" data-status="confirmed" data-tag-id="${escapeHTML(tag.tag_id)}" type="button">确认</button>
             <button class="secondary creator-evidence-review-btn danger" data-status="rejected" data-tag-id="${escapeHTML(tag.tag_id)}" type="button">拒绝</button>
-          </div>
+          </div>`
+              : ""
+          }
         </article>
-      `
+      `,
     )
     .join("");
 }
@@ -6623,20 +6694,21 @@ function renderCreatorMediaAssets(creator) {
     : '<span class="meta">暂无图片资产</span>';
 }
 
-function renderCreatorImageAnalysis(result) {
-  const box = $("#creatorImageAnalysis");
-  const applyBtn = $("#creatorImageApplyBtn");
+function renderCreatorImageAnalysis(result, options = {}) {
+  const box = $(options.boxId || "#creatorImageAnalysis");
+  const applyBtn = $(options.applyBtnId || "#creatorImageApplyBtn");
+  const stateKey = options.stateKey || "activeCreatorImageSuggestion";
   if (!box || !applyBtn) return;
   if (!result) {
     box.classList.add("hidden");
     box.innerHTML = "";
     applyBtn.classList.add("hidden");
-    state.activeCreatorImageSuggestion = null;
+    state[stateKey] = null;
     return;
   }
   const analysis = result.analysis || {};
   const patch = result.suggested_patch || {};
-  state.activeCreatorImageSuggestion = patch;
+  state[stateKey] = patch;
   const fieldRows = Object.entries(patch)
     .map(([key, value]) => `<li><strong>${escapeHTML(key)}</strong><span>${escapeHTML(Array.isArray(value) ? value.join("，") : value)}</span></li>`)
     .join("");
@@ -6656,19 +6728,50 @@ function renderCreatorImageAnalysis(result) {
   applyBtn.classList.toggle("hidden", !Object.keys(patch).length);
 }
 
-function applyCreatorImageSuggestion() {
-  const patch = state.activeCreatorImageSuggestion || {};
-  const form = $("#creatorEditForm");
+function applyCreatorImageSuggestion(form = $("#creatorEditForm"), options = {}) {
+  const stateKey = options.stateKey || (form?.id === "quickCreatorForm" ? "quickCreatorImageSuggestion" : "activeCreatorImageSuggestion");
+  const patch = state[stateKey] || {};
   if (!form || !Object.keys(patch).length) return;
+  applyCreatorIntakePatch(form, patch);
+  toast("已填入识别结果，确认后点击保存");
+}
+
+function applyCreatorIntakePatch(form, patch) {
+  const listFields = new Set([
+    "cooperation_brands",
+    "cooperation_formats",
+    "industry_fit_tags",
+    "identity_tags",
+    "content_capability_tags",
+    "suitable_goals",
+    "suitable_stages",
+    "budget_fit_tags",
+    "risk_tags",
+    "manual_notes",
+  ]);
   Object.entries(patch).forEach(([key, value]) => {
+    if (key === "ai_summary") return;
     const field = form.elements[key];
     if (!field) return;
-    field.value = Array.isArray(value) ? value.join("，") : value;
+    if (listFields.has(key)) {
+      const existing = normalizeQuickTagValue(field.value);
+      const incoming = Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : normalizeQuickTagValue(value);
+      field.value = [...new Set([...existing, ...incoming])].join("，");
+      return;
+    }
+    if (!String(field.value || "").trim()) {
+      field.value = Array.isArray(value) ? value.join("，") : value;
+    }
   });
-  if (form.elements.avatar_url?.value) syncCreatorAvatarPreview(form, form.elements.avatar_url.value);
-  renderCreatorRateFields(form, $("#creatorEditRateFields"), rateValuesFromNotes(form.elements.manual_notes?.value || "", form.elements.platform?.value));
+  const previewId = form.id === "quickCreatorForm" ? "quickCreatorAvatarPreview" : "creatorEditAvatarPreview";
+  if (form.elements.avatar_url?.value) syncCreatorAvatarPreview(form, form.elements.avatar_url.value, previewId);
+  const rateContainer = form.id === "quickCreatorForm" ? $("#quickCreatorRateFields") : $("#creatorEditRateFields");
+  renderCreatorRateFields(form, rateContainer, rateValuesFromNotes(form.elements.manual_notes?.value || "", form.elements.platform?.value));
   initCreatorTagEditors(form);
-  toast("已填入识别结果，确认后点击保存");
+  if (form.id === "quickCreatorForm") {
+    renderCreatorTagSummary(getCreatorDraftFromForm(form), "#quickCreatorTags");
+    refreshCreatorCommercialKitPreview(form);
+  }
 }
 
 function creatorFormPayload(form) {
@@ -6702,13 +6805,15 @@ function creatorFormPayload(form) {
   };
 }
 
-function creatorDraftFromCurrentForm() {
-  const form = $("#creatorEditForm");
-  if (!form || !state.activeCreator) return null;
+function getCreatorDraftFromForm(form) {
+  if (!form) return null;
   const payload = creatorFormPayload(form);
+  const base = form.id === "quickCreatorForm" ? state.quickCreatorAiPreview || {} : state.activeCreator || {};
   return {
-    ...state.activeCreator,
+    ...base,
     ...payload,
+    ai_summary:
+      (form.id === "quickCreatorForm" ? state.quickCreatorAiPreview?.ai_summary : state.activeCreator?.ai_summary) || "",
     cooperation_brands: splitInputList(payload.cooperation_brands),
     cooperation_formats: splitInputList(payload.cooperation_formats),
     industry_fit_tags: splitInputList(payload.industry_fit_tags),
@@ -6717,6 +6822,10 @@ function creatorDraftFromCurrentForm() {
     suitable_goals: splitInputList(payload.suitable_goals),
     risk_tags: splitInputList(payload.risk_tags),
   };
+}
+
+function creatorDraftFromCurrentForm() {
+  return getCreatorDraftFromForm($("#creatorEditForm"));
 }
 
 function compactTextList(items, fallback = "待补充") {
@@ -6858,10 +6967,15 @@ function buildCreatorCommercialKitText(creator) {
   return lines.filter(Boolean).join("\n");
 }
 
-function generateCreatorCommercialKit() {
-  const creator = creatorDraftFromCurrentForm();
-  if (!creator) return toast("请先打开一个达人档案", true);
-  const output = $("#creatorCommercialKitOutput");
+function generateCreatorCommercialKit(form = null) {
+  const targetForm = form || $("#creatorEditForm");
+  const creator = getCreatorDraftFromForm(targetForm);
+  if (!creator?.name) {
+    toast("请先填写达人名称", true);
+    return "";
+  }
+  const outputId = targetForm?.id === "quickCreatorForm" ? "#quickCreatorCommercialKitOutput" : "#creatorCommercialKitOutput";
+  const output = $(outputId);
   const html = buildCreatorCommercialKitHtml(creator);
   const text = buildCreatorCommercialKitText(creator);
   if (output) {
@@ -6872,14 +6986,30 @@ function generateCreatorCommercialKit() {
   return text;
 }
 
-function creatorKitFilename() {
-  const name = (state.activeCreator?.name || "达人").replace(/[\\/:*?"<>|\\s]+/g, "_");
+function refreshCreatorCommercialKitPreview(form = $("#quickCreatorForm")) {
+  if (!form || form.id !== "quickCreatorForm") return;
+  const creator = getCreatorDraftFromForm(form);
+  if (!creator?.name) return;
+  const output = $("#quickCreatorCommercialKitOutput");
+  if (!output) return;
+  const html = buildCreatorCommercialKitHtml(creator);
+  const text = buildCreatorCommercialKitText(creator);
+  output.innerHTML = html;
+  output.dataset.copyText = text;
+}
+
+function creatorKitFilename(form = null) {
+  const targetForm = form || $("#creatorEditForm");
+  const creator = getCreatorDraftFromForm(targetForm);
+  const name = (creator?.name || state.activeCreator?.name || "达人").replace(/[\\/:*?"<>|\\s]+/g, "_");
   return `${name}_商业名片刊例.html`;
 }
 
-function downloadCreatorCommercialKit() {
-  const output = $("#creatorCommercialKitOutput");
-  if (!output?.querySelector(".creator-commercial-card")) generateCreatorCommercialKit();
+function downloadCreatorCommercialKit(form = null) {
+  const targetForm = form || $("#creatorEditForm");
+  const outputId = targetForm?.id === "quickCreatorForm" ? "#quickCreatorCommercialKitOutput" : "#creatorCommercialKitOutput";
+  const output = $(outputId);
+  if (!output?.querySelector(".creator-commercial-card")) generateCreatorCommercialKit(targetForm);
   if (!output?.querySelector(".creator-commercial-card")) return;
   const styles = Array.from(document.styleSheets)
     .map((sheet) => {
@@ -6890,14 +7020,130 @@ function downloadCreatorCommercialKit() {
       }
     })
     .join("\n");
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHTML(state.activeCreator?.name || "达人")}商业名片刊例</title><style>${styles}</style></head><body><main style="max-width:920px;margin:24px auto;">${output.innerHTML}</main></body></html>`;
+  const creator = getCreatorDraftFromForm(targetForm);
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHTML(creator?.name || "达人")}商业名片刊例</title><style>${styles}</style></head><body><main style="max-width:920px;margin:24px auto;">${output.innerHTML}</main></body></html>`;
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = creatorKitFilename();
+  a.download = creatorKitFilename(targetForm);
   a.click();
   URL.revokeObjectURL(url);
+}
+
+async function runCreatorFormAiJudgment(form) {
+  if (!form) return;
+  const isQuick = form.id === "quickCreatorForm";
+  const button = isQuick ? $("#runQuickCreatorAiBtn") : $("#runCreatorAiBtn");
+  const summaryNode = isQuick ? $("#quickCreatorAiSummary") : $("#creatorAiSummary");
+  prepareCreatorFormPayload(form);
+  const payload = creatorFormPayload(form);
+  if (!payload.name) return toast("请先填写达人名称", true);
+  if (button) {
+    button.disabled = true;
+    button.textContent = "判断中...";
+  }
+  try {
+    if (isQuick) {
+      const data = await api("/api/creators/intake/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      state.quickCreatorAiPreview = data.creator;
+      state.quickCreatorEvidenceTags = data.evidence_tags || [];
+      applyCreatorIntakePatch(form, data.suggested_patch || {});
+      if (summaryNode) summaryNode.textContent = data.creator?.ai_summary || "暂无 AI 摘要。";
+      renderCreatorEvidenceTags(state.quickCreatorEvidenceTags, { containerId: "#quickCreatorEvidenceTags", reviewable: false });
+      renderCreatorTagSummary(getCreatorDraftFromForm(form), "#quickCreatorTags");
+      refreshCreatorCommercialKitPreview(form);
+      toast("AI 判断已更新，标签已自动填入");
+      return;
+    }
+    const creatorId = form.elements.creator_id?.value;
+    if (!creatorId) return toast("未找到达人 ID", true);
+    await api(`/api/creators/${encodeURIComponent(creatorId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    await api("/api/kol-intelligence/analyze-tags", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ creator_id: creatorId, limit: 1 }),
+    });
+    const detail = await api(`/api/creators/${encodeURIComponent(creatorId)}`);
+    state.activeCreator = detail.creator;
+    state.activeCreatorEvidenceTags = detail.evidence_tags || [];
+    renderCreatorModal(detail.creator);
+    toast("AI 判断已更新");
+  } catch (error) {
+    toast(error.message || "AI 判断失败", true);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "运行 AI 判断";
+    }
+  }
+}
+
+function renderQuickCreatorMediaAssets() {
+  const node = $("#quickCreatorMediaAssets");
+  if (!node) return;
+  const assets = state.quickCreatorPendingAssets || [];
+  node.innerHTML = assets.length
+    ? assets
+        .map((item, index) => {
+          const analysis = item.analysis || {};
+          const label = analysis.image_type || "image";
+          const key = item.stored_object?.key || item.file?.name || `upload-${index + 1}`;
+          return `
+            <article class="media-asset-item">
+              <span class="tag">${escapeHTML(label)}</span>
+              <div>
+                <strong>${escapeHTML(String(key).split("/").pop() || key)}</strong>
+                <div class="meta">${escapeHTML(analysis.confidence || "pending")} · 待保存入库</div>
+              </div>
+            </article>
+          `;
+        })
+        .join("")
+    : '<span class="meta">暂无图片资产</span>';
+}
+
+async function analyzeQuickCreatorImage() {
+  const form = $("#quickCreatorForm");
+  const fileInput = $("#quickCreatorImageInput");
+  const file = fileInput?.files?.[0];
+  if (!form || !file) return toast("请先选择一张图片", true);
+  const button = $("#quickCreatorImageAnalyzeBtn");
+  prepareCreatorFormPayload(form);
+  const context = creatorFormPayload(form);
+  const body = new FormData();
+  body.append("file", file);
+  body.append("context", JSON.stringify(context));
+  if (button) {
+    button.disabled = true;
+    button.textContent = "识别中...";
+  }
+  try {
+    const data = await api("/api/creators/intake/media/analyze", { method: "POST", body });
+    state.quickCreatorPendingAssets.push({ file, analysis: data.analysis, stored_object: data.stored_object });
+    renderQuickCreatorMediaAssets();
+    renderCreatorImageAnalysis(data, {
+      boxId: "#quickCreatorImageAnalysis",
+      applyBtnId: "#quickCreatorImageApplyBtn",
+      stateKey: "quickCreatorImageSuggestion",
+    });
+    toast("图片识别完成，可填入识别结果");
+  } catch (error) {
+    toast(error.message || "图片识别失败", true);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "识别图片";
+    }
+  }
 }
 
 function collectImportMappings() {
@@ -7772,15 +8018,30 @@ function bindEvents() {
   $("#downloadProposalBtn").addEventListener("click", downloadProposal);
   $("#closeCreatorModalBtn").addEventListener("click", closeCreatorModal);
   $("#deleteCreatorBtn")?.addEventListener("click", deleteActiveCreator);
-  $("#generateCreatorKitBtn")?.addEventListener("click", generateCreatorCommercialKit);
+  $("#generateCreatorKitBtn")?.addEventListener("click", () => generateCreatorCommercialKit($("#creatorEditForm")));
   $("#copyCreatorKitBtn")?.addEventListener("click", async () => {
     const output = $("#creatorCommercialKitOutput");
-    const text = output?.dataset.copyText || generateCreatorCommercialKit();
+    const text = output?.dataset.copyText || generateCreatorCommercialKit($("#creatorEditForm"));
     if (!text) return;
     await copyText(text);
     toast("商业名片刊例已复制");
   });
-  $("#downloadCreatorKitBtn")?.addEventListener("click", downloadCreatorCommercialKit);
+  $("#downloadCreatorKitBtn")?.addEventListener("click", () => downloadCreatorCommercialKit($("#creatorEditForm")));
+  $("#generateQuickCreatorKitBtn")?.addEventListener("click", () => generateCreatorCommercialKit($("#quickCreatorForm")));
+  $("#copyQuickCreatorKitBtn")?.addEventListener("click", async () => {
+    const output = $("#quickCreatorCommercialKitOutput");
+    const text = output?.dataset.copyText || generateCreatorCommercialKit($("#quickCreatorForm"));
+    if (!text) return;
+    await copyText(text);
+    toast("商业名片刊例已复制");
+  });
+  $("#downloadQuickCreatorKitBtn")?.addEventListener("click", () => downloadCreatorCommercialKit($("#quickCreatorForm")));
+  $("#runQuickCreatorAiBtn")?.addEventListener("click", () => runCreatorFormAiJudgment($("#quickCreatorForm")));
+  $("#runCreatorAiBtn")?.addEventListener("click", () => runCreatorFormAiJudgment($("#creatorEditForm")));
+  $("#quickCreatorImageAnalyzeBtn")?.addEventListener("click", analyzeQuickCreatorImage);
+  $("#quickCreatorImageApplyBtn")?.addEventListener("click", () =>
+    applyCreatorImageSuggestion($("#quickCreatorForm"), { stateKey: "quickCreatorImageSuggestion" }),
+  );
   $("#openQuickCreatorBtn")?.addEventListener("click", openQuickCreatorModal);
   $("#closeQuickCreatorBtn")?.addEventListener("click", closeQuickCreatorModal);
   $("#closeArtifactModalBtn")?.addEventListener("click", closeArtifactModal);
@@ -7828,11 +8089,19 @@ function bindEvents() {
       syncCreatorAvatarPreview(form, url);
     }
   });
+  $("#quickCreatorForm")?.addEventListener("input", (event) => {
+    const form = event.currentTarget;
+    if (form.id !== "quickCreatorForm") return;
+    if (["name", "platform", "bio", "follower_count", "listed_price"].includes(event.target.name)) {
+      refreshCreatorCommercialKitPreview(form);
+    }
+  });
   $("#quickCreatorForm")?.addEventListener("change", (event) => {
     const form = event.currentTarget;
     if (event.target.name === "platform") {
       const preserved = readCreatorRateValues(form).values;
       renderCreatorRateFields(form, $("#quickCreatorRateFields"), preserved);
+      refreshCreatorCommercialKitPreview(form);
       return;
     }
     if (event.target.name === "avatar_url_display") {
@@ -8357,7 +8626,9 @@ function bindEvents() {
     }
   });
 
-  $("#creatorImageApplyBtn")?.addEventListener("click", applyCreatorImageSuggestion);
+  $("#creatorImageApplyBtn")?.addEventListener("click", () =>
+    applyCreatorImageSuggestion($("#creatorEditForm"), { stateKey: "activeCreatorImageSuggestion" }),
+  );
 
   $("#creatorModal")?.addEventListener("click", async (event) => {
     const button = event.target.closest(".creator-evidence-review-btn");

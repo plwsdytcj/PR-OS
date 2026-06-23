@@ -139,6 +139,7 @@ from src.kol_intelligence.service import (
     kol_intelligence_snapshot,
     list_creator_evidence_tags,
     predict_kol_fit,
+    preview_creator_intelligence,
     review_evidence_tag,
     run_conversational_kol_graph,
 )
@@ -3503,6 +3504,69 @@ async def kol_intake(
         )
 
     raise HTTPException(status_code=400, detail="input_type must be auto, text, file, or image")
+
+
+@app.post("/api/creators/intake/preview")
+async def preview_creator_intake(payload: dict[str, Any]) -> dict[str, Any]:
+    name = str(payload.get("name", "")).strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    platform = str(payload.get("platform", "")).strip() or "未知"
+    platform_user_id = str(payload.get("platform_user_id", "")).strip()
+    homepage_url = str(payload.get("homepage_url", "")).strip()
+    creator_id = stable_id(platform, platform_user_id or homepage_url or name)
+    data = asdict(
+        CreatorProfile(
+            creator_id=creator_id,
+            name=name,
+            platform=platform,
+            data_sources=["manual:preview"],
+        )
+    )
+    data = _apply_creator_payload(data, payload)
+    profile = enrich_profiles([CreatorProfile(**data)])[0]
+    preview = preview_creator_intelligence(DB_PATH, profile)
+    return {
+        "creator": profile_payload(profile),
+        "evidence_tags": preview["evidence_tags"],
+        "suggested_patch": preview["suggested_patch"],
+    }
+
+
+@app.post("/api/creators/intake/media/analyze")
+async def analyze_intake_media(
+    file: UploadFile = File(...),
+    context: str = Form("{}"),
+) -> dict[str, Any]:
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="empty upload")
+    content_type = file.content_type or guess_content_type(file.filename or "upload")
+    if not content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="only image uploads are supported")
+    try:
+        ctx = json.loads(context) if context else {}
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="invalid context json") from exc
+    if not isinstance(ctx, dict):
+        ctx = {}
+    stored = _store_uploaded_object(content, file.filename or "creator-image", category="creator-media")
+    analysis = analyze_creator_image(
+        content,
+        content_type,
+        filename=file.filename or "",
+        context={
+            "name": ctx.get("name", ""),
+            "platform": ctx.get("platform", ""),
+            "homepage_url": ctx.get("homepage_url", ""),
+            "bio": ctx.get("bio", ""),
+        },
+    )
+    return {
+        "stored_object": stored,
+        "analysis": analysis,
+        "suggested_patch": analysis.get("extracted_fields", {}),
+    }
 
 
 @app.post("/api/import/manual")

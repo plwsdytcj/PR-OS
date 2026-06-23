@@ -1852,8 +1852,12 @@
             <section class="creator-profile-section">
               <div>
                 <h3 class="detail-heading">AI 判断</h3>
-                <p id="creatorAiSummary" class="creator-ai-summary">暂无 AI 摘要。</p>
+                <p class="meta">根据当前字段生成 AI 摘要与证据标签，并自动补充到标签卡。</p>
               </div>
+              <div class="button-row">
+                <button id="runCreatorAiBtn" class="secondary" type="button">运行 AI 判断</button>
+              </div>
+              <p id="creatorAiSummary" class="creator-ai-summary">暂无 AI 摘要。</p>
               <div>
                 <h3 class="detail-heading">证据标签审核</h3>
                 <div id="creatorEvidenceTags" class="creator-evidence-tags"></div>
@@ -2056,8 +2060,57 @@
                 <div class="tag-chip-list" data-tag-list></div>
                 <input data-tag-entry placeholder="输入风险后回车，如 拖稿、观点强、报价波动" />
               </div>
+              <div id="quickCreatorTags" class="tag-list creator-tag-summary"></div>
+            </section>
+
+            <section class="creator-profile-section">
+              <div class="creator-media-builder">
+                <div>
+                  <h3 class="detail-heading">证据资产</h3>
+                  <p class="meta">上传达人主页截图、报价单、案例截图或头像。系统会先识别字段，确认后再保存。</p>
+                </div>
+                <div class="field-row">
+                  <input id="quickCreatorImageInput" name="creator_image" type="file" accept="image/*" />
+                  <button id="quickCreatorImageAnalyzeBtn" class="secondary" type="button">识别图片</button>
+                </div>
+                <div id="quickCreatorImageAnalysis" class="image-analysis-output hidden"></div>
+                <button id="quickCreatorImageApplyBtn" class="secondary hidden" type="button">填入识别结果</button>
+              </div>
+              <div>
+                <h3 class="detail-heading">图片资产</h3>
+                <div id="quickCreatorMediaAssets" class="media-asset-list"></div>
+              </div>
+            </section>
+
+            <section class="creator-profile-section">
+              <div>
+                <h3 class="detail-heading">AI 判断</h3>
+                <p class="meta">根据当前录入生成 AI 摘要与证据标签，并自动补充到标签卡与其它字段。</p>
+              </div>
+              <div class="button-row">
+                <button id="runQuickCreatorAiBtn" class="secondary" type="button">运行 AI 判断</button>
+              </div>
+              <p id="quickCreatorAiSummary" class="creator-ai-summary">填写字段后点击「运行 AI 判断」，系统会生成摘要并自动补充标签。</p>
+              <div>
+                <h3 class="detail-heading">证据标签预览</h3>
+                <div id="quickCreatorEvidenceTags" class="creator-evidence-tags"></div>
+              </div>
             </section>
           </div>
+          <section class="creator-commercial-kit-section">
+            <div>
+              <h3 class="detail-heading">商业名片刊例</h3>
+              <p class="meta">根据当前已填信息实时预览商业化名片，可复制给微信或下载留档。</p>
+            </div>
+            <div class="button-row">
+              <button id="generateQuickCreatorKitBtn" class="primary" type="button">生成名片刊例</button>
+              <button id="copyQuickCreatorKitBtn" class="secondary" type="button">复制</button>
+              <button id="downloadQuickCreatorKitBtn" class="secondary" type="button">下载</button>
+            </div>
+            <div id="quickCreatorCommercialKitOutput" class="commercial-kit-output">
+              <div class="commercial-card-empty">填写信息后点击生成，会在这里出现卡片式商业名片刊例预览。</div>
+            </div>
+          </section>
           <div class="decision-actions">
             <button class="primary" type="submit">保存并打开档案</button>
             <button class="secondary" data-close-quick-creator="true" type="button">取消</button>
@@ -2140,6 +2193,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260624-9"></script>
+    <script src="/static/app.js?v=20260624-10"></script>
   </body>
 </html>
