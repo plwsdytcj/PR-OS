@@ -404,6 +404,15 @@ CREATE TABLE IF NOT EXISTS creator_commercial_profiles (
     PRIMARY KEY (tenant_id, creator_id)
 );
 
+CREATE TABLE IF NOT EXISTS creator_cases (
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    case_id TEXT NOT NULL,
+    creator_id TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, case_id)
+);
+
 CREATE TABLE IF NOT EXISTS distribution_briefs (
     tenant_id TEXT NOT NULL DEFAULT 'default',
     brief_id TEXT NOT NULL,
@@ -437,6 +446,7 @@ CREATE INDEX IF NOT EXISTS idx_clients_payload_gin ON clients USING GIN (payload
 CREATE INDEX IF NOT EXISTS idx_project_access_payload_gin ON project_access USING GIN (payload);
 CREATE INDEX IF NOT EXISTS idx_campaign_projects_payload_gin ON campaign_projects USING GIN (payload);
 CREATE INDEX IF NOT EXISTS idx_proposals_payload_gin ON proposals USING GIN (payload);
+CREATE INDEX IF NOT EXISTS idx_creator_cases_creator_id ON creator_cases (tenant_id, creator_id);
 CREATE INDEX IF NOT EXISTS idx_distribution_briefs_payload_gin ON distribution_briefs USING GIN (payload);
 CREATE INDEX IF NOT EXISTS idx_social_symbolic_reports_payload_gin ON social_symbolic_reports USING GIN (payload);
 CREATE INDEX IF NOT EXISTS idx_signifier_tags_payload_gin ON signifier_tags USING GIN (payload);

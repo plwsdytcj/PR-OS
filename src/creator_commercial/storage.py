@@ -262,3 +262,25 @@ def delete_case(path: Path, case_id: str) -> None:
     init_creator_commercial_db(path)
     with sqlite3.connect(path) as conn:
         conn.execute("DELETE FROM creator_cases WHERE case_id = ?", (case_id,))
+
+
+def delete_cases_for_creator(path: Path, creator_id: str) -> None:
+    if postgres_enabled():
+        import os
+
+        import psycopg
+
+        from src.storage.postgres_payload import ensure_schema, tenant_from_path
+
+        ensure_schema()
+        tenant = tenant_from_path(path)
+        with psycopg.connect(os.getenv("DATABASE_URL", "")) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM creator_cases WHERE tenant_id = %s AND creator_id = %s",
+                    (tenant, creator_id),
+                )
+        return
+    init_creator_commercial_db(path)
+    with sqlite3.connect(path) as conn:
+        conn.execute("DELETE FROM creator_cases WHERE creator_id = ?", (creator_id,))

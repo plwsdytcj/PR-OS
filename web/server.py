@@ -110,6 +110,7 @@ from src.creator_commercial.service import (
 )
 from src.creator_commercial.storage import (
     delete_case,
+    delete_cases_for_creator,
     init_creator_commercial_db,
     load_all_cases,
     load_all_commercial_profiles,
@@ -2830,6 +2831,7 @@ async def delete_creator(creator_id: str) -> dict[str, Any]:
     profile = load_profile(DB_PATH, creator_id)
     if profile is None:
         raise HTTPException(status_code=404, detail="creator not found")
+    delete_cases_for_creator(DB_PATH, creator_id)
     delete_profiles(DB_PATH, [creator_id])
     return {"deleted": True, "creator_id": creator_id, "name": profile.name}
 

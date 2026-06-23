@@ -140,4 +140,4 @@ def submission_id_for(invitation_id: str) -> str:
 
 
 def case_id_for(creator_id: str, brand_name: str) -> str:
-    return stable_id(creator_id, brand_name, now_iso(), prefix="case")
+    return stable_id(creator_id, brand_name, prefix="case")

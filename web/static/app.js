@@ -102,6 +102,7 @@ const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
 const PLATFORM_OPTIONS = [
   "抖音",
+  "快手",
   "小红书",
   "B站",
   "微博",
@@ -117,7 +118,6 @@ function normalizePlatformValue(value) {
   const text = String(value || "").trim();
   if (!text || text === "未知") return PLATFORM_OPTIONS[0];
   if (text === "公众号" || text === "微信") return "微信公众号";
-  if (text === "快手") return PLATFORM_OPTIONS[0];
   if (text.toLowerCase() === "twitter" || text === "Twitter" || text === "X") return "推特";
   return PLATFORM_OPTIONS.includes(text) ? text : text;
 }
