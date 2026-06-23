@@ -1096,6 +1096,105 @@ button {
   margin-left: auto;
 }
 
+.creator-tag-system {
+  display: grid;
+  gap: 14px;
+}
+
+.creator-tag-hub {
+  background: #fffdf4;
+  border: 3px solid #17120d;
+  border-radius: 3px;
+  box-shadow: 6px 6px 0 #17120d;
+  padding: 16px;
+}
+
+.creator-tag-hub-label {
+  display: block;
+  font-weight: 900;
+  margin-bottom: 10px;
+}
+
+.creator-tag-hub-entry-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-top: 10px;
+}
+
+.creator-tag-confirm-panel {
+  background: rgba(87, 224, 177, 0.08);
+  border: 2px dashed rgba(15, 118, 110, 0.35);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.creator-tag-confirm-panel.hidden {
+  display: none;
+}
+
+.creator-tag-confirm-head {
+  align-items: baseline;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.creator-tag-confirm-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.creator-tag-confirm-row {
+  align-items: flex-start;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+
+.creator-tag-confirm-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  padding-top: 6px;
+}
+
+.tag-chip-list.compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag-chip.small {
+  font-size: 12px;
+  min-height: 28px;
+  padding: 4px 8px;
+}
+
+.creator-narrative-field {
+  display: grid;
+  gap: 6px;
+}
+
+.creator-narrative-field input {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.creator-profile-narrative {
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.5;
+  margin: 6px 0;
+}
+
+.tag.narrative {
+  background: rgba(255, 210, 63, 0.28);
+  border-color: var(--spark);
+}
+
 .case-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));

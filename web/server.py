@@ -129,6 +129,7 @@ from src.intelligence.data_quality import find_duplicate_candidates, governance_
 from src.intelligence.matching import rank_creators
 from src.intelligence.creator_multimodal import analyze_creator_image
 from src.intelligence.profiling import enrich_profiles
+from src.intelligence.tag_classifier import classify_creator_tags
 from src.knowledge.service import create_knowledge_document, knowledge_document_detail, knowledge_stats, list_knowledge_documents, search_knowledge_base
 from src.knowledge.storage import init_knowledge_db
 from src.kol_intelligence.service import (
@@ -488,7 +489,10 @@ def profile_payload(profile: CreatorProfile) -> dict[str, Any]:
         "stage": profile.suitable_stages,
         "budget": profile.budget_fit_tags,
         "risk": profile.risk_tags,
+        "delivery": getattr(profile, "delivery_tags", []),
+        "personal": getattr(profile, "personal_tags", []),
     }
+    data["narrative_position"] = getattr(profile, "narrative_position", "")
     return data
 
 
@@ -526,6 +530,10 @@ CREATOR_PAYLOAD_FIELDS = {
     "suitable_stages",
     "budget_fit_tags",
     "risk_tags",
+    "personal_tags",
+    "delivery_tags",
+    "narrative_position",
+    "ai_summary",
 }
 
 
@@ -538,7 +546,7 @@ def _apply_creator_payload(data: dict[str, Any], payload: dict[str, Any]) -> dic
             data[field] = int(value or 0)
         elif field in {"engagement_rate", "delivery_rating", "communication_rating", "like_fan_ratio"}:
             data[field] = float(value or 0)
-        elif field in {"cooperation_brands", "cooperation_formats", "industry_fit_tags", "identity_tags", "content_capability_tags", "suitable_goals", "suitable_stages", "budget_fit_tags", "risk_tags"}:
+        elif field in {"cooperation_brands", "cooperation_formats", "industry_fit_tags", "identity_tags", "content_capability_tags", "suitable_goals", "suitable_stages", "budget_fit_tags", "risk_tags", "personal_tags", "delivery_tags"}:
             if isinstance(value, list):
                 data[field] = [str(item).strip() for item in value if str(item).strip()]
             else:
@@ -3505,6 +3513,25 @@ async def kol_intake(
         )
 
     raise HTTPException(status_code=400, detail="input_type must be auto, text, file, or image")
+
+
+@app.post("/api/creators/tags/classify")
+async def classify_creator_tags_api(payload: dict[str, Any]) -> dict[str, Any]:
+    tags = payload.get("tags") or payload.get("personal_tags") or []
+    existing = {
+        "industry_fit_tags": split_tags(payload.get("industry_fit_tags", [])),
+        "identity_tags": split_tags(payload.get("identity_tags", [])),
+        "content_capability_tags": split_tags(payload.get("content_capability_tags", [])),
+        "delivery_tags": split_tags(payload.get("delivery_tags", [])),
+        "risk_tags": split_tags(payload.get("risk_tags", [])),
+        "suitable_goals": split_tags(payload.get("suitable_goals", [])),
+        "cooperation_formats": split_tags(payload.get("cooperation_formats", [])),
+        "budget_fit_tags": split_tags(payload.get("budget_fit_tags", [])),
+        "cooperation_brands": split_tags(payload.get("cooperation_brands", [])),
+        "narrative_position": str(payload.get("narrative_position", "")).strip(),
+    }
+    result = classify_creator_tags(tags, platform=str(payload.get("platform", "")).strip(), existing=existing)
+    return {"classification": result}
 
 
 @app.post("/api/creators/intake/preview")

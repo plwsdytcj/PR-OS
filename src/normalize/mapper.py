@@ -48,6 +48,9 @@ FIELD_ALIASES = {
     "content_capability_tags": ["content_capability_tags", "内容能力标签", "内容能力", "内容标签", "标签"],
     "suitable_goals": ["suitable_goals", "适合目标", "叙事角色", "叙事标签", "传播角色", "适合叙事"],
     "risk_tags": ["risk_tags", "风险标签", "风险", "风险点"],
+    "personal_tags": ["personal_tags", "我的标签", "自由标签", "标签"],
+    "delivery_tags": ["delivery_tags", "履约标签", "履约", "履约评价"],
+    "narrative_position": ["narrative_position", "推荐定位", "叙事定位", "叙事角色"],
     "manual_notes": ["manual_notes", "备注", "媒介备注", "风险备注", "履约反馈"],
 }
 

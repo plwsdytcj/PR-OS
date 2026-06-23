@@ -64,6 +64,9 @@ class CreatorProfile:
     suitable_stages: list[str] = field(default_factory=list)
     budget_fit_tags: list[str] = field(default_factory=list)
     risk_tags: list[str] = field(default_factory=list)
+    personal_tags: list[str] = field(default_factory=list)
+    delivery_tags: list[str] = field(default_factory=list)
+    narrative_position: str = ""
     ai_summary: str = ""
     last_synced_at: str = field(default_factory=lambda: datetime.utcnow().isoformat(timespec="seconds"))
 

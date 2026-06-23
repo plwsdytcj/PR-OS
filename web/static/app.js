@@ -270,6 +270,40 @@ function bindCreatorDataCardEvents(form) {
 }
 
 const QUICK_CREATOR_RECENT_TAGS_KEY = "pr_os_quick_creator_recent_tags";
+const PERSONAL_TAG_RECENT_KEY = "pr_os_personal_tags_recent";
+
+const PERSONAL_TAG_PRESETS = [
+  "电影",
+  "公关",
+  "出稿慢",
+  "内容精品",
+  "科技互联网",
+  "AI产业",
+  "记者",
+  "影评人",
+  "科技博主",
+  "深度稿",
+  "观点强",
+  "争议大",
+  "知乎科技",
+  "配合度高",
+  "技术解释者",
+  "圈层扩散",
+  "网易",
+  "腾讯",
+];
+
+const TAG_CONFIRM_ROWS = [
+  { field: "industry_fit_tags", label: "领域" },
+  { field: "identity_tags", label: "身份" },
+  { field: "content_capability_tags", label: "内容能力" },
+  { field: "delivery_tags", label: "履约" },
+  { field: "risk_tags", label: "风险" },
+  { field: "suitable_goals", label: "叙事角色" },
+  { field: "cooperation_formats", label: "合作形式" },
+  { field: "budget_fit_tags", label: "商业判断" },
+  { field: "cooperation_brands", label: "服务品牌" },
+];
 
 const SYMBOLIC_EDITOR_FIELDS = {
   creator: [
@@ -1628,7 +1662,9 @@ function renderKolIntakeResult(data) {
             ...(creator.industry_fit_tags || []),
             ...(creator.content_capability_tags || []),
             ...(creator.suitable_goals || []),
-            ...(creator.risk_tags || []),
+            ...(creator.delivery_tags || []),
+      ...(creator.personal_tags || []),
+      ...(creator.risk_tags || []),
           ].slice(0, 10);
           return `
             <article class="creator-card kol-intake-card">
@@ -2104,6 +2140,8 @@ function creatorMatchesFilter(creator, criteria) {
       ...(creator.identity_tags || []),
       ...(creator.content_capability_tags || []),
       ...(creator.suitable_goals || []),
+      ...(creator.delivery_tags || []),
+      ...(creator.personal_tags || []),
       ...(creator.risk_tags || []),
     ]
       .join(" ")
@@ -2171,6 +2209,8 @@ function renderCreators() {
       ...(creator.identity_tags || []),
       ...(creator.content_capability_tags || []),
       ...(creator.suitable_goals || []),
+      ...(creator.delivery_tags || []),
+      ...(creator.personal_tags || []),
       ...(creator.risk_tags || []),
     ]
       .join(" ")
@@ -2198,6 +2238,12 @@ function renderCreatorProfileHeader(creator) {
   }
   if (name) name.textContent = creator.name || "未命名达人";
   if (kicker) kicker.textContent = `${creator.platform || "未知平台"} · ${creator.creator_id || ""}`;
+  const narrativeNode = $("#creatorProfileNarrative");
+  if (narrativeNode) {
+    const narrative = String(creator.narrative_position || "").trim();
+    narrativeNode.textContent = narrative;
+    narrativeNode.classList.toggle("hidden", !narrative);
+  }
   if (summary) summary.textContent = creator.ai_summary || creator.bio || "暂无 AI 摘要，补充主页、案例、截图或内部备注后可重新画像。";
   if (links) {
     links.innerHTML = [
@@ -6482,6 +6528,348 @@ function loadRecentQuickCreatorTags(fieldName) {
   }
 }
 
+function rememberPersonalTags(tags) {
+  if (!tags.length) return;
+  try {
+    const recent = loadPersonalTagsRecent();
+    const merged = [...tags, ...recent].filter((tag, index, list) => list.indexOf(tag) === index).slice(0, 24);
+    localStorage.setItem(PERSONAL_TAG_RECENT_KEY, JSON.stringify(merged));
+  } catch {
+    /* ignore */
+  }
+}
+
+function loadPersonalTagsRecent() {
+  try {
+    const recent = JSON.parse(localStorage.getItem(PERSONAL_TAG_RECENT_KEY) || "[]");
+    return Array.isArray(recent) ? recent : [];
+  } catch {
+    return [];
+  }
+}
+
+function getPersonalTagsFromHub(form) {
+  const hidden = form.elements.personal_tags;
+  return normalizeQuickTagValue(hidden?.value || "");
+}
+
+function setPersonalTagsOnHub(form, tags) {
+  if (form.elements.personal_tags) form.elements.personal_tags.value = tags.join("，");
+  renderPersonalTagHub(form);
+}
+
+function renderPersonalTagHub(form) {
+  const hub = form.querySelector("[data-creator-tag-hub]");
+  if (!hub) return;
+  const list = hub.querySelector("[data-personal-tag-list]");
+  const wrap = hub.querySelector("[data-personal-tag-suggestion-wrap]");
+  if (!list) return;
+  const tags = getPersonalTagsFromHub(form);
+  const selected = new Set(tags);
+  list.innerHTML = tags.length
+    ? tags
+        .map(
+          (tag) => `
+        <button class="tag-chip" data-personal-tag-remove="${escapeHTML(tag)}" type="button">
+          <span>${escapeHTML(tag)}</span><strong>×</strong>
+        </button>
+      `,
+        )
+        .join("")
+    : '<span class="meta">还没有标签，输入后回车添加</span>';
+  if (wrap) {
+    const suggestions = [...loadPersonalTagsRecent(), ...PERSONAL_TAG_PRESETS]
+      .filter((tag, index, items) => items.indexOf(tag) === index)
+      .filter((tag) => !selected.has(tag))
+      .slice(0, 16)
+      .map((tag) => `<button class="tag-suggestion" data-personal-tag-add="${escapeHTML(tag)}" type="button">${escapeHTML(tag)}</button>`)
+      .join("");
+    wrap.innerHTML = suggestions || '<span class="meta">暂无建议</span>';
+  }
+}
+
+function addPersonalTagToHub(form, value) {
+  const incoming = normalizeQuickTagValue(value);
+  if (!incoming.length) return;
+  const tags = getPersonalTagsFromHub(form);
+  incoming.forEach((tag) => {
+    if (!tags.includes(tag)) tags.push(tag);
+  });
+  setPersonalTagsOnHub(form, tags);
+  rememberPersonalTags(incoming);
+  form.dataset.tagClassifyDirty = "true";
+  scheduleCreatorTagClassify(form);
+}
+
+function removePersonalTagFromHub(form, value) {
+  const tags = getPersonalTagsFromHub(form).filter((tag) => tag !== value);
+  setPersonalTagsOnHub(form, tags);
+  form.dataset.tagClassifyDirty = "true";
+  scheduleCreatorTagClassify(form);
+}
+
+function collectStructuredTagsFromForm(form) {
+  const read = (name) => normalizeQuickTagValue(form.elements[name]?.value || "");
+  return {
+    industry_fit_tags: read("industry_fit_tags"),
+    identity_tags: read("identity_tags"),
+    content_capability_tags: read("content_capability_tags"),
+    delivery_tags: read("delivery_tags"),
+    risk_tags: read("risk_tags"),
+    suitable_goals: read("suitable_goals"),
+    cooperation_formats: read("cooperation_formats"),
+    budget_fit_tags: read("budget_fit_tags"),
+    cooperation_brands: read("cooperation_brands"),
+    narrative_position: String(form.elements.narrative_position?.value || form.elements.narrative_position_display?.value || "").trim(),
+  };
+}
+
+function applyTagClassificationToForm(form, classification = {}) {
+  const assign = (name, values) => {
+    const field = form.elements[name];
+    if (!field || !Array.isArray(values)) return;
+    field.value = values.join("，");
+  };
+  assign("industry_fit_tags", classification.industry_fit_tags);
+  assign("identity_tags", classification.identity_tags);
+  assign("content_capability_tags", classification.content_capability_tags);
+  assign("delivery_tags", classification.delivery_tags);
+  assign("risk_tags", classification.risk_tags);
+  assign("suitable_goals", classification.suitable_goals);
+  assign("cooperation_formats", classification.cooperation_formats);
+  assign("budget_fit_tags", classification.budget_fit_tags);
+  assign("cooperation_brands", classification.cooperation_brands);
+  if (Array.isArray(classification.personal_tags) && classification.personal_tags.length) {
+    assign("personal_tags", classification.personal_tags);
+  }
+  const narrative = String(classification.narrative_position || "").trim();
+  if (narrative) {
+    if (form.elements.narrative_position) form.elements.narrative_position.value = narrative;
+    if (form.elements.narrative_position_display) form.elements.narrative_position_display.value = narrative;
+  }
+  if (classification.platform_hint && form.elements.platform) {
+    const current = normalizePlatformValue(form.elements.platform.value);
+    const hinted = normalizePlatformValue(classification.platform_hint);
+    if (!current || current === PLATFORM_OPTIONS[0]) {
+      form.elements.platform.value = hinted;
+      renderPlatformSelectOptions(form.elements.platform, hinted);
+      syncCreatorDataCardPanel(form);
+    }
+  }
+  const brands = classification.cooperation_brands || [];
+  if (brands.length && form.elements.cooperation_brands) {
+    const existing = normalizeQuickTagValue(form.elements.cooperation_brands.value);
+    form.elements.cooperation_brands.value = [...new Set([...existing, ...brands])].join("，");
+    const brandsEditor = form.querySelector('[data-tag-field="cooperation_brands"]');
+    if (brandsEditor) renderCreatorTagEditor(brandsEditor);
+  }
+  renderPersonalTagHub(form);
+  renderTagConfirmPanel(form, classification);
+  renderCreatorTagSummaryFromForm(form);
+  form.dataset.tagClassifyDirty = "false";
+}
+
+function renderTagConfirmPanel(form, classification = null) {
+  const panel = form.querySelector("[data-tag-confirm-panel]");
+  const grid = form.querySelector("[data-tag-confirm-grid]");
+  if (!panel || !grid) return;
+  const data = classification || {
+    ...collectStructuredTagsFromForm(form),
+    personal_tags: getPersonalTagsFromHub(form),
+  };
+  grid.innerHTML = TAG_CONFIRM_ROWS.map(({ field, label }) => {
+    const tags = Array.isArray(data[field]) ? data[field] : normalizeQuickTagValue(data[field]);
+    const chips = tags.length
+      ? tags
+          .map(
+            (tag) => `
+          <button class="tag-chip small" data-classified-tag-remove="${escapeHTML(field)}" data-classified-tag-value="${escapeHTML(tag)}" type="button">
+            <span>${escapeHTML(tag)}</span><strong>×</strong>
+          </button>
+        `,
+          )
+          .join("")
+      : '<span class="meta">—</span>';
+    return `
+      <div class="creator-tag-confirm-row" data-classified-field="${escapeHTML(field)}">
+        <span class="creator-tag-confirm-label">${escapeHTML(label)}</span>
+        <div class="tag-chip-list compact">${chips}</div>
+      </div>
+    `;
+  }).join("");
+  panel.classList.toggle("hidden", !getPersonalTagsFromHub(form).length && !TAG_CONFIRM_ROWS.some(({ field }) => (data[field] || []).length));
+}
+
+function renderCreatorTagSummaryFromForm(form) {
+  const containerId = form.id === "quickCreatorForm" ? "#quickCreatorTags" : "#creatorTags";
+  const structured = collectStructuredTagsFromForm(form);
+  renderCreatorTagSummary(
+    {
+      personal_tags: getPersonalTagsFromHub(form),
+      industry_fit_tags: structured.industry_fit_tags,
+      identity_tags: structured.identity_tags,
+      content_capability_tags: structured.content_capability_tags,
+      delivery_tags: structured.delivery_tags,
+      risk_tags: structured.risk_tags,
+      suitable_goals: structured.suitable_goals,
+      budget_fit_tags: structured.budget_fit_tags,
+      narrative_position: structured.narrative_position,
+    },
+    containerId,
+  );
+}
+
+let creatorTagClassifyTimer = null;
+
+function scheduleCreatorTagClassify(form) {
+  if (!form) return;
+  clearTimeout(creatorTagClassifyTimer);
+  creatorTagClassifyTimer = setTimeout(() => {
+    classifyCreatorTagsFromForm(form, { silent: true }).catch(() => {});
+  }, 450);
+}
+
+async function classifyCreatorTagsFromForm(form, { silent = false } = {}) {
+  if (!form?.querySelector("[data-creator-tag-hub]")) return null;
+  const tags = getPersonalTagsFromHub(form);
+  const structured = collectStructuredTagsFromForm(form);
+  const payload = {
+    tags,
+    platform: form.elements.platform?.value || "",
+    ...structured,
+  };
+  try {
+    const data = await api("/api/creators/tags/classify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    applyTagClassificationToForm(form, data.classification || {});
+    if (!silent) toast("标签已整理");
+    return data.classification;
+  } catch (error) {
+    if (!silent) toast(error.message || "标签整理失败", true);
+    throw error;
+  }
+}
+
+async function ensureCreatorTagsClassified(form) {
+  if (!form?.querySelector("[data-creator-tag-hub]")) return;
+  if (form.dataset.tagClassifyDirty === "true" || getPersonalTagsFromHub(form).length) {
+    await classifyCreatorTagsFromForm(form, { silent: true });
+  }
+  const narrativeDisplay = form.elements.narrative_position_display?.value?.trim();
+  if (narrativeDisplay && form.elements.narrative_position) {
+    form.elements.narrative_position.value = narrativeDisplay;
+  }
+}
+
+function hydrateCreatorTagHubFromCreator(form, creator = {}) {
+  if (!form?.querySelector("[data-creator-tag-hub]")) return;
+  const personal = [
+    ...(creator.personal_tags || []),
+    ...(creator.industry_fit_tags || []),
+    ...(creator.identity_tags || []),
+    ...(creator.content_capability_tags || []),
+    ...(creator.delivery_tags || []),
+    ...(creator.risk_tags || []),
+    ...(creator.suitable_goals || []),
+  ].filter((tag, index, list) => list.indexOf(tag) === index);
+  if (form.elements.personal_tags) {
+    form.elements.personal_tags.value = (creator.personal_tags?.length ? creator.personal_tags : personal).join("，");
+  }
+  const assignList = (name, values = []) => {
+    if (form.elements[name]) form.elements[name].value = (values || []).join("，");
+  };
+  assignList("industry_fit_tags", creator.industry_fit_tags);
+  assignList("identity_tags", creator.identity_tags);
+  assignList("content_capability_tags", creator.content_capability_tags);
+  assignList("delivery_tags", creator.delivery_tags);
+  assignList("risk_tags", creator.risk_tags);
+  assignList("suitable_goals", creator.suitable_goals);
+  assignList("budget_fit_tags", creator.budget_fit_tags);
+  const narrative = creator.narrative_position || "";
+  if (form.elements.narrative_position) form.elements.narrative_position.value = narrative;
+  if (form.elements.narrative_position_display) form.elements.narrative_position_display.value = narrative;
+  renderPersonalTagHub(form);
+  renderTagConfirmPanel(form);
+  renderCreatorTagSummaryFromForm(form);
+  form.dataset.tagClassifyDirty = "false";
+}
+
+function bindCreatorTagHubEvents(root) {
+  if (!root || root.dataset.tagHubBound === "true") return;
+  root.dataset.tagHubBound = "true";
+  root.addEventListener("click", (event) => {
+    const form = event.target.closest("form");
+    if (!form) return;
+    const addButton = event.target.closest("[data-personal-tag-add]");
+    if (addButton) {
+      addPersonalTagToHub(form, addButton.dataset.personalTagAdd);
+      return;
+    }
+    const removeButton = event.target.closest("[data-personal-tag-remove]");
+    if (removeButton) {
+      removePersonalTagFromHub(form, removeButton.dataset.personalTagRemove);
+      return;
+    }
+    const classifyButton = event.target.closest("[data-classify-tags-btn]");
+    if (classifyButton) {
+      classifyCreatorTagsFromForm(form).catch(() => {});
+      return;
+    }
+    const classifiedRemove = event.target.closest("[data-classified-tag-remove]");
+    if (classifiedRemove) {
+      const field = classifiedRemove.dataset.classifiedTagRemove;
+      const value = classifiedRemove.dataset.classifiedTagValue;
+      const hidden = form.elements[field];
+      if (hidden) {
+        hidden.value = normalizeQuickTagValue(hidden.value)
+          .filter((tag) => tag !== value)
+          .join("，");
+        renderTagConfirmPanel(form);
+        renderCreatorTagSummaryFromForm(form);
+      }
+    }
+  });
+  root.addEventListener("keydown", (event) => {
+    const entry = event.target.closest("[data-personal-tag-entry]");
+    if (!entry) return;
+    const form = entry.closest("form");
+    if (!form) return;
+    if (event.key === "Enter" || event.key === "," || event.key === "，") {
+      event.preventDefault();
+      addPersonalTagToHub(form, entry.value);
+      entry.value = "";
+    }
+  });
+  root.addEventListener(
+    "blur",
+    (event) => {
+      const entry = event.target.closest("[data-personal-tag-entry]");
+      if (!entry?.value.trim()) return;
+      const form = entry.closest("form");
+      if (!form) return;
+      addPersonalTagToHub(form, entry.value);
+      entry.value = "";
+    },
+    true,
+  );
+  root.addEventListener("input", (event) => {
+    const field = event.target.closest("[name='narrative_position_display']");
+    if (!field) return;
+    const form = field.closest("form");
+    if (form?.elements.narrative_position) form.elements.narrative_position.value = field.value;
+  });
+}
+
+function initCreatorTagHub(form) {
+  if (!form?.querySelector("[data-creator-tag-hub]")) return;
+  renderPersonalTagHub(form);
+  renderTagConfirmPanel(form);
+  renderCreatorTagSummaryFromForm(form);
+}
+
 function closeQuickCreatorModal() {
   $("#quickCreatorModal")?.classList.add("hidden");
 }
@@ -6503,6 +6891,7 @@ function initCreatorTagEditors(form) {
     hidden.value = normalizeQuickTagValue(hidden.value).join("，");
     renderCreatorTagEditor(editor);
   });
+  initCreatorTagHub(form);
 }
 
 function initQuickCreatorTagEditors(form) {
@@ -6685,6 +7074,10 @@ function imageFileToDataUrl(file, maxSize = 360) {
 
 function prepareCreatorFormPayload(form) {
   initCreatorTagEditors(form);
+  const narrativeDisplay = form.elements.narrative_position_display?.value?.trim();
+  if (narrativeDisplay && form.elements.narrative_position) {
+    form.elements.narrative_position.value = narrativeDisplay;
+  }
   syncCreatorDataCardPanel(form);
   const rateContainer = form.id === "quickCreatorForm" ? $("#quickCreatorRateFields") : $("#creatorEditRateFields");
   if (rateContainer && !rateContainer.querySelector(".platform-rate-row") && form.elements.platform) {
@@ -6722,6 +7115,7 @@ function prepareQuickCreatorPayload(form) {
 }
 
 async function saveManualCreator(form, { openDetail = false } = {}) {
+  await ensureCreatorTagsClassified(form);
   const payload = creatorFormPayload(form);
   const data = await api("/api/import/manual", {
     method: "POST",
@@ -6791,11 +7185,7 @@ function renderCreatorModal(creator) {
   fields.contact.value = creator.contact || "";
   fields.cooperation_brands.value = (creator.cooperation_brands || []).join("，");
   fields.cooperation_formats.value = (creator.cooperation_formats || []).join("，");
-  fields.industry_fit_tags.value = (creator.industry_fit_tags || []).join("，");
-  fields.identity_tags.value = (creator.identity_tags || []).join("，");
-  fields.content_capability_tags.value = (creator.content_capability_tags || []).join("，");
-  fields.suitable_goals.value = (creator.suitable_goals || []).join("，");
-  fields.risk_tags.value = (creator.risk_tags || []).join("，");
+  hydrateCreatorTagHubFromCreator(form, creator);
   fields.bio.value = creator.bio || "";
   fields.manual_notes.value = remarkTagsFromNotes(creator.manual_notes || "").join("，");
   renderCreatorRateFields(form, $("#creatorEditRateFields"), rateValuesFromNotes(creator.manual_notes || "", creator.platform));
@@ -6810,7 +7200,6 @@ function renderCreatorModal(creator) {
   $("#creatorDataSources").innerHTML = (creator.data_sources || [])
     .map((source) => `<span class="tag">${escapeHTML(source)}</span>`)
     .join("") || '<span class="meta">暂无来源</span>';
-  renderCreatorTagSummary(creator, "#creatorTags");
   renderCreatorEvidenceTags(state.activeCreatorEvidenceTags);
   syncCreatorDataCardPanel(form);
 }
@@ -6819,17 +7208,19 @@ function renderCreatorTagSummary(creator, containerId = "#creatorTags") {
   const node = $(containerId);
   if (!node) return;
   const tags = [
+    ...(creator.personal_tags || []),
     ...(creator.industry_fit_tags || []),
     ...(creator.identity_tags || []),
     ...(creator.content_capability_tags || []),
+    ...(creator.delivery_tags || []),
     ...(creator.suitable_goals || []),
     ...(creator.suitable_stages || []),
     ...(creator.budget_fit_tags || []),
     ...(creator.risk_tags || []),
   ];
-  node.innerHTML = tags.length
-    ? tags.map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`).join("")
-    : '<span class="meta">暂无标签</span>';
+  const narrative = creator.narrative_position ? `<span class="tag narrative">${escapeHTML(creator.narrative_position)}</span>` : "";
+  const tagHtml = tags.map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`).join("");
+  node.innerHTML = narrative || tagHtml ? `${narrative}${tagHtml}` : '<span class="meta">暂无标签</span>';
 }
 
 function renderCreatorEvidenceTags(tags = state.activeCreatorEvidenceTags, options = {}) {
@@ -6947,12 +7338,20 @@ function applyCreatorIntakePatch(form, patch) {
     "suitable_stages",
     "budget_fit_tags",
     "risk_tags",
+    "delivery_tags",
+    "personal_tags",
     "manual_notes",
   ]);
   Object.entries(patch).forEach(([key, value]) => {
     if (key === "ai_summary") return;
     const field = form.elements[key];
     if (!field) return;
+    if (key === "narrative_position") {
+      const text = String(value || "").trim();
+      field.value = text;
+      if (form.elements.narrative_position_display) form.elements.narrative_position_display.value = text;
+      return;
+    }
     if (listFields.has(key)) {
       const existing = normalizeQuickTagValue(field.value);
       const incoming = Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : normalizeQuickTagValue(value);
@@ -6968,6 +7367,9 @@ function applyCreatorIntakePatch(form, patch) {
   const rateContainer = form.id === "quickCreatorForm" ? $("#quickCreatorRateFields") : $("#creatorEditRateFields");
   renderCreatorRateFields(form, rateContainer, rateValuesFromNotes(form.elements.manual_notes?.value || "", form.elements.platform?.value));
   initCreatorTagEditors(form);
+  if (form.querySelector("[data-creator-tag-hub]")) {
+    scheduleCreatorTagClassify(form);
+  }
   if (form.id === "quickCreatorForm") {
     renderCreatorTagSummary(getCreatorDraftFromForm(form), "#quickCreatorTags");
     refreshCreatorCommercialKitPreview(form);
@@ -7001,6 +7403,10 @@ function creatorFormPayload(form) {
     content_capability_tags: fields.content_capability_tags.value,
     suitable_goals: fields.suitable_goals.value,
     risk_tags: fields.risk_tags.value,
+    personal_tags: fields.personal_tags?.value || "",
+    delivery_tags: fields.delivery_tags?.value || "",
+    budget_fit_tags: fields.budget_fit_tags?.value || "",
+    narrative_position: fields.narrative_position?.value || fields.narrative_position_display?.value || "",
     bio: fields.bio.value,
     manual_notes: fields.manual_notes.value,
   };
@@ -7022,6 +7428,10 @@ function getCreatorDraftFromForm(form) {
     content_capability_tags: splitInputList(payload.content_capability_tags),
     suitable_goals: splitInputList(payload.suitable_goals),
     risk_tags: splitInputList(payload.risk_tags),
+    delivery_tags: splitInputList(payload.delivery_tags),
+    personal_tags: splitInputList(payload.personal_tags),
+    budget_fit_tags: splitInputList(payload.budget_fit_tags),
+    narrative_position: payload.narrative_position || "",
   };
 }
 
@@ -8271,6 +8681,7 @@ function bindEvents() {
   });
   bindCreatorTagEditorEvents($("#quickCreatorModal"));
   bindCreatorTagEditorEvents($("#creatorModal"));
+  bindCreatorTagHubEvents(document);
   bindCreatorDataCardEvents($("#creatorEditForm"));
   bindCreatorDataCardEvents($("#quickCreatorForm"));
   $("#quickCreatorModal")?.addEventListener("click", (event) => {
@@ -8817,6 +9228,7 @@ function bindEvents() {
     event.preventDefault();
     const form = event.currentTarget;
     const creatorId = form.elements.creator_id.value;
+    await ensureCreatorTagsClassified(form);
     const payload = creatorFormPayload(form);
     const data = await api(`/api/creators/${creatorId}`, {
       method: "PATCH",
