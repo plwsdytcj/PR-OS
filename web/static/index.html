@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260624-8" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260624-9" />
   </head>
   <body>
     <div class="app-shell">
@@ -1941,82 +1941,122 @@
           <div>
             <span class="card-kicker">new kol profile</span>
             <h2>新增达人</h2>
-            <p>先录入最小可用资料，保存后自动进入达人库，后续可以补头像、截图和证据标签。</p>
+            <p>一次录入完整达人档案，字段与达人详情页完全打通，保存后可直接用于 Brief 匹配和推荐。</p>
           </div>
           <button id="closeQuickCreatorBtn" class="icon-btn" type="button" title="关闭">×</button>
         </div>
         <form id="quickCreatorForm" class="form quick-creator-form">
-          <div class="field-row">
-            <input name="name" placeholder="达人名称" required />
-            <select name="platform" data-platform-select></select>
-          </div>
-          <input name="homepage_url" placeholder="主页链接 / 账号链接" />
-          <div class="field-row">
-            <input name="platform_user_id" placeholder="平台 ID / 账号 ID" />
-            <input name="contact" placeholder="联系方式（微信 / 邮箱 / 手机）" />
-          </div>
-          <div class="avatar-upload-row">
-            <input name="avatar_url" type="hidden" />
-            <label class="avatar-upload" for="quickCreatorAvatarInput">
-              <span id="quickCreatorAvatarPreview" class="avatar-upload-preview">头像</span>
-              <strong>上传头像图片</strong>
-              <small>支持微信截图或本地图片</small>
-            </label>
-            <input id="quickCreatorAvatarInput" name="avatar_file" class="sr-only" type="file" accept="image/*" />
-          </div>
-          <div class="field-row">
-            <input name="follower_count" type="number" min="0" placeholder="粉丝数" />
-          </div>
-          <div id="quickCreatorRateFields" class="platform-rate-grid" aria-live="polite"></div>
-          <input name="listed_price" type="hidden" />
-          <input name="cooperation_brands" type="hidden" />
-          <div class="tag-editor" data-tag-field="cooperation_brands">
-            <label>服务品牌</label>
-            <div class="tag-chip-list" data-tag-list></div>
-            <input data-tag-entry placeholder="输入品牌后回车，如 腾讯、华为、美团" />
-          </div>
-          <input name="industry_fit_tags" type="hidden" />
-          <div class="tag-editor" data-tag-field="industry_fit_tags">
-            <label>领域</label>
-            <div class="tag-chip-list" data-tag-list></div>
-            <input data-tag-entry placeholder="输入领域后回车，如 科技互联网、电影、AI产业" />
-          </div>
-          <input name="identity_tags" type="hidden" />
-          <div class="tag-editor" data-tag-field="identity_tags">
-            <label>身份</label>
-            <div class="tag-chip-list" data-tag-list></div>
-            <input data-tag-entry placeholder="输入身份后回车，如 记者、影评人、行业专家" />
-          </div>
-          <input name="content_capability_tags" type="hidden" />
-          <div class="tag-editor" data-tag-field="content_capability_tags">
-            <label>内容能力</label>
-            <div class="tag-chip-list" data-tag-list></div>
-            <input data-tag-entry placeholder="输入能力后回车，如 深度稿、观点文、专访" />
-          </div>
-          <input name="cooperation_formats" type="hidden" />
-          <div class="tag-editor" data-tag-field="cooperation_formats">
-            <label>擅长</label>
-            <div class="tag-chip-list" data-tag-list></div>
-            <input data-tag-entry placeholder="输入擅长后回车，如 约稿、深度、影评" />
-          </div>
-          <textarea name="bio" placeholder="简介 / 内容方向"></textarea>
-          <input name="suitable_goals" type="hidden" />
-          <div class="tag-editor" data-tag-field="suitable_goals">
-            <label>叙事角色</label>
-            <div class="tag-chip-list" data-tag-list></div>
-            <input data-tag-entry placeholder="输入叙事后回车，如 技术解释者、圈层扩散、信任背书" />
-          </div>
-          <input name="risk_tags" type="hidden" />
-          <div class="tag-editor" data-tag-field="risk_tags">
-            <label>风险</label>
-            <div class="tag-chip-list" data-tag-list></div>
-            <input data-tag-entry placeholder="输入风险后回车，如 拖稿、观点强、报价波动" />
-          </div>
-          <input name="manual_notes" type="hidden" />
-          <div class="tag-editor" data-tag-field="manual_notes">
-            <label>履约备注</label>
-            <div class="tag-chip-list" data-tag-list></div>
-            <input data-tag-entry placeholder="输入备注后回车，如 出稿慢、内容精品" />
+          <div class="creator-profile-sections">
+            <section class="creator-profile-section">
+              <div>
+                <h3 class="detail-heading">身份卡</h3>
+                <p class="meta">头像、账号、主页和联系方式，用来识别达人和回溯来源。</p>
+              </div>
+              <div class="field-row">
+                <input name="name" placeholder="达人名称" required />
+                <select name="platform" data-platform-select></select>
+              </div>
+              <div class="field-row">
+                <input name="platform_user_id" placeholder="平台 ID" />
+                <input name="homepage_url" placeholder="主页链接 / 账号链接" />
+              </div>
+              <input name="avatar_url" type="hidden" />
+              <div class="avatar-upload-row">
+                <label class="avatar-upload" for="quickCreatorAvatarInput">
+                  <span id="quickCreatorAvatarPreview" class="avatar-upload-preview">头像</span>
+                  <strong>上传头像图片</strong>
+                  <small>支持微信截图或本地图片</small>
+                </label>
+                <input id="quickCreatorAvatarInput" name="avatar_file" class="sr-only" type="file" accept="image/*" />
+              </div>
+              <input name="avatar_url_display" placeholder="头像 / 封面图片 URL（可选）" />
+              <div class="field-row">
+                <input name="region" placeholder="地区" />
+                <input name="contact" placeholder="联系方式" />
+              </div>
+              <textarea name="bio" placeholder="简介 / 内容方向"></textarea>
+            </section>
+
+            <section class="creator-profile-section">
+              <div>
+                <h3 class="detail-heading">数据卡</h3>
+                <p class="meta">粉丝、互动和内容表现，用来做预算和平台适配判断。</p>
+              </div>
+              <div class="field-row">
+                <input name="follower_count" type="number" min="0" placeholder="粉丝数" />
+                <input name="total_likes" type="number" min="0" placeholder="总获赞 / 收藏" />
+                <input name="engagement_rate" type="number" min="0" step="0.0001" placeholder="互动率，如 0.035" />
+              </div>
+              <div class="field-row">
+                <input name="avg_likes" type="number" min="0" placeholder="平均点赞" />
+                <input name="avg_comments" type="number" min="0" placeholder="平均评论" />
+                <input name="avg_shares" type="number" min="0" placeholder="平均分享" />
+              </div>
+            </section>
+
+            <section class="creator-profile-section">
+              <div>
+                <h3 class="detail-heading">商业卡</h3>
+                <p class="meta">报价、合作历史和内部履约判断，用来决定能不能推荐给甲方。</p>
+              </div>
+              <div id="quickCreatorRateFields" class="platform-rate-grid" aria-live="polite"></div>
+              <input name="listed_price" type="hidden" />
+              <input name="cooperation_brands" type="hidden" />
+              <div class="tag-editor" data-tag-field="cooperation_brands">
+                <label>合作品牌</label>
+                <div class="tag-chip-list" data-tag-list></div>
+                <input data-tag-entry placeholder="输入品牌后回车，如 理想、特斯拉" />
+              </div>
+              <input name="cooperation_formats" type="hidden" />
+              <div class="tag-editor" data-tag-field="cooperation_formats">
+                <label>合作形式</label>
+                <div class="tag-chip-list" data-tag-list></div>
+                <input data-tag-entry placeholder="输入形式后回车，如 种草、真实体验" />
+              </div>
+              <input name="manual_notes" type="hidden" />
+              <div class="tag-editor" data-tag-field="manual_notes">
+                <label>履约备注</label>
+                <div class="tag-chip-list" data-tag-list></div>
+                <input data-tag-entry placeholder="输入备注后回车，如 适合小红书搜索沉淀" />
+              </div>
+            </section>
+
+            <section class="creator-profile-section">
+              <div>
+                <h3 class="detail-heading">标签卡</h3>
+                <p class="meta">这些标签会进入 Brief 匹配、KOL 决策图谱和风险推演。</p>
+              </div>
+              <input name="industry_fit_tags" type="hidden" />
+              <div class="tag-editor" data-tag-field="industry_fit_tags">
+                <label>行业标签</label>
+                <div class="tag-chip-list" data-tag-list></div>
+                <input data-tag-entry placeholder="输入行业后回车，如 文旅出行、汽车、生活方式" />
+              </div>
+              <input name="identity_tags" type="hidden" />
+              <div class="tag-editor" data-tag-field="identity_tags">
+                <label>身份标签</label>
+                <div class="tag-chip-list" data-tag-list></div>
+                <input data-tag-entry placeholder="输入身份后回车，如 记者、影评人、行业专家" />
+              </div>
+              <input name="content_capability_tags" type="hidden" />
+              <div class="tag-editor" data-tag-field="content_capability_tags">
+                <label>内容能力标签</label>
+                <div class="tag-chip-list" data-tag-list></div>
+                <input data-tag-entry placeholder="输入能力后回车，如 场景体验、测评、种草" />
+              </div>
+              <input name="suitable_goals" type="hidden" />
+              <div class="tag-editor" data-tag-field="suitable_goals">
+                <label>适合目标</label>
+                <div class="tag-chip-list" data-tag-list></div>
+                <input data-tag-entry placeholder="输入目标后回车，如 品牌背书、搜索沉淀、用户教育" />
+              </div>
+              <input name="risk_tags" type="hidden" />
+              <div class="tag-editor" data-tag-field="risk_tags">
+                <label>风险标签</label>
+                <div class="tag-chip-list" data-tag-list></div>
+                <input data-tag-entry placeholder="输入风险后回车，如 拖稿、观点强、报价波动" />
+              </div>
+            </section>
           </div>
           <div class="decision-actions">
             <button class="primary" type="submit">保存并打开档案</button>
@@ -2100,6 +2140,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260624-8"></script>
+    <script src="/static/app.js?v=20260624-9"></script>
   </body>
 </html>

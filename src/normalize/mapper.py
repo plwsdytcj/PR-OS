@@ -32,6 +32,8 @@ FIELD_ALIASES = {
     "bio": ["bio", "简介", "账号简介", "达人简介", "账号简介", "内容方向", "description"],
     "region": ["region", "地区", "城市", "所在地"],
     "follower_count": ["fans", "followers", "follower_count", "粉丝", "粉丝数", "粉丝量", "粉丝量（W）", "粉丝量(W)", "粉丝数(万)", "粉丝（W）", "粉丝量 （W）"],
+    "total_likes": ["total_likes", "总获赞", "总收藏", "获赞", "收藏"],
+    "engagement_rate": ["engagement_rate", "互动率", "engagement"],
     "avg_likes": ["avg_likes", "平均点赞", "赞均", "点赞均值"],
     "avg_comments": ["avg_comments", "平均评论", "评均", "评论均值"],
     "avg_shares": ["avg_shares", "平均分享", "分享均值"],
@@ -83,6 +85,18 @@ def _parse_int(value: Any) -> int:
         multiplier = 1_000
     nums = re.findall(r"\d+(?:\.\d+)?", text)
     return int(float(nums[0]) * multiplier) if nums else 0
+
+
+def _parse_float(value: Any) -> float:
+    if value is None or pd.isna(value):
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip().replace(",", "").replace("%", "")
+    if not text or text.lower() == "nan":
+        return 0.0
+    nums = re.findall(r"\d+(?:\.\d+)?", text)
+    return float(nums[0]) if nums else 0.0
 
 
 def _clean_text(value: Any) -> str:
@@ -166,6 +180,8 @@ def map_dataframe_to_profiles(df: pd.DataFrame, source: str, column_mapping: dic
                 bio=str(row.get(columns["bio"], "")).strip() if columns.get("bio") else "",
                 region=str(row.get(columns["region"], "")).strip() if columns.get("region") else "",
                 follower_count=_parse_int(row.get(columns["follower_count"])) if columns.get("follower_count") else 0,
+                total_likes=_parse_int(row.get(columns["total_likes"])) if columns.get("total_likes") else 0,
+                engagement_rate=_parse_float(row.get(columns["engagement_rate"])) if columns.get("engagement_rate") else 0.0,
                 avg_likes=_parse_int(row.get(columns["avg_likes"])) if columns.get("avg_likes") else 0,
                 avg_comments=_parse_int(row.get(columns["avg_comments"])) if columns.get("avg_comments") else 0,
                 avg_shares=_parse_int(row.get(columns["avg_shares"])) if columns.get("avg_shares") else 0,

@@ -808,6 +808,12 @@ textarea:focus {
   margin: 18px 18px 20px;
 }
 
+.creator-tag-summary {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+
 .creator-commercial-kit-section {
   border: 2px solid rgba(15, 118, 110, 0.16);
   border-radius: 8px;
@@ -5772,7 +5778,7 @@ body.client-session #clientPortal {
 }
 
 .quick-creator-modal {
-  max-width: min(760px, calc(100vw - 36px));
+  max-width: min(1120px, calc(100vw - 36px));
 }
 
 .quick-creator-form {

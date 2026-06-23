@@ -6362,14 +6362,42 @@ function removeQuickCreatorTag(editor, value) {
   removeCreatorTag(editor, value);
 }
 
+function bindCreatorTagEditorEvents(root) {
+  if (!root || root.dataset.tagEditorsBound === "true") return;
+  root.dataset.tagEditorsBound = "true";
+  root.addEventListener("click", (event) => {
+    const addButton = event.target.closest("[data-tag-add]");
+    if (addButton) {
+      addCreatorTag(addButton.closest(".tag-editor"), addButton.dataset.tagAdd);
+      return;
+    }
+    const removeButton = event.target.closest("[data-tag-remove]");
+    if (removeButton) {
+      removeCreatorTag(removeButton.closest(".tag-editor"), removeButton.dataset.tagRemove);
+    }
+  });
+  root.addEventListener("keydown", (event) => {
+    const entry = event.target.closest("[data-tag-entry]");
+    if (!entry) return;
+    if (event.key === "Enter" || event.key === "," || event.key === "，") {
+      event.preventDefault();
+      addCreatorTag(entry.closest(".tag-editor"), entry.value);
+    }
+  });
+  root.addEventListener(
+    "blur",
+    (event) => {
+      const entry = event.target.closest("[data-tag-entry]");
+      if (entry?.value.trim()) addCreatorTag(entry.closest(".tag-editor"), entry.value);
+    },
+    true,
+  );
+}
+
 function resetQuickCreatorAvatar(form) {
   if (form.elements.avatar_url) form.elements.avatar_url.value = "";
-  const preview = $("#quickCreatorAvatarPreview");
-  if (preview) {
-    preview.textContent = "头像";
-    preview.style.backgroundImage = "";
-    preview.classList.remove("has-image");
-  }
+  if (form.elements.avatar_url_display) form.elements.avatar_url_display.value = "";
+  syncCreatorAvatarPreview(form, "", "quickCreatorAvatarPreview");
 }
 
 async function setCreatorFormAvatar(file, form, previewId) {
@@ -6466,12 +6494,7 @@ function prepareQuickCreatorPayload(form) {
 }
 
 async function saveManualCreator(form, { openDetail = false } = {}) {
-  if (form.id === "quickCreatorForm") prepareQuickCreatorPayload(form);
-  const payload = formToObject(form);
-  delete payload.avatar_file;
-  Object.keys(payload).forEach((key) => {
-    if (key.startsWith("rate_")) delete payload[key];
-  });
+  const payload = creatorFormPayload(form);
   const data = await api("/api/import/manual", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -7767,36 +7790,11 @@ function bindEvents() {
   $("#creatorModal").addEventListener("click", (event) => {
     if (event.target.dataset.closeModal) closeCreatorModal();
   });
+  bindCreatorTagEditorEvents($("#quickCreatorModal"));
+  bindCreatorTagEditorEvents($("#creatorModal"));
   $("#quickCreatorModal")?.addEventListener("click", (event) => {
     if (event.target.dataset.closeQuickCreator) closeQuickCreatorModal();
   });
-  $("#quickCreatorModal")?.addEventListener("click", (event) => {
-    const addButton = event.target.closest("[data-tag-add]");
-    if (addButton) {
-      addQuickCreatorTag(addButton.closest(".tag-editor"), addButton.dataset.tagAdd);
-      return;
-    }
-    const removeButton = event.target.closest("[data-tag-remove]");
-    if (removeButton) {
-      removeQuickCreatorTag(removeButton.closest(".tag-editor"), removeButton.dataset.tagRemove);
-    }
-  });
-  $("#quickCreatorModal")?.addEventListener("keydown", (event) => {
-    const entry = event.target.closest("[data-tag-entry]");
-    if (!entry) return;
-    if (event.key === "Enter" || event.key === "," || event.key === "，") {
-      event.preventDefault();
-      addQuickCreatorTag(entry.closest(".tag-editor"), entry.value);
-    }
-  });
-  $("#quickCreatorModal")?.addEventListener(
-    "blur",
-    (event) => {
-      const entry = event.target.closest("[data-tag-entry]");
-      if (entry?.value.trim()) addQuickCreatorTag(entry.closest(".tag-editor"), entry.value);
-    },
-    true,
-  );
   $("#quickCreatorAvatarInput")?.addEventListener("change", async (event) => {
     const file = event.currentTarget.files?.[0];
     if (!file) return;
@@ -7807,11 +7805,40 @@ function bindEvents() {
       toast(error.message || "头像上传失败", true);
     }
   });
-  $("#quickCreatorForm")?.addEventListener("change", (event) => {
+  $("#creatorEditAvatarInput")?.addEventListener("change", async (event) => {
+    const file = event.currentTarget.files?.[0];
+    if (!file) return;
+    try {
+      await setCreatorFormAvatar(file, $("#creatorEditForm"), "creatorEditAvatarPreview");
+      toast("头像已更新，保存后生效");
+    } catch (error) {
+      toast(error.message || "头像上传失败", true);
+    }
+  });
+  $("#creatorEditForm")?.addEventListener("change", (event) => {
+    const form = event.currentTarget;
     if (event.target.name === "platform") {
-      const form = event.currentTarget;
-      const preserved = readQuickCreatorRateValues(form).values;
-      renderQuickCreatorRateFields(form, preserved);
+      const preserved = readCreatorRateValues(form).values;
+      renderCreatorRateFields(form, $("#creatorEditRateFields"), preserved);
+      return;
+    }
+    if (event.target.name === "avatar_url_display") {
+      const url = String(event.target.value || "").trim();
+      form.elements.avatar_url.value = url;
+      syncCreatorAvatarPreview(form, url);
+    }
+  });
+  $("#quickCreatorForm")?.addEventListener("change", (event) => {
+    const form = event.currentTarget;
+    if (event.target.name === "platform") {
+      const preserved = readCreatorRateValues(form).values;
+      renderCreatorRateFields(form, $("#quickCreatorRateFields"), preserved);
+      return;
+    }
+    if (event.target.name === "avatar_url_display") {
+      const url = String(event.target.value || "").trim();
+      form.elements.avatar_url.value = url;
+      syncCreatorAvatarPreview(form, url, "quickCreatorAvatarPreview");
     }
   });
   $("#quickCreatorForm")?.addEventListener("submit", async (event) => {
@@ -8290,10 +8317,11 @@ function bindEvents() {
     event.preventDefault();
     const form = event.currentTarget;
     const creatorId = form.elements.creator_id.value;
+    const payload = creatorFormPayload(form);
     const data = await api(`/api/creators/${creatorId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(creatorFormPayload(form)),
+      body: JSON.stringify(payload),
     });
     renderCreatorModal(data.creator);
     await reloadAll();

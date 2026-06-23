@@ -491,6 +491,61 @@ def profile_payload(profile: CreatorProfile) -> dict[str, Any]:
     return data
 
 
+CREATOR_PAYLOAD_FIELDS = {
+    "name",
+    "platform",
+    "platform_user_id",
+    "homepage_url",
+    "avatar_url",
+    "bio",
+    "region",
+    "follower_count",
+    "following_count",
+    "total_likes",
+    "recent_posts_count",
+    "avg_likes",
+    "avg_comments",
+    "avg_shares",
+    "avg_collections",
+    "engagement_rate",
+    "listed_price",
+    "price_source",
+    "contact",
+    "cooperation_brands",
+    "cooperation_formats",
+    "delivery_rating",
+    "communication_rating",
+    "negotiation_space",
+    "manual_notes",
+    "industry_fit_tags",
+    "identity_tags",
+    "content_capability_tags",
+    "suitable_goals",
+    "suitable_stages",
+    "budget_fit_tags",
+    "risk_tags",
+}
+
+
+def _apply_creator_payload(data: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    for field in CREATOR_PAYLOAD_FIELDS:
+        if field not in payload:
+            continue
+        value = payload[field]
+        if field in {"follower_count", "following_count", "total_likes", "recent_posts_count", "avg_likes", "avg_comments", "avg_shares", "avg_collections", "listed_price"}:
+            data[field] = int(value or 0)
+        elif field in {"engagement_rate", "delivery_rating", "communication_rating"}:
+            data[field] = float(value or 0)
+        elif field in {"cooperation_brands", "cooperation_formats", "industry_fit_tags", "identity_tags", "content_capability_tags", "suitable_goals", "suitable_stages", "budget_fit_tags", "risk_tags"}:
+            if isinstance(value, list):
+                data[field] = [str(item).strip() for item in value if str(item).strip()]
+            else:
+                data[field] = split_tags(value)
+        else:
+            data[field] = str(value or "").strip()
+    return data
+
+
 IMPORT_FIELDS = [
     ("name", "达人名", True),
     ("platform", "平台", False),
@@ -2771,56 +2826,8 @@ async def update_creator(creator_id: str, payload: dict[str, Any]) -> dict[str, 
     profile = load_profile(DB_PATH, creator_id)
     if profile is None:
         raise HTTPException(status_code=404, detail="creator not found")
-    editable_fields = {
-        "name",
-        "platform",
-        "platform_user_id",
-        "homepage_url",
-        "avatar_url",
-        "bio",
-        "region",
-        "follower_count",
-        "following_count",
-        "total_likes",
-        "recent_posts_count",
-        "avg_likes",
-        "avg_comments",
-        "avg_shares",
-        "avg_collections",
-        "engagement_rate",
-        "listed_price",
-        "price_source",
-        "contact",
-        "cooperation_brands",
-        "cooperation_formats",
-        "delivery_rating",
-        "communication_rating",
-        "negotiation_space",
-        "manual_notes",
-        "industry_fit_tags",
-        "identity_tags",
-        "content_capability_tags",
-        "suitable_goals",
-        "suitable_stages",
-        "budget_fit_tags",
-        "risk_tags",
-    }
     data = asdict(profile)
-    for field in editable_fields:
-        if field not in payload:
-            continue
-        value = payload[field]
-        if field in {"follower_count", "following_count", "total_likes", "recent_posts_count", "avg_likes", "avg_comments", "avg_shares", "avg_collections", "listed_price"}:
-            data[field] = int(value or 0)
-        elif field in {"engagement_rate", "delivery_rating", "communication_rating"}:
-            data[field] = float(value or 0)
-        elif field in {"cooperation_brands", "cooperation_formats", "industry_fit_tags", "identity_tags", "content_capability_tags", "suitable_goals", "suitable_stages", "budget_fit_tags", "risk_tags"}:
-            if isinstance(value, list):
-                data[field] = [str(item).strip() for item in value if str(item).strip()]
-            else:
-                data[field] = [item.strip() for item in str(value or "").replace("，", ",").split(",") if item.strip()]
-        else:
-            data[field] = str(value or "").strip()
+    data = _apply_creator_payload(data, payload)
     updated = enrich_profiles([CreatorProfile(**data)])[0]
     save_profile(DB_PATH, updated)
     return {"creator": profile_payload(updated)}
@@ -3503,8 +3510,20 @@ async def import_manual(payload: dict[str, Any]) -> dict[str, Any]:
     name = str(payload.get("name", "")).strip()
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
-    df = pd.DataFrame([payload])
-    profiles = enrich_profiles(map_dataframe_to_profiles(df, source="manual"))
+    platform = str(payload.get("platform", "")).strip() or "未知"
+    platform_user_id = str(payload.get("platform_user_id", "")).strip()
+    homepage_url = str(payload.get("homepage_url", "")).strip()
+    creator_id = stable_id(platform, platform_user_id or homepage_url or name)
+    data = asdict(
+        CreatorProfile(
+            creator_id=creator_id,
+            name=name,
+            platform=platform,
+            data_sources=["manual"],
+        )
+    )
+    data = _apply_creator_payload(data, payload)
+    profiles = enrich_profiles([CreatorProfile(**data)])
     upsert_profiles(DB_PATH, profiles)
     return {"imported": len(profiles), "creator": profile_payload(profiles[0])}
 
