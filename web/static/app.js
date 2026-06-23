@@ -6355,7 +6355,11 @@ function removeCreatorTag(editor, value) {
   hidden.value = normalizeQuickTagValue(hidden.value)
     .filter((tag) => tag !== value)
     .join("，");
-  renderQuickTagEditor(editor);
+  renderCreatorTagEditor(editor);
+}
+
+function removeQuickCreatorTag(editor, value) {
+  removeCreatorTag(editor, value);
 }
 
 function resetQuickCreatorAvatar(form) {
@@ -6368,16 +6372,38 @@ function resetQuickCreatorAvatar(form) {
   }
 }
 
-async function setQuickCreatorAvatar(file, form) {
+async function setCreatorFormAvatar(file, form, previewId) {
   if (!file || !form?.elements.avatar_url) return;
   const dataUrl = await imageFileToDataUrl(file, 360);
   form.elements.avatar_url.value = dataUrl;
-  const preview = $("#quickCreatorAvatarPreview");
+  const preview = document.getElementById(previewId) || $("#quickCreatorAvatarPreview");
   if (preview) {
     preview.textContent = "";
     preview.style.backgroundImage = `url("${dataUrl}")`;
     preview.classList.add("has-image");
   }
+  const display = form.elements.avatar_url_display;
+  if (display) display.value = dataUrl;
+}
+
+async function setQuickCreatorAvatar(file, form) {
+  await setCreatorFormAvatar(file, form, "quickCreatorAvatarPreview");
+}
+
+function syncCreatorAvatarPreview(form, avatarUrl, previewId = "creatorEditAvatarPreview") {
+  const preview = document.getElementById(previewId);
+  if (!preview) return;
+  if (avatarUrl) {
+    preview.textContent = "";
+    preview.style.backgroundImage = `url("${avatarUrl}")`;
+    preview.classList.add("has-image");
+  } else {
+    preview.textContent = "头像";
+    preview.style.backgroundImage = "";
+    preview.classList.remove("has-image");
+  }
+  const display = form.elements.avatar_url_display;
+  if (display) display.value = avatarUrl || "";
 }
 
 function imageFileToDataUrl(file, maxSize = 360) {
@@ -6402,9 +6428,13 @@ function imageFileToDataUrl(file, maxSize = 360) {
   });
 }
 
-function prepareQuickCreatorPayload(form) {
-  initQuickCreatorTagEditors(form);
-  const { fields, values } = readQuickCreatorRateValues(form);
+function prepareCreatorFormPayload(form) {
+  initCreatorTagEditors(form);
+  const rateContainer = form.id === "quickCreatorForm" ? $("#quickCreatorRateFields") : $("#creatorEditRateFields");
+  if (rateContainer && !rateContainer.querySelector(".platform-rate-row") && form.elements.platform) {
+    renderCreatorRateFields(form, rateContainer, rateValuesFromNotes(form.elements.manual_notes?.value || "", form.elements.platform.value));
+  }
+  const { fields, values } = readCreatorRateValues(form);
   const notesEditor = form.querySelector('[data-tag-field="manual_notes"]');
   const formatsEditor = form.querySelector('[data-tag-field="cooperation_formats"]');
   const noteTags = normalizeQuickTagValue(form.elements.manual_notes?.value).filter((tag) => !isRateNoteTag(tag));
@@ -6427,8 +6457,12 @@ function prepareQuickCreatorPayload(form) {
   if (form.elements.listed_price) form.elements.listed_price.value = String(primaryPrice || "");
   if (form.elements.manual_notes) form.elements.manual_notes.value = [...noteTags, ...rateTags].join("，");
   if (form.elements.cooperation_formats) form.elements.cooperation_formats.value = [...cooperationFormats].join("，");
-  if (notesEditor) renderQuickTagEditor(notesEditor);
-  if (formatsEditor) renderQuickTagEditor(formatsEditor);
+  if (notesEditor) renderCreatorTagEditor(notesEditor);
+  if (formatsEditor) renderCreatorTagEditor(formatsEditor);
+}
+
+function prepareQuickCreatorPayload(form) {
+  prepareCreatorFormPayload(form);
 }
 
 async function saveManualCreator(form, { openDetail = false } = {}) {
@@ -6462,9 +6496,11 @@ function renderCreatorModal(creator) {
   fields.creator_id.value = creator.creator_id;
   fields.name.value = creator.name || "";
   fields.platform.value = normalizePlatformValue(creator.platform || PLATFORM_OPTIONS[0]);
+  renderPlatformSelectOptions(fields.platform, fields.platform.value);
   fields.platform_user_id.value = creator.platform_user_id || "";
   fields.homepage_url.value = creator.homepage_url || "";
   fields.avatar_url.value = creator.avatar_url || "";
+  syncCreatorAvatarPreview(form, creator.avatar_url || "");
   fields.follower_count.value = creator.follower_count || "";
   fields.listed_price.value = creator.listed_price || "";
   fields.total_likes.value = creator.total_likes || "";
@@ -6482,7 +6518,9 @@ function renderCreatorModal(creator) {
   fields.suitable_goals.value = (creator.suitable_goals || []).join("，");
   fields.risk_tags.value = (creator.risk_tags || []).join("，");
   fields.bio.value = creator.bio || "";
-  fields.manual_notes.value = creator.manual_notes || "";
+  fields.manual_notes.value = remarkTagsFromNotes(creator.manual_notes || "").join("，");
+  renderCreatorRateFields(form, $("#creatorEditRateFields"), rateValuesFromNotes(creator.manual_notes || "", creator.platform));
+  initCreatorTagEditors(form);
   const kitOutput = $("#creatorCommercialKitOutput");
   if (kitOutput) {
     kitOutput.innerHTML = '<div class="commercial-card-empty">点击生成后，会在这里出现卡片式商业名片刊例。</div>';
@@ -6604,17 +6642,22 @@ function applyCreatorImageSuggestion() {
     if (!field) return;
     field.value = Array.isArray(value) ? value.join("，") : value;
   });
+  if (form.elements.avatar_url?.value) syncCreatorAvatarPreview(form, form.elements.avatar_url.value);
+  renderCreatorRateFields(form, $("#creatorEditRateFields"), rateValuesFromNotes(form.elements.manual_notes?.value || "", form.elements.platform?.value));
+  initCreatorTagEditors(form);
   toast("已填入识别结果，确认后点击保存");
 }
 
 function creatorFormPayload(form) {
+  prepareCreatorFormPayload(form);
   const fields = form.elements;
+  const avatarUrl = fields.avatar_url_display?.value?.trim() || fields.avatar_url.value;
   return {
     name: fields.name.value,
     platform: fields.platform.value,
     platform_user_id: fields.platform_user_id.value,
     homepage_url: fields.homepage_url.value,
-    avatar_url: fields.avatar_url.value,
+    avatar_url: avatarUrl,
     follower_count: Number(fields.follower_count.value || 0),
     listed_price: Number(fields.listed_price.value || 0),
     total_likes: Number(fields.total_likes.value || 0),
