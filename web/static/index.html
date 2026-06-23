@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260624-9" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260624-12" />
   </head>
   <body>
     <div class="app-shell">
@@ -25,6 +25,7 @@
             <button class="nav-item" data-view="projectRun">新建 PR 需求</button>
             <button class="nav-item" data-view="history">Campaign 资产</button>
             <button class="nav-item" data-view="creators">达人库</button>
+            <button class="nav-item" data-view="creatorFilter">筛选达人工具</button>
             <button class="nav-item" data-view="caseLibrary">案例库</button>
             <button class="nav-item" data-view="agentWorkspace">AI Agent</button>
           </div>
@@ -649,6 +650,68 @@
               </div>
             </div>
             <div id="creatorList" class="creator-grid"></div>
+          </div>
+        </section>
+
+        <section id="creatorFilter" class="view">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>筛选达人工具</h2>
+                <p>按平台、粉丝、赞粉比、互动率、报价等条件筛选达人库，快速拉出备选名单。</p>
+              </div>
+            </div>
+            <form id="creatorFilterForm" class="form creator-filter-form">
+              <div class="field-row three">
+                <label>平台
+                  <select id="creatorFilterPlatform" name="platform">
+                    <option value="">全部平台</option>
+                  </select>
+                </label>
+                <label>排序
+                  <select id="creatorFilterSort" name="sort">
+                    <option value="follower_desc">粉丝数 ↓</option>
+                    <option value="follower_asc">粉丝数 ↑</option>
+                    <option value="like_fan_ratio_desc">赞粉比 ↓</option>
+                    <option value="like_fan_ratio_asc">赞粉比 ↑</option>
+                    <option value="engagement_desc">互动率 ↓</option>
+                    <option value="price_asc">报价 ↑</option>
+                    <option value="price_desc">报价 ↓</option>
+                  </select>
+                </label>
+                <label>关键词
+                  <input id="creatorFilterQuery" name="query" placeholder="名称、标签、摘要" />
+                </label>
+              </div>
+              <div class="field-row three">
+                <label>粉丝 ≥
+                  <input id="creatorFilterMinFollowers" name="min_followers" type="number" min="0" placeholder="如 10000" />
+                </label>
+                <label>粉丝 ≤
+                  <input id="creatorFilterMaxFollowers" name="max_followers" type="number" min="0" placeholder="如 500000" />
+                </label>
+                <label>报价 ≤
+                  <input id="creatorFilterMaxPrice" name="max_price" type="number" min="0" placeholder="刊例上限" />
+                </label>
+              </div>
+              <div class="field-row three">
+                <label>赞粉比 ≥
+                  <input id="creatorFilterMinLikeFanRatio" name="min_like_fan_ratio" type="number" min="0" step="0.001" placeholder="如 10" />
+                </label>
+                <label>赞粉比 ≤
+                  <input id="creatorFilterMaxLikeFanRatio" name="max_like_fan_ratio" type="number" min="0" step="0.001" placeholder="如 50" />
+                </label>
+                <label>互动率 ≥ (%)
+                  <input id="creatorFilterMinEngagement" name="min_engagement" type="number" min="0" step="0.1" placeholder="如 3" />
+                </label>
+              </div>
+              <div class="button-row creator-filter-actions">
+                <button type="submit" class="primary">应用筛选</button>
+                <button type="button" id="creatorFilterResetBtn" class="secondary">重置</button>
+                <span class="meta" id="creatorFilterSummary">—</span>
+              </div>
+            </form>
+            <div id="creatorFilterList" class="creator-grid"></div>
           </div>
         </section>
 
@@ -2209,6 +2272,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260624-11"></script>
+    <script src="/static/app.js?v=20260624-12"></script>
   </body>
 </html>

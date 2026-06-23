@@ -136,6 +136,17 @@ function renderPlatformSelectOptions(select, selected = "") {
 
 function initPlatformSelects() {
   $$('select[name="platform"]').forEach((select) => renderPlatformSelectOptions(select, select.value));
+  initCreatorFilterForm();
+}
+
+function initCreatorFilterForm() {
+  const select = $("#creatorFilterPlatform");
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML =
+    '<option value="">全部平台</option>' +
+    PLATFORM_OPTIONS.map((platform) => `<option value="${escapeHTML(platform)}">${escapeHTML(platform)}</option>`).join("");
+  if (current) select.value = current;
 }
 
 const QUICK_CREATOR_TAG_PRESETS = {
@@ -298,6 +309,7 @@ const VIEW_TITLES = {
   projectRun: ["新建 PR 项目", "输入一个需求，自动跑完 brief、符号图谱、KOL 选择和 Campaign Room。"],
   ingest: ["数据接入", "把 Excel、链接和 API 变成统一 KOL Profile。"],
   creators: ["达人库", "扫描、修正和调用你的私有 KOL 资产。"],
+  creatorFilter: ["筛选达人工具", "按粉丝、赞粉比、互动率、报价等条件快速拉出备选达人名单。"],
   caseLibrary: ["案例库", "沉淀达人历史合作案例，供 Brief 匹配和方案背书引用。"],
   kolIntelligence: ["KOL 决策图谱", "证据标签、图谱演进和 KOL 预测推荐。"],
   governance: ["数据治理", "清理重复、补齐字段、提高推荐可信度。"],
@@ -324,6 +336,7 @@ const NAV_SHORT_LABELS = {
   history: "史",
   kolIntelligence: "KOL",
   creators: "人",
+  creatorFilter: "筛",
   caseLibrary: "案",
   agentWorkspace: "AI",
   brief: "B",
@@ -866,6 +879,7 @@ async function loadCreators() {
   const data = await api("/api/creators");
   state.creators = data.items;
   renderCreators();
+  if (state.activeView === "creatorFilter") renderCreatorFilterResults();
   renderCreatorOptions();
   renderCaseCreatorOptions();
 }
@@ -1993,6 +2007,157 @@ function renderCreatorOptions() {
   }
 }
 
+function creatorCardHtml(creator) {
+  const tags = [
+    ...(creator.industry_fit_tags || []),
+    ...(creator.identity_tags || []),
+    ...(creator.content_capability_tags || []),
+    ...(creator.suitable_goals || []),
+  ]
+    .slice(0, 6)
+    .map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`)
+    .join("");
+  const risks = (creator.risk_tags || [])
+    .slice(0, 2)
+    .map((tag) => `<span class="tag risk">${escapeHTML(tag)}</span>`)
+    .join("");
+  const initials = creator.name ? creator.name.slice(0, 2).toUpperCase() : "KOL";
+  const avatar = creator.avatar_url
+    ? `<img src="${escapeHTML(creator.avatar_url)}" alt="${escapeHTML(creator.name || "达人")}头像" loading="lazy" />`
+    : `<span>${escapeHTML(initials)}</span>`;
+  const ratioMetric = supportsLikeFanRatio(creator.platform)
+    ? `<div><span>赞粉比</span><strong>${creator.like_fan_ratio ? formatLikeFanRatio(Number(creator.like_fan_ratio)) : "-"}</strong></div>`
+    : `<div><span>互动率</span><strong>${creator.engagement_rate ? `${Math.round(Number(creator.engagement_rate) * 1000) / 10}%` : "-"}</strong></div>`;
+  return `
+    <article class="creator-card kol-profile-card">
+      <div class="kol-card-top">
+        <div class="kol-card-avatar">${avatar}</div>
+        <div>
+          <div class="card-kicker">${escapeHTML(creator.platform || "未知平台")}</div>
+          <h3>${escapeHTML(creator.name || "未命名达人")}</h3>
+          <div class="meta">${escapeHTML(creator.region || creator.platform_user_id || "未补充地区 / ID")}</div>
+        </div>
+        <button class="secondary open-creator-btn" data-creator-id="${escapeHTML(creator.creator_id)}" type="button">详情</button>
+      </div>
+      <div class="kol-card-metrics">
+        <div><span>粉丝</span><strong>${fmtNumber(creator.follower_count)}</strong></div>
+        <div><span>报价</span><strong>${fmtNumber(creator.listed_price)}</strong></div>
+        ${ratioMetric}
+      </div>
+      <p>${escapeHTML(creator.ai_summary || creator.bio || "待生成画像")}</p>
+      <div class="kol-card-links">
+        ${creator.homepage_url ? `<a class="text-btn" href="${escapeHTML(creator.homepage_url)}" target="_blank" rel="noreferrer">主页</a>` : '<span class="meta">未填主页</span>'}
+        ${creator.contact ? `<span class="meta">${escapeHTML(creator.contact)}</span>` : ""}
+      </div>
+      <div class="tag-list">${tags}${risks}</div>
+    </article>
+  `;
+}
+
+function parseCreatorFilterNumber(value) {
+  if (value === "" || value == null) return null;
+  const number = Number(value);
+  return Number.isNaN(number) ? null : number;
+}
+
+function getCreatorFilterCriteria() {
+  const form = $("#creatorFilterForm");
+  if (!form) return { sort: "follower_desc", query: "", platform: "" };
+  return {
+    platform: String(form.elements.platform?.value || "").trim(),
+    query: String(form.elements.query?.value || "")
+      .toLowerCase()
+      .trim(),
+    minFollowers: parseCreatorFilterNumber(form.elements.min_followers?.value),
+    maxFollowers: parseCreatorFilterNumber(form.elements.max_followers?.value),
+    maxPrice: parseCreatorFilterNumber(form.elements.max_price?.value),
+    minLikeFanRatio: parseCreatorFilterNumber(form.elements.min_like_fan_ratio?.value),
+    maxLikeFanRatio: parseCreatorFilterNumber(form.elements.max_like_fan_ratio?.value),
+    minEngagement: parseCreatorFilterNumber(form.elements.min_engagement?.value),
+    sort: form.elements.sort?.value || "follower_desc",
+  };
+}
+
+function creatorMatchesFilter(creator, criteria) {
+  if (criteria.platform && normalizePlatformValue(creator.platform) !== criteria.platform) return false;
+  const followers = Number(creator.follower_count || 0);
+  if (criteria.minFollowers != null && followers < criteria.minFollowers) return false;
+  if (criteria.maxFollowers != null && followers > criteria.maxFollowers) return false;
+  const price = Number(creator.listed_price || 0);
+  if (criteria.maxPrice != null && price > criteria.maxPrice) return false;
+  if (criteria.minLikeFanRatio != null || criteria.maxLikeFanRatio != null) {
+    const ratio = Number(creator.like_fan_ratio);
+    if (criteria.minLikeFanRatio != null && (Number.isNaN(ratio) || ratio < criteria.minLikeFanRatio)) return false;
+    if (criteria.maxLikeFanRatio != null && (Number.isNaN(ratio) || ratio > criteria.maxLikeFanRatio)) return false;
+  }
+  if (criteria.minEngagement != null) {
+    const rate = Number(creator.engagement_rate || 0) * 100;
+    if (rate < criteria.minEngagement) return false;
+  }
+  if (criteria.query) {
+    const text = [
+      creator.name,
+      creator.platform,
+      creator.ai_summary,
+      creator.bio,
+      ...(creator.industry_fit_tags || []),
+      ...(creator.identity_tags || []),
+      ...(creator.content_capability_tags || []),
+      ...(creator.suitable_goals || []),
+      ...(creator.risk_tags || []),
+    ]
+      .join(" ")
+      .toLowerCase();
+    if (!text.includes(criteria.query)) return false;
+  }
+  return true;
+}
+
+function sortFilteredCreators(items, sortKey) {
+  const sorted = [...items];
+  const num = (value) => Number(value) || 0;
+  switch (sortKey) {
+    case "follower_asc":
+      return sorted.sort((a, b) => num(a.follower_count) - num(b.follower_count));
+    case "like_fan_ratio_desc":
+      return sorted.sort((a, b) => num(b.like_fan_ratio) - num(a.like_fan_ratio));
+    case "like_fan_ratio_asc":
+      return sorted.sort((a, b) => num(a.like_fan_ratio) - num(b.like_fan_ratio));
+    case "engagement_desc":
+      return sorted.sort((a, b) => num(b.engagement_rate) - num(a.engagement_rate));
+    case "price_asc":
+      return sorted.sort((a, b) => num(a.listed_price) - num(b.listed_price));
+    case "price_desc":
+      return sorted.sort((a, b) => num(b.listed_price) - num(a.listed_price));
+    case "follower_desc":
+    default:
+      return sorted.sort((a, b) => num(b.follower_count) - num(a.follower_count));
+  }
+}
+
+function renderCreatorFilterResults() {
+  const list = $("#creatorFilterList");
+  const summary = $("#creatorFilterSummary");
+  if (!list) return;
+  const criteria = getCreatorFilterCriteria();
+  const total = state.creators.length;
+  const items = sortFilteredCreators(
+    state.creators.filter((creator) => creatorMatchesFilter(creator, criteria)),
+    criteria.sort,
+  );
+  if (summary) {
+    summary.textContent = total ? `匹配 ${items.length} / ${total} 位达人` : "达人库暂无数据";
+  }
+  if (!items.length) {
+    list.innerHTML = emptyState(
+      total ? "没有符合当前条件的达人" : "暂无达人数据",
+      total ? "放宽粉丝、赞粉比或报价条件后再试，或先去达人库补充数据。" : "先导入 Excel / CSV 或使用示例数据启动达人雷达。",
+    );
+    return;
+  }
+  list.innerHTML = items.map((creator) => creatorCardHtml(creator)).join("");
+}
+
 function renderCreators() {
   const query = ($("#creatorSearch")?.value || "").toLowerCase();
   const list = $("#creatorList");
@@ -2016,54 +2181,7 @@ function renderCreators() {
     list.innerHTML = emptyState("暂无达人数据", "先导入 Excel / CSV 或使用示例数据启动达人雷达。");
     return;
   }
-  list.innerHTML = items
-    .map((creator) => {
-      const tags = [
-        ...(creator.industry_fit_tags || []),
-        ...(creator.identity_tags || []),
-        ...(creator.content_capability_tags || []),
-        ...(creator.suitable_goals || []),
-      ]
-        .slice(0, 6)
-        .map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`)
-        .join("");
-      const risks = (creator.risk_tags || [])
-        .slice(0, 2)
-        .map((tag) => `<span class="tag risk">${escapeHTML(tag)}</span>`)
-        .join("");
-      const initials = creator.name ? creator.name.slice(0, 2).toUpperCase() : "KOL";
-      const avatar = creator.avatar_url
-        ? `<img src="${escapeHTML(creator.avatar_url)}" alt="${escapeHTML(creator.name || "达人")}头像" loading="lazy" />`
-        : `<span>${escapeHTML(initials)}</span>`;
-      const ratioMetric = supportsLikeFanRatio(creator.platform)
-        ? `<div><span>赞粉比</span><strong>${creator.like_fan_ratio ? formatLikeFanRatio(Number(creator.like_fan_ratio)) : "-"}</strong></div>`
-        : `<div><span>互动率</span><strong>${creator.engagement_rate ? `${Math.round(Number(creator.engagement_rate) * 1000) / 10}%` : "-"}</strong></div>`;
-      return `
-        <article class="creator-card kol-profile-card">
-          <div class="kol-card-top">
-            <div class="kol-card-avatar">${avatar}</div>
-            <div>
-              <div class="card-kicker">${escapeHTML(creator.platform || "未知平台")}</div>
-              <h3>${escapeHTML(creator.name || "未命名达人")}</h3>
-              <div class="meta">${escapeHTML(creator.region || creator.platform_user_id || "未补充地区 / ID")}</div>
-            </div>
-            <button class="secondary open-creator-btn" data-creator-id="${escapeHTML(creator.creator_id)}" type="button">详情</button>
-          </div>
-          <div class="kol-card-metrics">
-            <div><span>粉丝</span><strong>${fmtNumber(creator.follower_count)}</strong></div>
-            <div><span>报价</span><strong>${fmtNumber(creator.listed_price)}</strong></div>
-            ${ratioMetric}
-          </div>
-          <p>${escapeHTML(creator.ai_summary || creator.bio || "待生成画像")}</p>
-          <div class="kol-card-links">
-            ${creator.homepage_url ? `<a class="text-btn" href="${escapeHTML(creator.homepage_url)}" target="_blank" rel="noreferrer">主页</a>` : '<span class="meta">未填主页</span>'}
-            ${creator.contact ? `<span class="meta">${escapeHTML(creator.contact)}</span>` : ""}
-          </div>
-          <div class="tag-list">${tags}${risks}</div>
-        </article>
-      `;
-    })
-    .join("");
+  list.innerHTML = items.map((creator) => creatorCardHtml(creator)).join("");
 }
 
 function renderCreatorProfileHeader(creator) {
@@ -7317,6 +7435,14 @@ function bindEvents() {
           toast(error.message, true);
         }
       }
+      if (button.dataset.view === "creatorFilter") {
+        try {
+          await loadCreators();
+          renderCreatorFilterResults();
+        } catch (error) {
+          toast(error.message, true);
+        }
+      }
     })
   );
   $$(".nav-group").forEach((group) => {
@@ -8066,6 +8192,15 @@ function bindEvents() {
     toast("产品符号档案已生成");
   });
   $("#creatorSearch").addEventListener("input", renderCreators);
+  $("#creatorFilterForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    renderCreatorFilterResults();
+  });
+  $("#creatorFilterForm")?.addEventListener("input", renderCreatorFilterResults);
+  $("#creatorFilterResetBtn")?.addEventListener("click", () => {
+    $("#creatorFilterForm")?.reset();
+    renderCreatorFilterResults();
+  });
   $("#caseSearch")?.addEventListener("input", renderCases);
   $("#openCaseModalBtn")?.addEventListener("click", () => openCaseModal());
   $("#closeCaseModalBtn")?.addEventListener("click", closeCaseModal);

@@ -1079,6 +1079,23 @@ button {
   gap: 14px;
 }
 
+.creator-filter-form {
+  background: #fffdf4;
+  border: 3px solid #17120d;
+  border-radius: 3px;
+  box-shadow: 6px 6px 0 #17120d;
+  margin-bottom: 18px;
+  padding: 16px;
+}
+
+.creator-filter-actions {
+  align-items: center;
+}
+
+.creator-filter-actions .meta {
+  margin-left: auto;
+}
+
 .case-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
