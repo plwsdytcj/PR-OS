@@ -581,13 +581,18 @@ async function api(path, options = {}) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (response.status === 401) {
-      if (state.sessionToken) clearAuthSession();
-      showAccessGate(data.detail || "login required");
+      const authPath = String(path).startsWith("/api/auth/");
+      if (!authPath && state.sessionToken) clearAuthSession();
+      if (!authPath) showAccessGate(data.detail || "login required");
       throw new Error(data.detail === "login required" ? "需要登录" : data.detail || "需要登录");
     }
     throw new Error(data.detail || `请求失败：${response.status}`);
   }
   return data;
+}
+
+function isAuthBlocked() {
+  return state.authRequired && !state.currentIdentity?.user && !state.accessKey;
 }
 
 async function apiWithTimeout(path, options = {}, timeoutMs = 20000) {
@@ -910,6 +915,11 @@ async function loadAuthMe() {
   const data = await api("/api/auth/me");
   state.authRequired = Boolean(data.auth_required);
   state.currentIdentity = data.identity || null;
+  if (data.authenticated && data.session?.session_id) {
+    persistAuthSession(data.session);
+  } else if (data.auth_required && !data.authenticated && state.sessionToken) {
+    clearAuthSession();
+  }
   renderAuthUser();
   return data;
 }
@@ -4692,7 +4702,7 @@ async function reloadSecondary() {
 async function reloadAll({ backgroundSecondary = false } = {}) {
   await refreshStatus();
   const auth = await loadAuthMe();
-  const needsLogin = state.authRequired && !auth.authenticated && !state.accessKey && !state.sessionToken;
+  const needsLogin = state.authRequired && !auth.authenticated && !state.accessKey;
   if (needsLogin) {
     showAccessGate("请用内部或甲方账号登录后继续使用。");
     renderCreatorListAuthRequired();
@@ -6499,6 +6509,11 @@ async function openCreatorModal(creatorId) {
     toast("缺少达人 ID", true);
     return;
   }
+  if (isAuthBlocked()) {
+    showAccessGate("请先登录后查看达人详情。");
+    toast("请先登录后查看达人详情", true);
+    return;
+  }
   showCreatorModalLoading(creatorId);
   try {
     const data = await api(`/api/creators/${encodeURIComponent(creatorId)}`);
@@ -6520,7 +6535,11 @@ async function openCreatorModal(creatorId) {
     $("#creatorModal")?.classList.remove("hidden");
   } catch (error) {
     closeCreatorModal();
-    toast(error.message || "打不开达人详情", true);
+    const message = error.message || "打不开达人详情";
+    if (message.includes("登录") || message.includes("login")) {
+      showAccessGate("登录已失效，请重新登录后查看达人详情。");
+    }
+    toast(message, true);
   }
 }
 
@@ -8114,6 +8133,17 @@ async function copyText(value) {
   textarea.remove();
 }
 
+function bindCreatorCardClicks(root) {
+  root?.addEventListener("click", async (event) => {
+    if (event.target.closest("a[href]")) return;
+    const target = event.target.closest(".open-creator-btn, .open-creator-card");
+    if (!target) return;
+    const creatorId = target.dataset.creatorId;
+    if (!creatorId) return;
+    await openCreatorModal(creatorId);
+  });
+}
+
 function bindEvents() {
   initPlatformSelects();
   initCreatorListShell();
@@ -8254,7 +8284,7 @@ function bindEvents() {
   });
   document.addEventListener("click", async (event) => {
     if (event.target.closest("#authOpenLoginBtn")) {
-      showAccessGate("请登录后继续使用。");
+      window.location.href = "/login";
       return;
     }
     if (event.target.closest("#authLogoutBtn")) {
@@ -8914,6 +8944,8 @@ function bindEvents() {
     toast("产品符号档案已生成");
   });
   $("#creatorSearch").addEventListener("input", renderCreators);
+  bindCreatorCardClicks($("#creatorList"));
+  bindCreatorCardClicks($("#creatorFilterList"));
   $("#creatorFilterForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
     renderCreatorFilterResults();
@@ -9080,15 +9112,6 @@ function bindEvents() {
         button.textContent = "保存并打开档案";
       }
     }
-  });
-
-  document.addEventListener("click", async (event) => {
-    if (event.target.closest("a[href]")) return;
-    const target = event.target.closest(".open-creator-btn, .open-creator-card");
-    if (!target) return;
-    const creatorId = target.dataset.creatorId;
-    if (!creatorId) return;
-    await openCreatorModal(creatorId);
   });
 
   document.addEventListener("click", async (event) => {

@@ -1,7 +1,15 @@
 const $ = (selector) => document.querySelector(selector);
+const SESSION_KEY = "pr_ai_os_session_token";
+
+function persistAuthSession(session) {
+  const token = String(session?.session_id || "").trim();
+  if (!token) return;
+  localStorage.setItem(SESSION_KEY, token);
+}
 
 function clearLocalAuthHints() {
   localStorage.removeItem("pr_ai_os_access_key");
+  localStorage.removeItem(SESSION_KEY);
 }
 
 function setFeedback(message, tone = "neutral") {
@@ -12,14 +20,14 @@ function setFeedback(message, tone = "neutral") {
 }
 
 async function api(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+  const sessionToken = localStorage.getItem(SESSION_KEY) || "";
+  if (sessionToken) headers.set("X-Session-Token", sessionToken);
   const response = await fetch(path, {
-    credentials: "same-origin",
+    credentials: "include",
     cache: "no-store",
     ...options,
-    headers: {
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...(options.headers || {}),
-    },
+    headers,
   });
   const text = await response.text();
   const data = text ? JSON.parse(text) : {};
@@ -30,7 +38,7 @@ async function api(path, options = {}) {
 }
 
 function redirectToApp() {
-  window.location.href = "/app?v=20260611-6";
+  window.location.href = "/app?v=20260624-20";
 }
 
 async function checkExistingSession() {
@@ -38,6 +46,7 @@ async function checkExistingSession() {
   try {
     const data = await api("/api/auth/me");
     if (data.authenticated && data.identity) {
+      if (data.session?.session_id) persistAuthSession(data.session);
       setFeedback("已登录，正在进入工作台...", "success");
       window.setTimeout(redirectToApp, 120);
       return;
@@ -58,11 +67,13 @@ function bindLoginForm() {
     try {
       const data = await api("/api/auth/login", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: form.get("email"),
           password: form.get("password"),
         }),
       });
+      persistAuthSession(data.session);
       const label = data.user?.user_type === "client" ? "甲方客户 Portal" : "内部工作台";
       setFeedback(`登录成功，正在进入${label}。`, "success");
       window.setTimeout(redirectToApp, 250);

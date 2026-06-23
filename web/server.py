@@ -2392,11 +2392,13 @@ async def auth_logout(request: Request) -> JSONResponse:
 
 
 @app.get("/api/auth/me")
-def auth_me() -> dict[str, Any]:
+def auth_me(request: Request) -> dict[str, Any]:
     identity = current_identity()
+    session_id = _session_id_from_request(request)
     return {
         "authenticated": identity is not None,
         "identity": identity.to_dict() if identity else None,
+        "session": {"session_id": session_id} if identity and session_id else None,
         "auth_required": _auth_mode_active(_db_path_ctx.get()),
         "roles": {
             "internal": sorted(INTERNAL_ROLES),
