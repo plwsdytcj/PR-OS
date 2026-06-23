@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260624-13" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260624-14" />
   </head>
   <body>
     <div class="app-shell">
@@ -1863,7 +1863,7 @@
             <section class="creator-profile-section creator-tag-system">
               <div>
                 <h3 class="detail-heading">标签</h3>
-                <p class="meta">像微信一样随手打标签；系统会归类到领域、身份、履约、风险，并生成推荐定位。</p>
+                <p class="meta">上方随手打标签；下方分类框架引导补全——领域、身份、能力是 Brief 匹配的核心。</p>
               </div>
               <input name="personal_tags" type="hidden" />
               <input name="delivery_tags" type="hidden" />
@@ -1879,24 +1879,28 @@
                 <div class="tag-chip-list" data-personal-tag-list></div>
                 <div class="creator-tag-hub-entry-row">
                   <input data-personal-tag-entry type="text" placeholder="想到什么打什么：电影、出稿慢、知乎科技…" />
-                  <button class="secondary" data-classify-tags-btn type="button">整理标签</button>
+                  <button class="secondary" data-classify-tags-btn type="button">分发到分类</button>
                 </div>
                 <div class="tag-suggestion-list" data-personal-tag-suggestions>
                   <div class="tag-suggestion-label">最近使用 / 我的常用</div>
                   <div class="tag-suggestion-wrap" data-personal-tag-suggestion-wrap></div>
                 </div>
               </div>
-              <div class="creator-tag-confirm-panel" data-tag-confirm-panel>
-                <div class="creator-tag-confirm-head">
-                  <strong>系统理解</strong>
-                  <span class="meta">保存前扫一眼，点标签可删</span>
+              <div class="creator-tag-framework" data-tag-framework>
+                <div class="creator-tag-framework-head">
+                  <div>
+                    <strong>分类标签</strong>
+                    <span class="meta">录入时逐项点选或输入，不必记分类</span>
+                  </div>
+                  <span class="creator-tag-completeness" data-tag-completeness>核心完整度 0/3</span>
                 </div>
-                <div class="creator-tag-confirm-grid" data-tag-confirm-grid></div>
+                <div class="creator-tag-framework-grid" data-tag-framework-grid></div>
               </div>
               <label class="creator-narrative-field">
                 推荐定位
-                <input name="narrative_position_display" type="text" placeholder="整理标签后自动生成，可改一个字定稿" />
+                <input name="narrative_position_display" type="text" placeholder="分类补全后自动生成，可改一个字定稿" />
               </label>
+              <p class="creator-tag-completeness-hint meta" data-tag-completeness-hint>建议至少补全领域、身份、内容能力。</p>
               <div id="creatorTags" class="tag-list creator-tag-summary" data-tag-summary-line></div>
             </section>
 
@@ -2110,7 +2114,7 @@
             <section class="creator-profile-section creator-tag-system">
               <div>
                 <h3 class="detail-heading">标签</h3>
-                <p class="meta">像微信一样随手打标签；系统会归类到领域、身份、履约、风险，并生成推荐定位。</p>
+                <p class="meta">上方随手打标签；下方分类框架引导补全——领域、身份、能力是 Brief 匹配的核心。</p>
               </div>
               <input name="personal_tags" type="hidden" />
               <input name="delivery_tags" type="hidden" />
@@ -2126,24 +2130,28 @@
                 <div class="tag-chip-list" data-personal-tag-list></div>
                 <div class="creator-tag-hub-entry-row">
                   <input data-personal-tag-entry type="text" placeholder="想到什么打什么：电影、出稿慢、知乎科技…" />
-                  <button class="secondary" data-classify-tags-btn type="button">整理标签</button>
+                  <button class="secondary" data-classify-tags-btn type="button">分发到分类</button>
                 </div>
                 <div class="tag-suggestion-list" data-personal-tag-suggestions>
                   <div class="tag-suggestion-label">最近使用 / 我的常用</div>
                   <div class="tag-suggestion-wrap" data-personal-tag-suggestion-wrap></div>
                 </div>
               </div>
-              <div class="creator-tag-confirm-panel" data-tag-confirm-panel>
-                <div class="creator-tag-confirm-head">
-                  <strong>系统理解</strong>
-                  <span class="meta">保存前扫一眼，点标签可删</span>
+              <div class="creator-tag-framework" data-tag-framework>
+                <div class="creator-tag-framework-head">
+                  <div>
+                    <strong>分类标签</strong>
+                    <span class="meta">录入时逐项点选或输入，不必记分类</span>
+                  </div>
+                  <span class="creator-tag-completeness" data-tag-completeness>核心完整度 0/3</span>
                 </div>
-                <div class="creator-tag-confirm-grid" data-tag-confirm-grid></div>
+                <div class="creator-tag-framework-grid" data-tag-framework-grid></div>
               </div>
               <label class="creator-narrative-field">
                 推荐定位
-                <input name="narrative_position_display" type="text" placeholder="整理标签后自动生成，可改一个字定稿" />
+                <input name="narrative_position_display" type="text" placeholder="分类补全后自动生成，可改一个字定稿" />
               </label>
+              <p class="creator-tag-completeness-hint meta" data-tag-completeness-hint>建议至少补全领域、身份、内容能力。</p>
               <div id="quickCreatorTags" class="tag-list creator-tag-summary" data-tag-summary-line></div>
             </section>
 
@@ -2277,6 +2285,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260624-13"></script>
+    <script src="/static/app.js?v=20260624-14"></script>
   </body>
 </html>

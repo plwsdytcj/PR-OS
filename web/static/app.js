@@ -158,6 +158,8 @@ const QUICK_CREATOR_TAG_PRESETS = {
   suitable_goals: ["技术解释者", "高知信任入口", "圈层扩散", "品牌故事转译", "议题引爆", "专业背书", "搜索沉淀", "风险缓冲"],
   risk_tags: ["拖稿", "观点强", "争议大", "报价波动", "审核风险", "需提前确认立场", "商业痕迹敏感", "不适合硬广"],
   manual_notes: ["出稿慢", "内容精品", "响应快", "需提前沟通", "适合深稿", "报价需核实", "配合度高", "需人工复核"],
+  delivery_tags: ["出稿快", "出稿慢", "内容精品", "沟通顺畅", "需要催", "容易改稿", "配合度高", "响应快"],
+  budget_fit_tags: ["适合高预算", "适合中预算", "适合低预算", "报价稳定", "报价浮动"],
 };
 
 const PLATFORM_RATE_FIELDS = {
@@ -293,17 +295,21 @@ const PERSONAL_TAG_PRESETS = [
   "腾讯",
 ];
 
-const TAG_CONFIRM_ROWS = [
-  { field: "industry_fit_tags", label: "领域" },
-  { field: "identity_tags", label: "身份" },
-  { field: "content_capability_tags", label: "内容能力" },
-  { field: "delivery_tags", label: "履约" },
-  { field: "risk_tags", label: "风险" },
-  { field: "suitable_goals", label: "叙事角色" },
-  { field: "cooperation_formats", label: "合作形式" },
-  { field: "budget_fit_tags", label: "商业判断" },
-  { field: "cooperation_brands", label: "服务品牌" },
+const TAG_FRAMEWORK_ROWS = [
+  { field: "industry_fit_tags", label: "领域", hint: "电影、科技互联网、AI产业、游戏、消费…", essential: true },
+  { field: "identity_tags", label: "身份", hint: "记者、影评人、科技博主、行业专家…", essential: true },
+  { field: "content_capability_tags", label: "内容能力", hint: "深度稿、专访、快评、测评、种草…", essential: true },
+  { field: "delivery_tags", label: "履约", hint: "出稿慢、内容精品、配合度高、需要催…", essential: false },
+  { field: "risk_tags", label: "风险", hint: "观点强、争议大、审核风险、报价波动…", essential: false },
+  { field: "budget_fit_tags", label: "商业判断", hint: "适合高/中/低预算、报价稳定或浮动…", essential: false },
 ];
+
+const TAG_NARRATIVE_FRAMEWORK_ROW = {
+  field: "suitable_goals",
+  label: "叙事角色",
+  hint: "技术解释者、圈层扩散、专业背书、品牌故事转译…",
+  essential: false,
+};
 
 const SYMBOLIC_EDITOR_FIELDS = {
   creator: [
@@ -6646,6 +6652,7 @@ function applyTagClassificationToForm(form, classification = {}) {
   if (narrative) {
     if (form.elements.narrative_position) form.elements.narrative_position.value = narrative;
     if (form.elements.narrative_position_display) form.elements.narrative_position_display.value = narrative;
+    form.dataset.narrativeAuto = "true";
   }
   if (classification.platform_hint && form.elements.platform) {
     const current = normalizePlatformValue(form.elements.platform.value);
@@ -6664,40 +6671,152 @@ function applyTagClassificationToForm(form, classification = {}) {
     if (brandsEditor) renderCreatorTagEditor(brandsEditor);
   }
   renderPersonalTagHub(form);
-  renderTagConfirmPanel(form, classification);
+  renderTagFramework(form);
   renderCreatorTagSummaryFromForm(form);
   form.dataset.tagClassifyDirty = "false";
 }
 
-function renderTagConfirmPanel(form, classification = null) {
-  const panel = form.querySelector("[data-tag-confirm-panel]");
-  const grid = form.querySelector("[data-tag-confirm-grid]");
-  if (!panel || !grid) return;
-  const data = classification || {
-    ...collectStructuredTagsFromForm(form),
-    personal_tags: getPersonalTagsFromHub(form),
-  };
-  grid.innerHTML = TAG_CONFIRM_ROWS.map(({ field, label }) => {
-    const tags = Array.isArray(data[field]) ? data[field] : normalizeQuickTagValue(data[field]);
-    const chips = tags.length
-      ? tags
-          .map(
-            (tag) => `
-          <button class="tag-chip small" data-classified-tag-remove="${escapeHTML(field)}" data-classified-tag-value="${escapeHTML(tag)}" type="button">
-            <span>${escapeHTML(tag)}</span><strong>×</strong>
-          </button>
-        `,
-          )
-          .join("")
-      : '<span class="meta">—</span>';
-    return `
-      <div class="creator-tag-confirm-row" data-classified-field="${escapeHTML(field)}">
-        <span class="creator-tag-confirm-label">${escapeHTML(label)}</span>
-        <div class="tag-chip-list compact">${chips}</div>
+function getFrameworkTags(form, field) {
+  return normalizeQuickTagValue(form.elements[field]?.value || "");
+}
+
+function setFrameworkTags(form, field, tags) {
+  if (!form.elements[field]) return;
+  form.elements[field].value = tags.join("，");
+}
+
+function getFrameworkPresets(field) {
+  return QUICK_CREATOR_TAG_PRESETS[field] || [];
+}
+
+function buildClientNarrativePosition(structured) {
+  const parts = [];
+  if (structured.identity_tags?.length) parts.push(structured.identity_tags[0]);
+  if (structured.industry_fit_tags?.length) parts.push(`聚焦${structured.industry_fit_tags.slice(0, 2).join("/")}`);
+  if (structured.content_capability_tags?.length) parts.push(`擅长${structured.content_capability_tags[0]}`);
+  if (structured.suitable_goals?.length) parts.push(`适合担任${structured.suitable_goals[0]}`);
+  else if (structured.identity_tags?.length && structured.industry_fit_tags?.length) {
+    parts.push("适合担任圈层扩散或专业背书角色");
+  }
+  let narrative = parts.join("，");
+  if (structured.delivery_tags?.length) narrative += `；履约侧：${structured.delivery_tags.slice(0, 2).join("/")}`;
+  if (structured.risk_tags?.length) narrative += `；注意${structured.risk_tags.slice(0, 2).join("/")}`;
+  return narrative.trim("；");
+}
+
+function updateNarrativeFromFramework(form) {
+  const structured = collectStructuredTagsFromForm(form);
+  const current = String(form.elements.narrative_position_display?.value || "").trim();
+  const autoFlag = form.dataset.narrativeAuto === "true";
+  if (current && !autoFlag) return;
+  const narrative = buildClientNarrativePosition(structured);
+  if (!narrative) return;
+  if (form.elements.narrative_position) form.elements.narrative_position.value = narrative;
+  if (form.elements.narrative_position_display) form.elements.narrative_position_display.value = narrative;
+  form.dataset.narrativeAuto = "true";
+}
+
+function renderTagCompleteness(form) {
+  const badge = form.querySelector("[data-tag-completeness]");
+  const hint = form.querySelector("[data-tag-completeness-hint]");
+  const essential = TAG_FRAMEWORK_ROWS.filter((row) => row.essential);
+  const filledEssential = essential.filter((row) => getFrameworkTags(form, row.field).length > 0).length;
+  const allRows = [...TAG_FRAMEWORK_ROWS, TAG_NARRATIVE_FRAMEWORK_ROW];
+  const filledAll = allRows.filter((row) => getFrameworkTags(form, row.field).length > 0).length;
+  if (badge) {
+    badge.textContent = `核心完整度 ${filledEssential}/${essential.length}`;
+    badge.classList.toggle("warn", filledEssential < essential.length);
+    badge.classList.toggle("ok", filledEssential >= essential.length);
+  }
+  if (hint) {
+    if (filledEssential < essential.length) {
+      hint.textContent = "建议至少补全领域、身份、内容能力，Brief 匹配和筛选会更准（不挡保存）。";
+    } else if (filledAll < 5) {
+      hint.textContent = "核心已齐，可再补履约、风险与叙事角色，方便出方案和内部交接。";
+    } else {
+      hint.textContent = "标签较完整，保存后可直接用于 Brief 匹配与筛选达人工具。";
+    }
+  }
+  allRows.forEach((row) => {
+    const rowNode = form.querySelector(`[data-framework-field="${row.field}"]`);
+    if (!rowNode) return;
+    rowNode.classList.toggle("filled", getFrameworkTags(form, row.field).length > 0);
+    rowNode.classList.toggle("missing-essential", row.essential && !getFrameworkTags(form, row.field).length);
+  });
+}
+
+function renderTagFrameworkRow(form, row) {
+  const tags = getFrameworkTags(form, row.field);
+  const selected = new Set(tags);
+  const chips = tags.length
+    ? tags
+        .map(
+          (tag) => `
+        <button class="tag-chip small" data-framework-tag-remove="${escapeHTML(row.field)}" data-framework-tag-value="${escapeHTML(tag)}" type="button">
+          <span>${escapeHTML(tag)}</span><strong>×</strong>
+        </button>
+      `,
+        )
+        .join("")
+    : `<span class="meta framework-empty">还未填写，可点选下方或输入</span>`;
+  const suggestions = [...loadRecentQuickCreatorTags(row.field), ...getFrameworkPresets(row.field)]
+    .filter((tag, index, list) => list.indexOf(tag) === index)
+    .filter((tag) => !selected.has(tag))
+    .slice(0, 10)
+    .map(
+      (tag) =>
+        `<button class="tag-suggestion" data-framework-tag-add="${escapeHTML(row.field)}" data-framework-tag-suggestion="${escapeHTML(tag)}" type="button">${escapeHTML(tag)}</button>`,
+    )
+    .join("");
+  const essentialMark = row.essential ? '<em class="framework-required">核心</em>' : "";
+  return `
+    <div class="creator-tag-framework-row" data-framework-field="${escapeHTML(row.field)}">
+      <div class="creator-tag-framework-row-head">
+        <div>
+          <span class="framework-label">${escapeHTML(row.label)}</span>
+          ${essentialMark}
+        </div>
+        <span class="framework-hint">${escapeHTML(row.hint)}</span>
       </div>
-    `;
-  }).join("");
-  panel.classList.toggle("hidden", !getPersonalTagsFromHub(form).length && !TAG_CONFIRM_ROWS.some(({ field }) => (data[field] || []).length));
+      <div class="tag-chip-list compact" data-framework-tag-list="${escapeHTML(row.field)}">${chips}</div>
+      <div class="creator-tag-framework-entry">
+        <input data-framework-tag-entry="${escapeHTML(row.field)}" type="text" placeholder="输入后回车，或点选常用词" />
+      </div>
+      <div class="tag-suggestion-wrap framework-suggestions" data-framework-suggestions="${escapeHTML(row.field)}">${suggestions}</div>
+    </div>
+  `;
+}
+
+function renderTagFramework(form) {
+  const grid = form.querySelector("[data-tag-framework-grid]");
+  if (!grid) return;
+  grid.innerHTML = [...TAG_FRAMEWORK_ROWS, TAG_NARRATIVE_FRAMEWORK_ROW].map((row) => renderTagFrameworkRow(form, row)).join("");
+  renderTagCompleteness(form);
+}
+
+function addFrameworkTag(form, field, value) {
+  const incoming = normalizeQuickTagValue(value);
+  if (!incoming.length || !form.elements[field]) return;
+  const tags = getFrameworkTags(form, field);
+  incoming.forEach((tag) => {
+    if (!tags.includes(tag)) tags.push(tag);
+  });
+  setFrameworkTags(form, field, tags);
+  rememberQuickCreatorTags(field, incoming);
+  renderTagFramework(form);
+  renderCreatorTagSummaryFromForm(form);
+  updateNarrativeFromFramework(form);
+}
+
+function removeFrameworkTag(form, field, value) {
+  setFrameworkTags(
+    form,
+    field,
+    getFrameworkTags(form, field).filter((tag) => tag !== value),
+  );
+  renderTagFramework(form);
+  renderCreatorTagSummaryFromForm(form);
+  updateNarrativeFromFramework(form);
 }
 
 function renderCreatorTagSummaryFromForm(form) {
@@ -6745,7 +6864,7 @@ async function classifyCreatorTagsFromForm(form, { silent = false } = {}) {
       body: JSON.stringify(payload),
     });
     applyTagClassificationToForm(form, data.classification || {});
-    if (!silent) toast("标签已整理");
+    if (!silent) toast("标签已分发到分类");
     return data.classification;
   } catch (error) {
     if (!silent) toast(error.message || "标签整理失败", true);
@@ -6791,8 +6910,9 @@ function hydrateCreatorTagHubFromCreator(form, creator = {}) {
   const narrative = creator.narrative_position || "";
   if (form.elements.narrative_position) form.elements.narrative_position.value = narrative;
   if (form.elements.narrative_position_display) form.elements.narrative_position_display.value = narrative;
+  form.dataset.narrativeAuto = narrative ? "true" : "false";
   renderPersonalTagHub(form);
-  renderTagConfirmPanel(form);
+  renderTagFramework(form);
   renderCreatorTagSummaryFromForm(form);
   form.dataset.tagClassifyDirty = "false";
 }
@@ -6818,21 +6938,28 @@ function bindCreatorTagHubEvents(root) {
       classifyCreatorTagsFromForm(form).catch(() => {});
       return;
     }
-    const classifiedRemove = event.target.closest("[data-classified-tag-remove]");
-    if (classifiedRemove) {
-      const field = classifiedRemove.dataset.classifiedTagRemove;
-      const value = classifiedRemove.dataset.classifiedTagValue;
-      const hidden = form.elements[field];
-      if (hidden) {
-        hidden.value = normalizeQuickTagValue(hidden.value)
-          .filter((tag) => tag !== value)
-          .join("，");
-        renderTagConfirmPanel(form);
-        renderCreatorTagSummaryFromForm(form);
-      }
+    const frameworkAdd = event.target.closest("[data-framework-tag-add]");
+    if (frameworkAdd) {
+      addFrameworkTag(form, frameworkAdd.dataset.frameworkTagAdd, frameworkAdd.dataset.frameworkTagSuggestion);
+      return;
+    }
+    const frameworkRemove = event.target.closest("[data-framework-tag-remove]");
+    if (frameworkRemove) {
+      removeFrameworkTag(form, frameworkRemove.dataset.frameworkTagRemove, frameworkRemove.dataset.frameworkTagValue);
     }
   });
   root.addEventListener("keydown", (event) => {
+    const frameworkEntry = event.target.closest("[data-framework-tag-entry]");
+    if (frameworkEntry) {
+      const form = frameworkEntry.closest("form");
+      if (!form) return;
+      if (event.key === "Enter" || event.key === "," || event.key === "，") {
+        event.preventDefault();
+        addFrameworkTag(form, frameworkEntry.dataset.frameworkTagEntry, frameworkEntry.value);
+        frameworkEntry.value = "";
+      }
+      return;
+    }
     const entry = event.target.closest("[data-personal-tag-entry]");
     if (!entry) return;
     const form = entry.closest("form");
@@ -6846,6 +6973,15 @@ function bindCreatorTagHubEvents(root) {
   root.addEventListener(
     "blur",
     (event) => {
+      const frameworkEntry = event.target.closest("[data-framework-tag-entry]");
+      if (frameworkEntry?.value.trim()) {
+        const form = frameworkEntry.closest("form");
+        if (form) {
+          addFrameworkTag(form, frameworkEntry.dataset.frameworkTagEntry, frameworkEntry.value);
+          frameworkEntry.value = "";
+        }
+        return;
+      }
       const entry = event.target.closest("[data-personal-tag-entry]");
       if (!entry?.value.trim()) return;
       const form = entry.closest("form");
@@ -6859,14 +6995,17 @@ function bindCreatorTagHubEvents(root) {
     const field = event.target.closest("[name='narrative_position_display']");
     if (!field) return;
     const form = field.closest("form");
-    if (form?.elements.narrative_position) form.elements.narrative_position.value = field.value;
+    if (form) {
+      form.dataset.narrativeAuto = "false";
+      if (form.elements.narrative_position) form.elements.narrative_position.value = field.value;
+    }
   });
 }
 
 function initCreatorTagHub(form) {
   if (!form?.querySelector("[data-creator-tag-hub]")) return;
   renderPersonalTagHub(form);
-  renderTagConfirmPanel(form);
+  renderTagFramework(form);
   renderCreatorTagSummaryFromForm(form);
 }
 
