@@ -34,6 +34,7 @@ FIELD_ALIASES = {
     "follower_count": ["fans", "followers", "follower_count", "粉丝", "粉丝数", "粉丝量", "粉丝量（W）", "粉丝量(W)", "粉丝数(万)", "粉丝（W）", "粉丝量 （W）"],
     "total_likes": ["total_likes", "总获赞", "总收藏", "获赞", "收藏"],
     "engagement_rate": ["engagement_rate", "互动率", "engagement"],
+    "like_fan_ratio": ["like_fan_ratio", "赞粉比", "赞粉比例", "点赞粉丝比"],
     "avg_likes": ["avg_likes", "平均点赞", "赞均", "点赞均值"],
     "avg_comments": ["avg_comments", "平均评论", "评均", "评论均值"],
     "avg_shares": ["avg_shares", "平均分享", "分享均值"],

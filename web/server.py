@@ -509,6 +509,7 @@ CREATOR_PAYLOAD_FIELDS = {
     "avg_shares",
     "avg_collections",
     "engagement_rate",
+    "like_fan_ratio",
     "listed_price",
     "price_source",
     "contact",
@@ -535,7 +536,7 @@ def _apply_creator_payload(data: dict[str, Any], payload: dict[str, Any]) -> dic
         value = payload[field]
         if field in {"follower_count", "following_count", "total_likes", "recent_posts_count", "avg_likes", "avg_comments", "avg_shares", "avg_collections", "listed_price"}:
             data[field] = int(value or 0)
-        elif field in {"engagement_rate", "delivery_rating", "communication_rating"}:
+        elif field in {"engagement_rate", "delivery_rating", "communication_rating", "like_fan_ratio"}:
             data[field] = float(value or 0)
         elif field in {"cooperation_brands", "cooperation_formats", "industry_fit_tags", "identity_tags", "content_capability_tags", "suitable_goals", "suitable_stages", "budget_fit_tags", "risk_tags"}:
             if isinstance(value, list):

@@ -5767,6 +5767,27 @@ body.client-session #clientPortal {
   margin: 0 0 8px;
 }
 
+.like-fan-ratio-panel {
+  background: linear-gradient(135deg, rgba(185, 255, 234, 0.55), rgba(255, 210, 63, 0.35));
+  border: 2px solid rgba(23, 18, 13, 0.88);
+  box-shadow: 4px 4px 0 rgba(23, 18, 13, 0.85);
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 12px 14px;
+}
+
+.like-fan-ratio-head {
+  align-items: baseline;
+  display: flex;
+  gap: 12px;
+}
+
+.like-fan-ratio-head strong {
+  font-size: 28px;
+  line-height: 1;
+}
+
 .creator-ai-summary {
   background: #101820;
   border: 3px solid #17120d;

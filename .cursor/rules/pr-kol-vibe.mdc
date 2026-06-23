@@ -25,5 +25,6 @@ alwaysApply: false
 3. **单通路** — `creatorFormPayload` → `_apply_creator_payload`；禁止双轨序列化
 4. **弹窗可滚动** — 改弹窗布局后检查 `.modal-panel` overflow；用户说滚不动立刻查
 5. **Agent 负责到底** — 对照、部署、bump 缓存版本、smoke；不把监督当交付
+6. **每次沟通后更新 skill** — 反思写入 `.cursor/skills/kolness-pr-vibe/reflections.md`，并同步 `SKILL.md` 错误表/对照表
 
 完整清单、部署命令与反思项见 skill 正文。

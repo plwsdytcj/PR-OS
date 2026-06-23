@@ -1747,12 +1747,20 @@
             <section class="creator-profile-section">
               <div>
                 <h3 class="detail-heading">数据卡</h3>
-                <p class="meta">粉丝、互动和内容表现，用来做预算和平台适配判断。</p>
+                <p class="meta" data-data-card-hint>粉丝、互动和内容表现，用来做预算和平台适配判断。</p>
               </div>
               <div class="field-row">
                 <input name="follower_count" type="number" min="0" placeholder="粉丝数" />
                 <input name="total_likes" type="number" min="0" placeholder="总获赞 / 收藏" />
                 <input name="engagement_rate" type="number" min="0" step="0.0001" placeholder="互动率，如 0.035" />
+              </div>
+              <input name="like_fan_ratio" type="hidden" />
+              <div class="like-fan-ratio-panel hidden" data-like-fan-ratio-panel>
+                <div class="like-fan-ratio-head">
+                  <span class="card-kicker">赞粉比</span>
+                  <strong data-like-fan-ratio-value>—</strong>
+                </div>
+                <p class="meta" data-like-fan-ratio-insight>填写粉丝数与总获赞后自动计算：赞粉比 = 总获赞 ÷ 粉丝数。</p>
               </div>
               <div class="field-row">
                 <input name="avg_likes" type="number" min="0" placeholder="平均点赞" />
@@ -1984,12 +1992,20 @@
             <section class="creator-profile-section">
               <div>
                 <h3 class="detail-heading">数据卡</h3>
-                <p class="meta">粉丝、互动和内容表现，用来做预算和平台适配判断。</p>
+                <p class="meta" data-data-card-hint>粉丝、互动和内容表现，用来做预算和平台适配判断。</p>
               </div>
               <div class="field-row">
                 <input name="follower_count" type="number" min="0" placeholder="粉丝数" />
                 <input name="total_likes" type="number" min="0" placeholder="总获赞 / 收藏" />
                 <input name="engagement_rate" type="number" min="0" step="0.0001" placeholder="互动率，如 0.035" />
+              </div>
+              <input name="like_fan_ratio" type="hidden" />
+              <div class="like-fan-ratio-panel hidden" data-like-fan-ratio-panel>
+                <div class="like-fan-ratio-head">
+                  <span class="card-kicker">赞粉比</span>
+                  <strong data-like-fan-ratio-value>—</strong>
+                </div>
+                <p class="meta" data-like-fan-ratio-insight>填写粉丝数与总获赞后自动计算：赞粉比 = 总获赞 ÷ 粉丝数。</p>
               </div>
               <div class="field-row">
                 <input name="avg_likes" type="number" min="0" placeholder="平均点赞" />
@@ -2193,6 +2209,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260624-10"></script>
+    <script src="/static/app.js?v=20260624-11"></script>
   </body>
 </html>

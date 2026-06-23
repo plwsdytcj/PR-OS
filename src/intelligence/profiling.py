@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from src.schemas import CreatorProfile
+from src.schemas import CreatorProfile, split_tags
+
+
+def compute_like_fan_ratio(follower_count: int, total_likes: int) -> float:
+    followers = int(follower_count or 0)
+    likes = int(total_likes or 0)
+    if followers <= 0 or likes <= 0:
+        return 0.0
+    return round(likes / followers, 4)
 
 
 INDUSTRY_KEYWORDS = {
@@ -116,6 +124,7 @@ def enrich_profile(profile: CreatorProfile) -> CreatorProfile:
     profile.suitable_stages = sorted(stages)
     profile.budget_fit_tags = _budget_tags(profile)
     profile.risk_tags = _risk_tags(profile)
+    profile.like_fan_ratio = compute_like_fan_ratio(profile.follower_count, profile.total_likes)
     profile.ai_summary = (
         f"适合{ '、'.join(profile.industry_fit_tags[:3]) }品牌做"
         f"{ '、'.join(profile.suitable_goals[:3]) }，主要内容能力是"

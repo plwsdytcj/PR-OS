@@ -45,6 +45,7 @@ class CreatorProfile:
     avg_shares: int = 0
     avg_collections: int = 0
     engagement_rate: float = 0.0
+    like_fan_ratio: float = 0.0
     listed_price: int = 0
     price_source: str = ""
     contact: str = ""

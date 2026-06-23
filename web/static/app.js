@@ -194,6 +194,70 @@ const PLATFORM_RATE_FIELDS = {
 
 const DEFAULT_PLATFORM_RATE_FIELDS = [{ key: "rate_base", label: "基础报价", primary: true }];
 
+const LIKE_FAN_RATIO_PLATFORMS = new Set(["抖音", "小红书", "知乎", "微博"]);
+
+const PLATFORM_DATA_CARD_HINTS = {
+  抖音: "抖音重点看视频完播、转发和评论，适合用粉丝量、互动率与赞粉比做扩散判断。",
+  小红书: "小红书可看总获赞/收藏与互动率，赞粉比偏高通常代表内容获赞与沉淀更强。",
+  知乎: "知乎重专业内容与赞同积累，赞粉比用于区分单粉认可度高低的答主。",
+  微博: "微博看粉丝规模与总获赞，赞粉比可区分舆论声量型与涨粉型账号。",
+  default: "粉丝、互动和内容表现，用来做预算和平台适配判断。",
+};
+
+function computeLikeFanRatio(followerCount, totalLikes) {
+  const followers = Number(followerCount || 0);
+  const likes = Number(totalLikes || 0);
+  if (!followers || followers <= 0 || !likes) return null;
+  return likes / followers;
+}
+
+function formatLikeFanRatio(value) {
+  if (value == null || Number.isNaN(value)) return "—";
+  if (value >= 100) return value.toFixed(1);
+  if (value >= 10) return value.toFixed(2);
+  return value.toFixed(3);
+}
+
+function likeFanRatioInsight(value) {
+  if (value == null || Number.isNaN(value)) return "填写粉丝数与总获赞后自动计算：赞粉比 = 总获赞 ÷ 粉丝数。";
+  if (value >= 50) return "赞粉比偏高：历史获赞相对粉丝更丰满，偏内容获赞 / 沉淀型。";
+  if (value >= 10) return "赞粉比中等：获赞与粉丝规模较均衡，可结合互动率一起看。";
+  return "赞粉比偏低：粉丝规模相对获赞更大，偏涨粉 / 扩散型。";
+}
+
+function supportsLikeFanRatio(platform) {
+  return LIKE_FAN_RATIO_PLATFORMS.has(normalizePlatformValue(platform));
+}
+
+function syncCreatorDataCardPanel(form) {
+  if (!form) return;
+  const platform = normalizePlatformValue(form.elements.platform?.value);
+  const hint = form.querySelector("[data-data-card-hint]");
+  if (hint) hint.textContent = PLATFORM_DATA_CARD_HINTS[platform] || PLATFORM_DATA_CARD_HINTS.default;
+  const panel = form.querySelector("[data-like-fan-ratio-panel]");
+  const valueNode = form.querySelector("[data-like-fan-ratio-value]");
+  const insightNode = form.querySelector("[data-like-fan-ratio-insight]");
+  const hidden = form.elements.like_fan_ratio;
+  const supported = supportsLikeFanRatio(platform);
+  if (panel) panel.classList.toggle("hidden", !supported);
+  if (!supported) {
+    if (hidden) hidden.value = "";
+    return;
+  }
+  const ratio = computeLikeFanRatio(form.elements.follower_count?.value, form.elements.total_likes?.value);
+  if (valueNode) valueNode.textContent = formatLikeFanRatio(ratio);
+  if (insightNode) insightNode.textContent = likeFanRatioInsight(ratio);
+  if (hidden) hidden.value = ratio == null ? "" : String(Number(ratio.toFixed(4)));
+}
+
+function bindCreatorDataCardEvents(form) {
+  if (!form || form.dataset.dataCardBound === "true") return;
+  form.dataset.dataCardBound = "true";
+  form.addEventListener("input", (event) => {
+    if (["follower_count", "total_likes"].includes(event.target.name)) syncCreatorDataCardPanel(form);
+  });
+}
+
 const QUICK_CREATOR_RECENT_TAGS_KEY = "pr_os_quick_creator_recent_tags";
 
 const SYMBOLIC_EDITOR_FIELDS = {
@@ -1971,6 +2035,9 @@ function renderCreators() {
       const avatar = creator.avatar_url
         ? `<img src="${escapeHTML(creator.avatar_url)}" alt="${escapeHTML(creator.name || "达人")}头像" loading="lazy" />`
         : `<span>${escapeHTML(initials)}</span>`;
+      const ratioMetric = supportsLikeFanRatio(creator.platform)
+        ? `<div><span>赞粉比</span><strong>${creator.like_fan_ratio ? formatLikeFanRatio(Number(creator.like_fan_ratio)) : "-"}</strong></div>`
+        : `<div><span>互动率</span><strong>${creator.engagement_rate ? `${Math.round(Number(creator.engagement_rate) * 1000) / 10}%` : "-"}</strong></div>`;
       return `
         <article class="creator-card kol-profile-card">
           <div class="kol-card-top">
@@ -1985,7 +2052,7 @@ function renderCreators() {
           <div class="kol-card-metrics">
             <div><span>粉丝</span><strong>${fmtNumber(creator.follower_count)}</strong></div>
             <div><span>报价</span><strong>${fmtNumber(creator.listed_price)}</strong></div>
-            <div><span>互动率</span><strong>${creator.engagement_rate ? `${Math.round(Number(creator.engagement_rate) * 1000) / 10}%` : "-"}</strong></div>
+            ${ratioMetric}
           </div>
           <p>${escapeHTML(creator.ai_summary || creator.bio || "待生成画像")}</p>
           <div class="kol-card-links">
@@ -2024,12 +2091,23 @@ function renderCreatorProfileHeader(creator) {
       .join("");
   }
   if (scoreboard) {
-    scoreboard.innerHTML = [
+    const metrics = [
       ["粉丝", fmtNumber(creator.follower_count)],
       ["报价", fmtNumber(creator.listed_price)],
-      ["互动率", creator.engagement_rate ? `${Math.round(Number(creator.engagement_rate) * 1000) / 10}%` : "-"],
-      ["平均点赞", fmtNumber(creator.avg_likes)],
-    ]
+    ];
+    if (supportsLikeFanRatio(creator.platform)) {
+      metrics.push([
+        "赞粉比",
+        creator.like_fan_ratio ? formatLikeFanRatio(Number(creator.like_fan_ratio)) : "-",
+      ]);
+    } else {
+      metrics.push([
+        "互动率",
+        creator.engagement_rate ? `${Math.round(Number(creator.engagement_rate) * 1000) / 10}%` : "-",
+      ]);
+    }
+    metrics.push(["平均点赞", fmtNumber(creator.avg_likes)]);
+    scoreboard.innerHTML = metrics
       .map(([label, value]) => `<div><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></div>`)
       .join("");
   }
@@ -6165,6 +6243,7 @@ function openQuickCreatorModal() {
   initPlatformSelects();
   renderQuickCreatorRateFields(form);
   initQuickCreatorTagEditors(form);
+  syncCreatorDataCardPanel(form);
   modal.classList.remove("hidden");
   form.elements.name?.focus();
 }
@@ -6488,6 +6567,7 @@ function imageFileToDataUrl(file, maxSize = 360) {
 
 function prepareCreatorFormPayload(form) {
   initCreatorTagEditors(form);
+  syncCreatorDataCardPanel(form);
   const rateContainer = form.id === "quickCreatorForm" ? $("#quickCreatorRateFields") : $("#creatorEditRateFields");
   if (rateContainer && !rateContainer.querySelector(".platform-rate-row") && form.elements.platform) {
     renderCreatorRateFields(form, rateContainer, rateValuesFromNotes(form.elements.manual_notes?.value || "", form.elements.platform.value));
@@ -6585,6 +6665,7 @@ function renderCreatorModal(creator) {
   fields.listed_price.value = creator.listed_price || "";
   fields.total_likes.value = creator.total_likes || "";
   fields.engagement_rate.value = creator.engagement_rate || "";
+  if (fields.like_fan_ratio) fields.like_fan_ratio.value = creator.like_fan_ratio || "";
   fields.avg_likes.value = creator.avg_likes || "";
   fields.avg_comments.value = creator.avg_comments || "";
   fields.avg_shares.value = creator.avg_shares || "";
@@ -6613,6 +6694,7 @@ function renderCreatorModal(creator) {
     .join("") || '<span class="meta">暂无来源</span>';
   renderCreatorTagSummary(creator, "#creatorTags");
   renderCreatorEvidenceTags(state.activeCreatorEvidenceTags);
+  syncCreatorDataCardPanel(form);
 }
 
 function renderCreatorTagSummary(creator, containerId = "#creatorTags") {
@@ -6788,6 +6870,7 @@ function creatorFormPayload(form) {
     listed_price: Number(fields.listed_price.value || 0),
     total_likes: Number(fields.total_likes.value || 0),
     engagement_rate: Number(fields.engagement_rate.value || 0),
+    like_fan_ratio: Number(fields.like_fan_ratio?.value || computeLikeFanRatio(fields.follower_count.value, fields.total_likes.value) || 0),
     avg_likes: Number(fields.avg_likes.value || 0),
     avg_comments: Number(fields.avg_comments.value || 0),
     avg_shares: Number(fields.avg_shares.value || 0),
@@ -8053,6 +8136,8 @@ function bindEvents() {
   });
   bindCreatorTagEditorEvents($("#quickCreatorModal"));
   bindCreatorTagEditorEvents($("#creatorModal"));
+  bindCreatorDataCardEvents($("#creatorEditForm"));
+  bindCreatorDataCardEvents($("#quickCreatorForm"));
   $("#quickCreatorModal")?.addEventListener("click", (event) => {
     if (event.target.dataset.closeQuickCreator) closeQuickCreatorModal();
   });
@@ -8081,7 +8166,11 @@ function bindEvents() {
     if (event.target.name === "platform") {
       const preserved = readCreatorRateValues(form).values;
       renderCreatorRateFields(form, $("#creatorEditRateFields"), preserved);
+      syncCreatorDataCardPanel(form);
       return;
+    }
+    if (["follower_count", "total_likes"].includes(event.target.name)) {
+      syncCreatorDataCardPanel(form);
     }
     if (event.target.name === "avatar_url_display") {
       const url = String(event.target.value || "").trim();
@@ -8091,6 +8180,9 @@ function bindEvents() {
   });
   $("#quickCreatorForm")?.addEventListener("input", (event) => {
     const form = event.currentTarget;
+    if (["follower_count", "total_likes"].includes(event.target.name)) {
+      syncCreatorDataCardPanel(form);
+    }
     if (form.id !== "quickCreatorForm") return;
     if (["name", "platform", "bio", "follower_count", "listed_price"].includes(event.target.name)) {
       refreshCreatorCommercialKitPreview(form);
@@ -8101,8 +8193,12 @@ function bindEvents() {
     if (event.target.name === "platform") {
       const preserved = readCreatorRateValues(form).values;
       renderCreatorRateFields(form, $("#quickCreatorRateFields"), preserved);
+      syncCreatorDataCardPanel(form);
       refreshCreatorCommercialKitPreview(form);
       return;
+    }
+    if (["follower_count", "total_likes"].includes(event.target.name)) {
+      syncCreatorDataCardPanel(form);
     }
     if (event.target.name === "avatar_url_display") {
       const url = String(event.target.value || "").trim();
