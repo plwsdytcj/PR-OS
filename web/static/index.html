@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260624-6" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260624-7" />
   </head>
   <body>
     <div class="app-shell">
@@ -1903,6 +1903,10 @@
             <select name="platform" data-platform-select></select>
           </div>
           <input name="homepage_url" placeholder="主页链接 / 账号链接" />
+          <div class="field-row">
+            <input name="platform_user_id" placeholder="平台 ID / 账号 ID" />
+            <input name="contact" placeholder="联系方式（微信 / 邮箱 / 手机）" />
+          </div>
           <div class="avatar-upload-row">
             <input name="avatar_url" type="hidden" />
             <label class="avatar-upload" for="quickCreatorAvatarInput">
@@ -1931,20 +1935,38 @@
           </div>
           <input name="identity_tags" type="hidden" />
           <div class="tag-editor" data-tag-field="identity_tags">
-            <label>标签</label>
+            <label>身份</label>
             <div class="tag-chip-list" data-tag-list></div>
-            <input data-tag-entry placeholder="输入标签后回车，如 社会、科技、时政、电影娱乐" />
+            <input data-tag-entry placeholder="输入身份后回车，如 记者、影评人、行业专家" />
+          </div>
+          <input name="content_capability_tags" type="hidden" />
+          <div class="tag-editor" data-tag-field="content_capability_tags">
+            <label>内容能力</label>
+            <div class="tag-chip-list" data-tag-list></div>
+            <input data-tag-entry placeholder="输入能力后回车，如 深度稿、观点文、专访" />
           </div>
           <input name="cooperation_formats" type="hidden" />
           <div class="tag-editor" data-tag-field="cooperation_formats">
             <label>擅长</label>
             <div class="tag-chip-list" data-tag-list></div>
-            <input data-tag-entry placeholder="输入擅长后回车，如 科技、互联网、娱乐、文化" />
+            <input data-tag-entry placeholder="输入擅长后回车，如 约稿、深度、影评" />
           </div>
           <textarea name="bio" placeholder="简介 / 内容方向"></textarea>
+          <input name="suitable_goals" type="hidden" />
+          <div class="tag-editor" data-tag-field="suitable_goals">
+            <label>叙事角色</label>
+            <div class="tag-chip-list" data-tag-list></div>
+            <input data-tag-entry placeholder="输入叙事后回车，如 技术解释者、圈层扩散、信任背书" />
+          </div>
+          <input name="risk_tags" type="hidden" />
+          <div class="tag-editor" data-tag-field="risk_tags">
+            <label>风险</label>
+            <div class="tag-chip-list" data-tag-list></div>
+            <input data-tag-entry placeholder="输入风险后回车，如 拖稿、观点强、报价波动" />
+          </div>
           <input name="manual_notes" type="hidden" />
           <div class="tag-editor" data-tag-field="manual_notes">
-            <label>备注</label>
+            <label>履约备注</label>
             <div class="tag-chip-list" data-tag-list></div>
             <input data-tag-entry placeholder="输入备注后回车，如 出稿慢、内容精品" />
           </div>
@@ -2030,6 +2052,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260624-6"></script>
+    <script src="/static/app.js?v=20260624-7"></script>
   </body>
 </html>
