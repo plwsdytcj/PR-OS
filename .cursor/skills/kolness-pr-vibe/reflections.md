@@ -101,3 +101,14 @@ Agent 每次与用户沟通结束、或用户纠正/验收后，**追加一条**
 **已落地：** `index.html` 导航 + `#creatorFilter`；`app.js` `renderCreatorFilterResults`；cache `20260624-12`
 
 ---
+
+## 2026-06-24 · 登录态与达人详情反复失效
+
+**发生了什么：** 用户已经登录，但工作台仍显示「未登录」；达人卡片可见却点不开详情。根因不是单一按钮问题，而是认证候选 session（旧 Cookie / 新 localStorage token）互相抢占，以及缺少登录后打开达人详情的真实 smoke。
+
+**守则：**
+- 认证必须按候选 session 逐个验证：前端 `X-Session-Token` 与 Cookie 任一有效即恢复登录，不让旧 Cookie 覆盖新 token
+- `/login` 登录成功要同时写 localStorage、Cookie，并把 session 作为一次性跳转 hash 交给 `/app` 兜底恢复
+- 修「点不开」必须 smoke：登录后打开达人库 → 点第一张达人卡 → `#creatorModal` 可见且不显示登录弹窗
+
+---

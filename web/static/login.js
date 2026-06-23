@@ -21,6 +21,7 @@ function setFeedback(message, tone = "neutral") {
 
 async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
+  headers.set("X-Tenant-ID", localStorage.getItem("pr_ai_os_tenant") || "default");
   const sessionToken = localStorage.getItem(SESSION_KEY) || "";
   if (sessionToken) headers.set("X-Session-Token", sessionToken);
   const response = await fetch(path, {
@@ -37,8 +38,10 @@ async function api(path, options = {}) {
   return data;
 }
 
-function redirectToApp() {
-  window.location.href = "/app?v=20260624-20";
+function redirectToApp(session = null) {
+  const token = String(session?.session_id || localStorage.getItem(SESSION_KEY) || "").trim();
+  const hash = token ? `#session=${encodeURIComponent(token)}` : "";
+  window.location.href = `/app?v=20260624-21${hash}`;
 }
 
 async function checkExistingSession() {
@@ -48,7 +51,7 @@ async function checkExistingSession() {
     if (data.authenticated && data.identity) {
       if (data.session?.session_id) persistAuthSession(data.session);
       setFeedback("已登录，正在进入工作台...", "success");
-      window.setTimeout(redirectToApp, 120);
+      window.setTimeout(() => redirectToApp(data.session), 120);
       return;
     }
     clearLocalAuthHints();
@@ -76,7 +79,7 @@ function bindLoginForm() {
       persistAuthSession(data.session);
       const label = data.user?.user_type === "client" ? "甲方客户 Portal" : "内部工作台";
       setFeedback(`登录成功，正在进入${label}。`, "success");
-      window.setTimeout(redirectToApp, 250);
+      window.setTimeout(() => redirectToApp(data.session), 250);
     } catch (error) {
       setFeedback(error.message || "登录失败", "danger");
     }

@@ -237,6 +237,7 @@ _TENANT_RE = re.compile(r"[^a-zA-Z0-9_-]+")
 _db_path_ctx: contextvars.ContextVar[Path] = contextvars.ContextVar("db_path", default=DEFAULT_DB_PATH)
 _template_path_ctx: contextvars.ContextVar[Path] = contextvars.ContextVar("template_path", default=DEFAULT_TEMPLATE_PATH)
 _identity_ctx: contextvars.ContextVar[Any] = contextvars.ContextVar("identity", default=None)
+_session_id_ctx: contextvars.ContextVar[str] = contextvars.ContextVar("session_id", default="")
 _AGENT_IMPORT_STAGING: dict[str, dict[str, Any]] = {}
 
 
@@ -411,11 +412,26 @@ def _session_cookie_kwargs() -> dict[str, Any]:
 
 
 def _session_id_from_request(request: Request) -> str:
-    cookie_session = request.cookies.get(AUTH_COOKIE_NAME, "")
-    if cookie_session:
-        return cookie_session
     header_session = request.headers.get(AUTH_SESSION_HEADER, "").strip()
-    return header_session
+    if header_session:
+        return header_session
+    return request.cookies.get(AUTH_COOKIE_NAME, "")
+
+
+def _session_id_candidates_from_request(request: Request) -> list[str]:
+    values = [
+        request.headers.get(AUTH_SESSION_HEADER, "").strip(),
+        request.cookies.get(AUTH_COOKIE_NAME, "").strip(),
+    ]
+    return [value for index, value in enumerate(values) if value and value not in values[:index]]
+
+
+def _resolve_identity_from_request(db_path: Path, request: Request) -> tuple[Any, str]:
+    for session_id in _session_id_candidates_from_request(request):
+        identity = resolve_identity(db_path, session_id)
+        if identity is not None:
+            return identity, session_id
+    return None, ""
 
 
 def _auth_bypass_for_access_key(request: Request) -> bool:
@@ -468,9 +484,11 @@ async def tenant_context_middleware(request: Request, call_next):
     db_token = _db_path_ctx.set(db_path)
     template_token = _template_path_ctx.set(template_path)
     identity_token = None
+    session_token = None
     try:
-        identity = resolve_identity(db_path, _session_id_from_request(request))
+        identity, session_id = _resolve_identity_from_request(db_path, request)
         identity_token = _identity_ctx.set(identity)
+        session_token = _session_id_ctx.set(session_id)
         if _legacy_access_key_required_for(request.url.path) and not _auth_mode_active(db_path) and not _access_key_valid(request):
             return JSONResponse({"detail": "access key required"}, status_code=401)
         service_token_bypass = _auth_bypass_for_openclaw_tool_token(request, db_path)
@@ -485,6 +503,8 @@ async def tenant_context_middleware(request: Request, call_next):
     finally:
         if identity_token is not None:
             _identity_ctx.reset(identity_token)
+        if session_token is not None:
+            _session_id_ctx.reset(session_token)
         _db_path_ctx.reset(db_token)
         _template_path_ctx.reset(template_token)
 
@@ -2394,7 +2414,7 @@ async def auth_logout(request: Request) -> JSONResponse:
 @app.get("/api/auth/me")
 def auth_me(request: Request) -> dict[str, Any]:
     identity = current_identity()
-    session_id = _session_id_from_request(request)
+    session_id = _session_id_ctx.get() or _session_id_from_request(request)
     return {
         "authenticated": identity is not None,
         "identity": identity.to_dict() if identity else None,
