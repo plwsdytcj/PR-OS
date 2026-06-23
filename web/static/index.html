@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260624-14" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260624-18" />
   </head>
   <body>
     <div class="app-shell">
@@ -649,7 +649,13 @@
                 <input id="creatorSearch" class="search" placeholder="搜索名称、平台、标签、摘要" />
               </div>
             </div>
-            <div id="creatorList" class="creator-grid"></div>
+            <div class="creator-library-shell">
+              <div class="creator-library-toolbar">
+                <div id="creatorListSummary" class="creator-library-summary">正在准备达人库…</div>
+                <button id="creatorImportSampleBtn" class="secondary" type="button">导入示例达人</button>
+              </div>
+              <div id="creatorList" class="creator-grid"></div>
+            </div>
           </div>
         </section>
 
@@ -2285,6 +2291,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260624-17"></script>
+    <script src="/static/app.js?v=20260624-18"></script>
   </body>
 </html>

@@ -1079,6 +1079,27 @@ button {
   gap: 14px;
 }
 
+.creator-library-shell {
+  display: grid;
+  gap: 0;
+}
+
+.creator-library-toolbar {
+  align-items: center;
+  border-bottom: 2px solid rgba(23, 18, 13, 0.12);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+}
+
+.creator-library-summary {
+  color: #17120d;
+  font-weight: 800;
+}
+
 .creator-filter-form {
   background: #fffdf4;
   border: 3px solid #17120d;
