@@ -52,6 +52,8 @@ const state = {
   creatorFilterSelected: {},
   creatorFilterRecommendations: {},
   creatorFilterNarrativeAnalysis: null,
+  creatorFilterBusinessType: null,
+  creatorFilterDeliverables: null,
   cases: [],
   activeCase: null,
   lastProposal: "",
@@ -331,6 +333,30 @@ const CREATOR_TAG_FILTER_GROUPS = [
 
 const CREATOR_FILTER_PRESETS_KEY = "pr_os_creator_filter_presets";
 
+const BUILTIN_CREATOR_FILTER_PRESETS = [
+  {
+    id: "builtin_two_stage_propagation",
+    name: "二段传播模式",
+    builtin: true,
+    snapshot: {
+      step: 2,
+      platform: "",
+      query: "",
+      sort: "avg_likes_desc",
+      min_like_fan_ratio: "3",
+      min_recent_posts_count: "10",
+      min_avg_likes: "",
+      narrative_brief: "",
+      text_tags: "专业解释, 深度测评, 行业背书",
+      tags: {
+        identity: ["行业专家", "科技博主", "记者"],
+        capability: ["测评", "科普解释", "深度稿"],
+        narrative: ["专业背书", "技术解释者", "品牌故事转译", "高知信任入口"],
+      },
+    },
+  },
+];
+
 const CREATOR_NARRATIVE_FILTER_GROUP_IDS = ["industry", "identity", "capability", "narrative"];
 const CREATOR_EXTRA_FILTER_GROUP_IDS = ["commercial", "delivery", "risk"];
 
@@ -346,8 +372,14 @@ function creatorKitShareUrl(creatorId) {
   return new URL(`/creator-kit/${encodeURIComponent(id)}`, window.location.origin).href;
 }
 
-function buildCreatorKitStandalonePage({ cardHtml, title, meta }) {
-  const cssHref = `${window.location.origin}/static/creator-kit-standalone.css?v=20260624-30`;
+function buildCreatorKitStandalonePage({ cardHtml, title, meta, shareUrl = "" }) {
+  const cssHref = `${window.location.origin}/static/creator-kit-standalone.css?v=${window.prOsBuildVersion()}`;
+  const safeTitle = String(title || "达人").replace(/[\\/:*?"<>|\\s]+/g, "_");
+  const toolbar = `
+    <div class="creator-kit-toolbar">
+      ${shareUrl ? `<button class="secondary" type="button" id="copyShareBtn">复制网页链接</button>` : ""}
+      <button class="primary" type="button" id="downloadPdfBtn">下载 PDF</button>
+    </div>`;
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -363,18 +395,55 @@ function buildCreatorKitStandalonePage({ cardHtml, title, meta }) {
       <h1>${escapeHTML(title || "商业名片刊例")}</h1>
       ${meta ? `<p class="meta">${escapeHTML(meta)}</p>` : ""}
     </header>
+    ${toolbar}
     <div class="commercial-kit-output">${cardHtml}</div>
   </main>
+  <script>
+    const shareUrl = ${JSON.stringify(shareUrl)};
+    const pdfName = ${JSON.stringify(`${safeTitle}_商业名片刊例.pdf`)};
+    document.getElementById("copyShareBtn")?.addEventListener("click", async () => {
+      const btn = document.getElementById("copyShareBtn");
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        if (btn) btn.textContent = "已复制";
+      } catch {
+        alert(shareUrl);
+      }
+    });
+    document.getElementById("downloadPdfBtn")?.addEventListener("click", async () => {
+      const card = document.querySelector(".creator-commercial-card");
+      if (!card) return;
+      if (!window.html2pdf) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+      await window.html2pdf()
+        .set({
+          margin: [10, 10, 10, 10],
+          filename: pdfName,
+          image: { type: "jpeg", quality: 0.95 },
+          html2canvas: { scale: 2, useCORS: true },
+          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        })
+        .from(card)
+        .save();
+    });
+  </script>
 </body>
 </html>`;
 }
 
-function openCreatorKitPreviewBlob(card, creator) {
+function openCreatorKitPreviewBlob(card, creator, shareUrl = "") {
   const title = `${creator?.name || "达人"} · 商业名片刊例`;
   const meta = [creator?.platform, creator?.follower_count ? `${fmtNumber(creator.follower_count)} 粉丝` : ""]
     .filter(Boolean)
     .join(" · ");
-  const html = buildCreatorKitStandalonePage({ cardHtml: card.outerHTML, title, meta });
+  const html = buildCreatorKitStandalonePage({ cardHtml: card.outerHTML, title, meta, shareUrl });
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const win = window.open(url, "_blank", "noopener,noreferrer");
@@ -671,13 +740,23 @@ function clearAuthSession() {
   localStorage.removeItem("pr_ai_os_session_token");
 }
 
+function syncAppBuildVersionInUrl() {
+  const version = window.prOsBuildVersion();
+  const query = new URLSearchParams(window.location.search);
+  if (query.get("v") === version) return;
+  query.set("v", version);
+  const next = `${window.location.pathname}?${query.toString()}${window.location.hash}`;
+  window.history.replaceState({}, document.title, next);
+}
+
 function hydrateAuthSessionFromLocation() {
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   const query = new URLSearchParams(window.location.search);
   const token = String(hash.get("session") || query.get("session") || "").trim();
   if (!token) return;
   persistAuthSession({ session_id: token });
-  const cleanUrl = `${window.location.pathname}${query.has("v") ? `?v=${encodeURIComponent(query.get("v"))}` : ""}`;
+  const version = window.prOsBuildVersion();
+  const cleanUrl = `${window.location.pathname}?v=${encodeURIComponent(version)}`;
   window.history.replaceState({}, document.title, cleanUrl);
 }
 
@@ -1300,6 +1379,136 @@ async function deleteActiveCase() {
   closeCaseModal();
   await loadCases();
   toast("案例已删除");
+}
+
+function getSelectedCreatorFilterIds() {
+  return Object.keys(state.creatorFilterSelected || {}).filter((id) => state.creatorFilterSelected[id]);
+}
+
+function settlementCreatorsForWizard(explicitIds = []) {
+  const ids = explicitIds.length ? explicitIds : getSelectedCreatorFilterIds();
+  return ids.map((id) => state.creators.find((creator) => creator.creator_id === id)).filter(Boolean);
+}
+
+function renderSettlementWizardBusinessMeta(business) {
+  const node = $("#settlementWizardBusinessMeta");
+  if (!node) return;
+  if (!business?.business_type_label) {
+    node.classList.add("hidden");
+    node.innerHTML = "";
+    return;
+  }
+  node.classList.remove("hidden");
+  node.innerHTML = `
+    <p><strong>业务类型：</strong>${escapeHTML(business.business_type_label)}</p>
+    <p class="meta"><strong>结算目标：</strong>${escapeHTML(business.settlement_target || "")}</p>
+  `;
+}
+
+function renderSettlementWizardItems(creators) {
+  const node = $("#settlementWizardItems");
+  if (!node) return;
+  if (!creators.length) {
+    node.innerHTML = '<div class="commercial-card-empty">请先在筛选结果中勾选合作达人。</div>';
+    return;
+  }
+  node.innerHTML = creators
+    .map(
+      (creator) => `
+    <article class="settlement-wizard-item" data-creator-id="${escapeHTML(creator.creator_id)}">
+      <h3>${escapeHTML(creator.name)} <span class="meta">· ${escapeHTML(creator.platform || "未知平台")}</span></h3>
+      <div class="field-row two">
+        <input data-field="content_url" placeholder="发布链接" />
+        <input data-field="content_format" placeholder="合作形式，如 深度稿 / 测评视频" />
+      </div>
+      <input data-field="content_topic" placeholder="内容主题" />
+      <div class="field-row two">
+        <input data-field="performance_views" placeholder="曝光 / 阅读 / 播放" />
+        <select data-field="is_successful">
+          <option value="">合作结果</option>
+          <option value="success">成功</option>
+          <option value="partial">部分达成</option>
+          <option value="failed">未达预期</option>
+        </select>
+      </div>
+      <textarea data-field="reuse_suggestion" rows="2" placeholder="复用建议，如 适合科技新品解释型传播"></textarea>
+    </article>
+  `,
+    )
+    .join("");
+}
+
+function openSettlementWizard(creators = []) {
+  const modal = $("#settlementWizardModal");
+  const form = $("#settlementWizardForm");
+  if (!modal || !form) return;
+  const list = creators.length ? creators : settlementCreatorsForWizard();
+  if (!list.length) {
+    toast("请先勾选至少一位合作达人", true);
+    return;
+  }
+  form.reset();
+  const brief = state.creatorFilterNarrativeAnalysis?.brief || {};
+  const business = state.creatorFilterBusinessType || state.creatorFilterNarrativeAnalysis?.business || null;
+  if (form.elements.project_name) form.elements.project_name.value = brief.product ? `${brief.product} 传播项目` : "";
+  const clientCard = state.creatorFilterDeliverables?.client_card || {};
+  if (form.elements.brand_name) form.elements.brand_name.value = clientCard.product_service || brief.product || "";
+  if (form.elements.client_name) form.elements.client_name.value = clientCard.client_name || "";
+  if (form.elements.industry) form.elements.industry.value = clientCard.industry || brief.industry || "";
+  if (form.elements.product) form.elements.product.value = clientCard.product_service || brief.product || "";
+  renderSettlementWizardBusinessMeta(business);
+  renderSettlementWizardItems(list);
+  modal.classList.remove("hidden");
+}
+
+function closeSettlementWizard() {
+  $("#settlementWizardModal")?.classList.add("hidden");
+}
+
+async function submitSettlementWizard(form) {
+  const business = state.creatorFilterBusinessType || state.creatorFilterNarrativeAnalysis?.business || {};
+  const items = [...form.querySelectorAll(".settlement-wizard-item")]
+    .map((row) => {
+      const creatorId = row.dataset.creatorId || "";
+      const read = (field) => row.querySelector(`[data-field="${field}"]`)?.value || "";
+      const performance = {};
+      const views = String(read("performance_views")).trim();
+      if (views) performance.views = views;
+      return {
+        creator_id: creatorId,
+        content_url: read("content_url"),
+        content_format: read("content_format"),
+        content_topic: read("content_topic"),
+        is_successful: read("is_successful"),
+        reuse_suggestion: read("reuse_suggestion"),
+        performance,
+        cooperation_goal: business.settlement_target || "",
+      };
+    })
+    .filter((item) => item.creator_id);
+  if (!items.length) return toast("没有可回写的达人", true);
+  const brandName = String(form.elements.brand_name?.value || "").trim();
+  if (!brandName) return toast("请填写合作品牌", true);
+  const payload = {
+    project_name: String(form.elements.project_name?.value || "").trim(),
+    client_name: String(form.elements.client_name?.value || "").trim(),
+    brand_name: brandName,
+    industry: String(form.elements.industry?.value || "").trim(),
+    product: String(form.elements.product?.value || "").trim(),
+    business_type: business.business_type_label || business.business_type || "",
+    settlement_target: business.settlement_target || "",
+    client_confirmed: Boolean(form.elements.client_confirmed?.checked),
+    payment_status: String(form.elements.payment_status?.value || "").trim(),
+    items,
+  };
+  const result = await api("/api/cases/settlement-writeback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  closeSettlementWizard();
+  await Promise.all([loadCases(), loadCreators().catch(() => {})]);
+  toast(`已回写 ${result.total_cases || items.length} 条案例`);
 }
 
 async function loadImportTemplates() {
@@ -2344,8 +2553,75 @@ function clearCreatorFilterTags() {
 }
 
 function loadCreatorFilterPresets() {
+  let saved = [];
   try {
     const raw = localStorage.getItem(CREATOR_FILTER_PRESETS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    saved = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    saved = [];
+  }
+  return [...BUILTIN_CREATOR_FILTER_PRESETS, ...saved.filter((item) => !item.builtin)];
+}
+
+function saveCreatorFilterPresetsToStorage(presets) {
+  const savedOnly = presets.filter((item) => !item.builtin);
+  localStorage.setItem(CREATOR_FILTER_PRESETS_KEY, JSON.stringify(savedOnly));
+}
+
+function renderCreatorFilterBusinessType(business) {
+  const node = $("#creatorFilterBusinessType");
+  if (!node) return;
+  if (!business?.business_type_label) {
+    node.classList.add("hidden");
+    node.innerHTML = "";
+    return;
+  }
+  state.creatorFilterBusinessType = business;
+  node.classList.remove("hidden");
+  const confidenceLabel = business.confidence === "high" ? "高" : business.confidence === "medium" ? "中" : "低";
+  node.innerHTML = `
+    <div class="creator-filter-business-card">
+      <div class="creator-filter-business-head">
+        <strong>业务类型判断</strong>
+        <span class="status-pill">${escapeHTML(business.business_type_label)}</span>
+        <span class="meta">置信 ${escapeHTML(confidenceLabel)}</span>
+      </div>
+      <p><strong>本次结算目标：</strong>${escapeHTML(business.settlement_target || "待确认")}</p>
+      <p class="meta">${escapeHTML(business.reason || "")}</p>
+      ${
+        business.recommend_two_stage
+          ? `<p class="meta creator-filter-business-tip">建议优先采用<strong>二段传播</strong>：通过高信任节点转译信息，而非纯流量曝光。</p>`
+          : ""
+      }
+    </div>
+  `;
+}
+
+function applyTwoStagePropagationPreset() {
+  const preset = BUILTIN_CREATOR_FILTER_PRESETS[0];
+  if (!preset) return;
+  applyCreatorFilterSnapshot(preset.snapshot);
+  toast(`已载入「${preset.name}」`);
+}
+
+function applyCreatorFilterBusinessFromData(data) {
+  const business = data?.business || null;
+  renderCreatorFilterBusinessType(business);
+  if (business?.recommend_two_stage && !Object.keys(state.creatorFilterTags || {}).length) {
+    const preset = BUILTIN_CREATOR_FILTER_PRESETS[0];
+    if (preset?.snapshot?.tags) {
+      state.creatorFilterTags = JSON.parse(JSON.stringify(preset.snapshot.tags));
+      renderCreatorFilterTagFramework();
+    }
+  }
+}
+
+const CLIENT_CARDS_STORAGE_KEY = "pr_os_client_cards";
+
+function loadStoredClientCards() {
+  try {
+    const raw = localStorage.getItem(CLIENT_CARDS_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
@@ -2353,8 +2629,212 @@ function loadCreatorFilterPresets() {
   }
 }
 
-function saveCreatorFilterPresetsToStorage(presets) {
-  localStorage.setItem(CREATOR_FILTER_PRESETS_KEY, JSON.stringify(presets));
+function saveStoredClientCards(cards) {
+  localStorage.setItem(CLIENT_CARDS_STORAGE_KEY, JSON.stringify(cards.slice(0, 30)));
+}
+
+function persistClientCardDraft(card) {
+  if (!card?.client_name) return;
+  const cards = loadStoredClientCards().filter((item) => item.client_name !== card.client_name);
+  cards.unshift({ ...card, saved_at: new Date().toISOString() });
+  saveStoredClientCards(cards);
+}
+
+async function fetchClientCardsList(query = "") {
+  try {
+    const data = await api(`/api/client-cards${query ? `?q=${encodeURIComponent(query)}` : ""}`);
+    return Array.isArray(data.items) ? data.items : [];
+  } catch {
+    return loadStoredClientCards();
+  }
+}
+
+function applyClientCardToDeliverables(card) {
+  if (!card || !state.creatorFilterDeliverables) return;
+  state.creatorFilterDeliverables.client_card = { ...(state.creatorFilterDeliverables.client_card || {}), ...card };
+  renderCreatorFilterDeliverables(state.creatorFilterDeliverables);
+}
+
+async function renderCreatorFilterDeliverables(data) {
+  const node = $("#creatorFilterDeliverables");
+  if (!node) return;
+  if (!data) {
+    node.classList.add("hidden");
+    node.innerHTML = "";
+    return;
+  }
+  state.creatorFilterDeliverables = data;
+  const client = data.client_card || {};
+  const quote = data.quote_skeleton || {};
+  const topics = data.topic_cards || [];
+  const savedCards = await fetchClientCardsList();
+  node.classList.remove("hidden");
+  node.innerHTML = `
+    <div class="creator-filter-deliverables-card">
+      <div class="creator-filter-deliverables-head">
+        <strong>媒介交付包</strong>
+        <span class="meta">${escapeHTML(quote.package_name || "报价骨架")}${data.summary?.ai_enriched ? " · AI 润色" : ""}</span>
+        <div class="button-row compact-row">
+          <label class="inline-check"><input type="checkbox" id="deliverableUseLlm" /> AI 润色选题</label>
+          <select id="deliverableClientCardPicker" class="secondary compact-select">
+            <option value="">载入已存客户卡…</option>
+            ${savedCards.map((item) => `<option value="${escapeHTML(item.card_id || "")}">${escapeHTML(item.client_name || "未命名")}</option>`).join("")}
+          </select>
+          <button type="button" class="secondary" id="creatorFilterSaveClientCardBtn">保存客户卡</button>
+          <button type="button" class="secondary" id="creatorFilterCopyDeliverablesBtn">复制 Markdown</button>
+          <button type="button" class="secondary" id="creatorFilterDownloadDeliverablesBtn">下载媒介包</button>
+        </div>
+      </div>
+      <details class="creator-filter-deliverable-block" open>
+        <summary>客户卡</summary>
+        <div class="creator-filter-client-card-grid">
+          <label>客户名称<input id="deliverableClientName" value="${escapeHTML(client.client_name || "")}" /></label>
+          <label>行业<input id="deliverableIndustry" value="${escapeHTML(client.industry || "")}" /></label>
+          <label>决策人<input id="deliverableDecisionMaker" value="${escapeHTML(client.decision_maker || "")}" /></label>
+          <label>预算<input id="deliverableBudget" value="${escapeHTML(client.budget_range || "")}" /></label>
+          <label>目标人群<input id="deliverableAudience" value="${escapeHTML(client.target_audience || "")}" /></label>
+          <label>平台<input id="deliverablePlatforms" value="${escapeHTML(client.required_platforms || "")}" /></label>
+          <label class="full">必须说<textarea id="deliverableMustSay" rows="2">${escapeHTML(client.must_say || "")}</textarea></label>
+          <label class="full">不能说<textarea id="deliverableMustNotSay" rows="2">${escapeHTML(client.must_not_say || "")}</textarea></label>
+        </div>
+      </details>
+      <details class="creator-filter-deliverable-block" open>
+        <summary>选题卡（${topics.length}）</summary>
+        <div class="creator-filter-topic-list">
+          ${topics
+            .map(
+              (topic, index) => `
+            <article class="creator-filter-topic-card">
+              <h4>${index + 1}. ${escapeHTML(topic.topic_title || "选题")}</h4>
+              <p><strong>主张：</strong>${escapeHTML(topic.core_claim || "")}</p>
+              <p class="meta">${escapeHTML(topic.content_format || "")} · ${escapeHTML(topic.creator_fit || "")}</p>
+              <p class="meta">证据：${escapeHTML(topic.evidence_needed || "")}</p>
+            </article>
+          `,
+            )
+            .join("")}
+        </div>
+      </details>
+      <details class="creator-filter-deliverable-block">
+        <summary>报价骨架 · ${escapeHTML(quote.package_name || "")}</summary>
+        <ul class="creator-filter-quote-list">
+          <li><strong>范围：</strong>${escapeHTML(quote.scope || "")}</li>
+          <li><strong>交付：</strong>${escapeHTML(quote.deliverable_units || "")}</li>
+          <li><strong>达人数量：</strong>${escapeHTML(String(quote.creator_count || ""))}</li>
+          <li><strong>报价合计：</strong>${quote.quoted_total ? `${Number(quote.quoted_total).toLocaleString()} 元` : "待测算"}</li>
+          <li><strong>时间线：</strong>${escapeHTML(quote.timeline || "")}</li>
+          <li><strong>付款节点：</strong>${escapeHTML((quote.payment_milestones || []).map((item) => `${item.stage} ${item.ratio}`).join("；"))}</li>
+          <li><strong>退出规则：</strong>${escapeHTML(quote.exit_rule || "")}</li>
+        </ul>
+      </details>
+    </div>
+  `;
+  $("#creatorFilterSaveClientCardBtn")?.addEventListener("click", () => saveDeliverableClientCard());
+  $("#creatorFilterCopyDeliverablesBtn")?.addEventListener("click", copyDeliverablesMarkdown);
+  $("#creatorFilterDownloadDeliverablesBtn")?.addEventListener("click", downloadDeliverablesMarkdown);
+  $("#deliverableClientCardPicker")?.addEventListener("change", (event) => {
+    const cardId = event.target.value;
+    if (!cardId) return;
+    const card = savedCards.find((item) => item.card_id === cardId);
+    if (card) applyClientCardToDeliverables(card);
+  });
+  if ($("#deliverableUseLlm")) {
+    $("#deliverableUseLlm").checked = Boolean(data.summary?.ai_enriched);
+  }
+}
+
+function collectDeliverableClientCard() {
+  const base = state.creatorFilterDeliverables?.client_card || {};
+  return {
+    ...base,
+    client_name: $("#deliverableClientName")?.value || base.client_name || "",
+    industry: $("#deliverableIndustry")?.value || base.industry || "",
+    decision_maker: $("#deliverableDecisionMaker")?.value || base.decision_maker || "",
+    budget_range: $("#deliverableBudget")?.value || base.budget_range || "",
+    target_audience: $("#deliverableAudience")?.value || base.target_audience || "",
+    required_platforms: $("#deliverablePlatforms")?.value || base.required_platforms || "",
+    must_say: $("#deliverableMustSay")?.value || base.must_say || "",
+    must_not_say: $("#deliverableMustNotSay")?.value || base.must_not_say || "",
+  };
+}
+
+async function saveDeliverableClientCard() {
+  const card = collectDeliverableClientCard();
+  if (!card.client_name?.trim()) {
+    toast("请填写客户名称", true);
+    return;
+  }
+  if (state.creatorFilterDeliverables) {
+    state.creatorFilterDeliverables.client_card = card;
+  }
+  try {
+    const data = await api("/api/client-cards", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(card),
+    });
+    const saved = data.card || card;
+    persistClientCardDraft(saved);
+    toast(`客户卡「${saved.client_name}」已保存`);
+  } catch (error) {
+    persistClientCardDraft(card);
+    toast(error.message || `客户卡「${card.client_name}」已本地保存`, true);
+  }
+}
+
+function getDeliverablesMarkdown() {
+  return state.creatorFilterDeliverables?.markdown || "";
+}
+
+async function copyDeliverablesMarkdown() {
+  const markdown = getDeliverablesMarkdown();
+  if (!markdown) return toast("请先生成媒介交付包", true);
+  try {
+    await navigator.clipboard.writeText(markdown);
+    toast("媒介包 Markdown 已复制");
+  } catch {
+    toast("复制失败，请改用下载", true);
+  }
+}
+
+function downloadDeliverablesMarkdown() {
+  const markdown = getDeliverablesMarkdown();
+  if (!markdown) return toast("请先生成媒介交付包", true);
+  const name = (collectDeliverableClientCard().client_name || "媒介交付包").replace(/[\\/:*?"<>|\\s]+/g, "_");
+  const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${name}_媒介交付包.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast("媒介包已下载");
+}
+
+async function loadCreatorFilterDeliverables(briefText, options = {}) {
+  const brief = String(briefText || "").trim();
+  if (!brief) {
+    renderCreatorFilterDeliverables(null);
+    return;
+  }
+  const selectedCount = getSelectedCreatorFilterIds().length;
+  const useLlm = Boolean($("#deliverableUseLlm")?.checked || options.useLlm);
+  try {
+    const data = await api("/api/brief/deliverables", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        brief,
+        client_name: options.clientName || "",
+        creator_count: selectedCount || options.creatorCount || 8,
+        use_llm: useLlm,
+      }),
+    });
+    await renderCreatorFilterDeliverables(data);
+  } catch (error) {
+    renderCreatorFilterDeliverables(null);
+    toast(error.message || "媒介交付包生成失败", true);
+  }
 }
 
 function snapshotCreatorFilter() {
@@ -2458,7 +2938,12 @@ function deleteSelectedCreatorFilterPreset() {
     toast("请先选择要删除的方案", true);
     return;
   }
-  const presets = loadCreatorFilterPresets().filter((item) => item.id !== id);
+  const preset = loadCreatorFilterPresets().find((item) => item.id === id);
+  if (preset?.builtin) {
+    toast("内置方案不能删除", true);
+    return;
+  }
+  const presets = loadCreatorFilterPresets().filter((item) => item.id !== id && !item.builtin);
   saveCreatorFilterPresetsToStorage(presets);
   renderCreatorFilterPresetSelect();
   toast("方案已删除");
@@ -2510,6 +2995,9 @@ function applyCreatorFilterFromBriefResult(data) {
     hints.textContent = hintText || "已从 Brief 解析并点亮标签";
     hints.classList.toggle("hidden", !hintText);
   }
+  applyCreatorFilterBusinessFromData(data);
+  const briefText = data.brief?.raw_text || $("#creatorFilterBriefInput")?.value || getCreatorFilterNarrativeBriefText();
+  loadCreatorFilterDeliverables(briefText);
   toast("Brief 已带入筛选");
 }
 
@@ -2579,6 +3067,7 @@ function renderCreatorFilterNarrativeAnalysis(data) {
       ${tagLines ? `<ul class="creator-filter-analysis-tags">${tagLines}</ul>` : ""}
     </div>
   `;
+  if (data.business) renderCreatorFilterBusinessType(data.business);
 }
 
 function applyCreatorFilterNarrativeAnalysis(data) {
@@ -2601,7 +3090,10 @@ function applyCreatorFilterNarrativeAnalysis(data) {
     if (Array.isArray(values) && values.length) state.creatorFilterTags[group.id] = [...values];
   }
   state.creatorFilterNarrativeAnalysis = data;
+  applyCreatorFilterBusinessFromData(data);
   renderCreatorFilterNarrativeAnalysis(data);
+  const briefText = data.brief?.raw_text || getCreatorFilterNarrativeBriefText();
+  loadCreatorFilterDeliverables(briefText);
   renderCreatorFilterTagFramework();
   setCreatorFilterStep(2);
   renderCreatorFilterResults();
@@ -5225,6 +5717,24 @@ function renderAgentArtifact(artifact) {
         <span>叙事 ${fmtNumber(summary.narratives)}</span>
         <span>步骤 ${fmtNumber(summary.steps)}</span>
       </div>
+    `;
+  } else if (artifact.artifact_type === "deliverables") {
+    const summary = payload.summary || {};
+    const client = payload.client_card || {};
+    const topics = payload.topic_cards || [];
+    detail = `
+      <div class="agent-artifact-metrics">
+        <span>${escapeHTML(summary.business_type || "业务类型")}</span>
+        <span>选题 ${fmtNumber(summary.topic_count || topics.length)}</span>
+        <span>${escapeHTML(summary.package_name || "报价骨架")}</span>
+      </div>
+      <div class="meta">客户：${escapeHTML(client.client_name || "待补充")} · 预算 ${escapeHTML(client.budget_range || "待定")}</div>
+      <ul class="agent-mini-list">
+        ${topics
+          .slice(0, 4)
+          .map((topic, index) => `<li>${index + 1}. ${escapeHTML(topic.topic_title || "选题")} <span>${escapeHTML(topic.content_format || "")}</span></li>`)
+          .join("")}
+      </ul>
     `;
   } else if (artifact.artifact_type === "proposal") {
     const summary = payload.summary || {};
@@ -8817,18 +9327,13 @@ function openCreatorCommercialKitWeb(creatorId = "") {
     generateCreatorCommercialKit(form);
     card = $(outputId)?.querySelector(".creator-commercial-card");
   }
+  if (!card) {
+    toast("请先生成名片刊例", true);
+    return;
+  }
   const creator = getCreatorDraftFromForm(form) || state.activeCreator || {};
   const id = String(creatorId || creator.creator_id || state.activeCreator?.creator_id || "").trim();
-  if (id) {
-    const win = window.open(creatorKitShareUrl(id), "_blank", "noopener,noreferrer");
-    if (!win) toast("请允许弹窗后重试", true);
-    return;
-  }
-  if (card) {
-    openCreatorKitPreviewBlob(card, creator);
-    return;
-  }
-  toast("请先生成名片刊例", true);
+  openCreatorKitPreviewBlob(card, creator, id ? creatorKitShareUrl(id) : "");
 }
 
 function generateCreatorCommercialKit(form = null) {
@@ -9948,6 +10453,9 @@ function bindEvents() {
     renderCreatorFilterResults();
   });
   $("#creatorFilterExportBtn")?.addEventListener("click", exportSelectedCreatorFilterList);
+  $("#creatorFilterSettlementBtn")?.addEventListener("click", () => openSettlementWizard());
+  $("#creatorFilterDeliverablesBtn")?.addEventListener("click", downloadDeliverablesMarkdown);
+  $("#creatorFilterTwoStagePresetBtn")?.addEventListener("click", applyTwoStagePropagationPreset);
   $("#creatorFilterResetBtn")?.addEventListener("click", () => {
     $("#creatorFilterForm")?.reset();
     clearCreatorFilterTags();
@@ -9957,6 +10465,10 @@ function bindEvents() {
     $("#creatorFilterBriefHints")?.classList.add("hidden");
     renderCreatorFilterNarrativeAnalysis(null);
     state.creatorFilterNarrativeAnalysis = null;
+    state.creatorFilterBusinessType = null;
+    renderCreatorFilterBusinessType(null);
+    state.creatorFilterDeliverables = null;
+    renderCreatorFilterDeliverables(null);
     state.creatorFilterSelected = {};
     state.creatorFilterRecommendations = {};
     setCreatorFilterStep(1);
@@ -9971,6 +10483,24 @@ function bindEvents() {
   $("#creatorFilterPresetDeleteBtn")?.addEventListener("click", deleteSelectedCreatorFilterPreset);
   $("#caseSearch")?.addEventListener("input", renderCases);
   $("#openCaseModalBtn")?.addEventListener("click", () => openCaseModal());
+  $("#openSettlementWizardBtn")?.addEventListener("click", async () => {
+    await ensureCreatorsLoaded().catch(() => {});
+    openSettlementWizard();
+  });
+  $("#closeSettlementWizardBtn")?.addEventListener("click", closeSettlementWizard);
+  $("#settlementWizardForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = event.currentTarget.querySelector("button[type='submit']");
+    if (button) button.disabled = true;
+    try {
+      await submitSettlementWizard(event.currentTarget);
+    } catch (error) {
+      toast(error.message || "结算回写失败", true);
+    } finally {
+      if (button) button.disabled = false;
+    }
+  });
+  bindModalDismiss($("#settlementWizardModal"), "[data-close-settlement-wizard]", closeSettlementWizard);
   $("#closeCaseModalBtn")?.addEventListener("click", closeCaseModal);
   $("#deleteCaseBtn")?.addEventListener("click", deleteActiveCase);
   $("#caseForm")?.addEventListener("submit", async (event) => {
@@ -11410,6 +11940,7 @@ function bindEvents() {
 
 window.addEventListener("DOMContentLoaded", async () => {
   hydrateAuthSessionFromLocation();
+  syncAppBuildVersionInUrl();
   applySidebarState();
   decorateViews();
   bindEvents();

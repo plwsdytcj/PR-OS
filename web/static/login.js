@@ -41,7 +41,8 @@ async function api(path, options = {}) {
 function redirectToApp(session = null) {
   const token = String(session?.session_id || localStorage.getItem(SESSION_KEY) || "").trim();
   const hash = token ? `#session=${encodeURIComponent(token)}` : "";
-  window.location.href = `/app?v=20260624-21${hash}`;
+  const version = window.prOsBuildVersion();
+  window.location.href = `/app?v=${encodeURIComponent(version)}${hash}`;
 }
 
 async function checkExistingSession() {

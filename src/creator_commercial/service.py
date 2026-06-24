@@ -19,7 +19,7 @@ from src.creator_commercial.schemas import (
 from src.creator_commercial.storage import upsert_case, upsert_commercial_profile, upsert_invitation, upsert_submission
 from src.intelligence.profiling import enrich_profiles
 from src.schemas import CreatorProfile, split_tags
-from src.storage.db import save_profile
+from src.storage.db import load_profile, save_profile
 
 
 LIST_FIELDS = {
@@ -205,6 +205,72 @@ def save_creator_case(db_path: Path, creator: CreatorProfile, payload: dict[str,
     case.updated_at = now_iso()
     upsert_case(db_path, case)
     return case
+
+
+def settlement_writeback(
+    db_path: Path,
+    *,
+    client_name: str = "",
+    brand_name: str = "",
+    industry: str = "",
+    product: str = "",
+    business_type: str = "",
+    settlement_target: str = "",
+    project_name: str = "",
+    client_confirmed: bool = False,
+    payment_status: str = "",
+    items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    cases: list[CreatorCase] = []
+    creators_updated: list[str] = []
+    settlement_note = " | ".join(
+        part
+        for part in [
+            f"项目：{project_name}" if project_name else "",
+            f"客户：{client_name}" if client_name else "",
+            f"业务类型：{business_type}" if business_type else "",
+            f"结算目标：{settlement_target}" if settlement_target else "",
+            "客户已确认" if client_confirmed else "",
+            f"付款：{payment_status}" if payment_status else "",
+        ]
+        if part
+    )
+    for item in items:
+        creator_id = str(item.get("creator_id") or "").strip()
+        if not creator_id:
+            continue
+        creator = load_profile(db_path, creator_id)
+        if creator is None:
+            continue
+        case_payload = {
+            **item,
+            "brand_name": str(item.get("brand_name") or brand_name or "未命名品牌"),
+            "industry": str(item.get("industry") or industry or ""),
+            "product": str(item.get("product") or product or ""),
+            "cooperation_goal": str(item.get("cooperation_goal") or settlement_target or ""),
+            "active_tags": split_tags(item.get("active_tags")) + ([business_type] if business_type else []),
+            "comment_feedback": str(item.get("comment_feedback") or settlement_note or ""),
+        }
+        case = save_creator_case(db_path, creator, case_payload)
+        cases.append(case)
+
+        brands = _dedupe([*creator.cooperation_brands, case.brand_name])
+        notes = str(creator.manual_notes or "").strip()
+        feedback = str(item.get("comment_feedback") or "").strip()
+        reuse = str(item.get("reuse_suggestion") or "").strip()
+        note_bits = [bit for bit in [feedback, reuse] if bit]
+        if note_bits:
+            block = " | ".join(note_bits)
+            notes = f"{notes}\n{block}".strip() if notes else block
+        updated = CreatorProfile(**{**asdict(creator), "cooperation_brands": brands, "manual_notes": notes, "last_synced_at": now_iso()})
+        save_profile(db_path, updated)
+        creators_updated.append(creator_id)
+
+    return {
+        "cases": [case.to_dict() for case in cases],
+        "creators_updated": creators_updated,
+        "total_cases": len(cases),
+    }
 
 
 def case_summary(case: CreatorCase) -> str:

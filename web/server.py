@@ -107,6 +107,7 @@ from src.creator_commercial.service import (
     mark_invitation_opened,
     review_creator_submission,
     save_creator_case,
+    settlement_writeback,
 )
 from src.creator_commercial.storage import (
     delete_case,
@@ -126,6 +127,8 @@ from src.creator_commercial.storage import (
     upsert_invitation,
 )
 from src.intelligence.brief_parser import parse_brief
+from src.intelligence.brief_deliverables import generate_brief_deliverables
+from src.intelligence.business_type import classify_business_type, enrich_brief_analysis
 from src.intelligence.filter_from_brief import suggest_creator_filter_from_brief, suggest_creator_filter_from_text
 from src.intelligence.narrative_filter import analyze_narrative_filter, recommend_creators_for_filter
 from src.intelligence.data_quality import find_duplicate_candidates, governance_summary, quality_issues, strong_dedupe_profiles
@@ -305,6 +308,12 @@ def _init_db_bundle(path: Path | PathLike[str]) -> None:
     init_distribution_db(path)
     init_platform_db(path)
     init_openclaw_db(path)
+    try:
+        from src.knowledge.pr_os_seed import ensure_pr_os_judgment_knowledge
+
+        ensure_pr_os_judgment_knowledge(path)
+    except Exception:
+        pass
 
 
 _init_db_bundle(DB_PATH)
@@ -2982,6 +2991,78 @@ async def remove_creator_case(case_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="case not found")
     delete_case(DB_PATH, case_id)
     return {"deleted": True, "case_id": case_id, "brand_name": existing.brand_name}
+
+
+@app.post("/api/brief/classify")
+async def brief_classify(payload: dict[str, Any]) -> dict[str, Any]:
+    text = str(payload.get("brief") or payload.get("raw_text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="brief is required")
+    return enrich_brief_analysis(parse_brief(text))
+
+
+@app.post("/api/brief/deliverables")
+async def brief_deliverables(payload: dict[str, Any]) -> dict[str, Any]:
+    text = str(payload.get("brief") or payload.get("raw_text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="brief is required")
+    creator_count = int(payload.get("creator_count") or payload.get("top_n") or 8)
+    use_llm = bool(payload.get("use_llm"))
+    return generate_brief_deliverables(
+        text,
+        client_name=str(payload.get("client_name") or "").strip(),
+        creator_count=max(3, min(creator_count, 30)),
+        use_llm=use_llm,
+    )
+
+
+@app.get("/api/client-cards")
+def list_client_cards_api(q: str = "") -> dict[str, Any]:
+    require_internal("read")
+    from src.collaboration.client_card_service import list_client_cards
+
+    items = list_client_cards(DB_PATH, q=q)
+    return {"items": [item.to_dict() for item in items], "total": len(items)}
+
+
+@app.post("/api/client-cards")
+async def save_client_card_api(payload: dict[str, Any]) -> dict[str, Any]:
+    require_internal("write")
+    from src.collaboration.client_card_service import save_client_card
+
+    card = save_client_card(DB_PATH, payload)
+    return {"card": card.to_dict()}
+
+
+@app.delete("/api/client-cards/{card_id}")
+async def delete_client_card_api(card_id: str) -> dict[str, Any]:
+    require_internal("write")
+    from src.collaboration.client_card_service import remove_client_card
+
+    if not remove_client_card(DB_PATH, card_id):
+        raise HTTPException(status_code=404, detail="client card not found")
+    return {"deleted": True, "card_id": card_id}
+
+
+@app.post("/api/cases/settlement-writeback")
+async def cases_settlement_writeback(payload: dict[str, Any]) -> dict[str, Any]:
+    items = payload.get("items") or []
+    if not isinstance(items, list) or not items:
+        raise HTTPException(status_code=400, detail="items is required")
+    result = settlement_writeback(
+        DB_PATH,
+        client_name=str(payload.get("client_name") or "").strip(),
+        brand_name=str(payload.get("brand_name") or "").strip(),
+        industry=str(payload.get("industry") or "").strip(),
+        product=str(payload.get("product") or "").strip(),
+        business_type=str(payload.get("business_type") or payload.get("business_type_label") or "").strip(),
+        settlement_target=str(payload.get("settlement_target") or "").strip(),
+        project_name=str(payload.get("project_name") or "").strip(),
+        client_confirmed=bool(payload.get("client_confirmed")),
+        payment_status=str(payload.get("payment_status") or "").strip(),
+        items=items,
+    )
+    return result
 
 
 @app.get("/api/governance/summary")

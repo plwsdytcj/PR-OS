@@ -54,6 +54,16 @@ def init_collaboration_db(path: Path) -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS client_cards (
+                card_id TEXT PRIMARY KEY,
+                client_name TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
 
 
 def upsert_proposal(path: Path, proposal: Proposal) -> None:
@@ -230,6 +240,64 @@ def load_preference(path: Path, client_id: str) -> BrandPreferenceProfile | None
     with sqlite3.connect(path) as conn:
         row = conn.execute("SELECT payload FROM brand_preferences WHERE client_id = ?", (client_id,)).fetchone()
     return BrandPreferenceProfile.from_json(row[0]) if row else None
+
+
+def upsert_client_card(path: Path, card: Any) -> None:
+    from src.collaboration.client_cards import ClientCardRecord
+
+    if not isinstance(card, ClientCardRecord):
+        raise TypeError("card must be ClientCardRecord")
+    payload = json.dumps(card.to_dict(), ensure_ascii=False)
+    if postgres_enabled():
+        upsert_payload(path, "client_cards", "card_id", card.card_id, payload, {"client_name": card.client_name})
+        return
+    init_collaboration_db(path)
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            """
+            INSERT INTO client_cards (card_id, client_name, payload, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(card_id) DO UPDATE SET
+                client_name = excluded.client_name,
+                payload = excluded.payload,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (card.card_id, card.client_name, payload),
+        )
+
+
+def load_all_client_cards(path: Path) -> list[Any]:
+    from src.collaboration.client_cards import ClientCardRecord
+
+    if postgres_enabled():
+        return [ClientCardRecord.from_dict(json.loads(payload)) for payload in fetch_payloads(path, "client_cards")]
+    init_collaboration_db(path)
+    with sqlite3.connect(path) as conn:
+        rows = conn.execute("SELECT payload FROM client_cards ORDER BY updated_at DESC").fetchall()
+    return [ClientCardRecord.from_dict(json.loads(row[0])) for row in rows]
+
+
+def load_client_card(path: Path, card_id: str) -> Any | None:
+    from src.collaboration.client_cards import ClientCardRecord
+
+    if postgres_enabled():
+        payload = fetch_payload(path, "client_cards", "card_id", card_id)
+        return ClientCardRecord.from_dict(json.loads(payload)) if payload else None
+    init_collaboration_db(path)
+    with sqlite3.connect(path) as conn:
+        row = conn.execute("SELECT payload FROM client_cards WHERE card_id = ?", (card_id,)).fetchone()
+    return ClientCardRecord.from_dict(json.loads(row[0])) if row else None
+
+
+def delete_client_card(path: Path, card_id: str) -> None:
+    if postgres_enabled():
+        from src.storage.postgres_payload import delete_rows
+
+        delete_rows(path, "client_cards", "card_id", [card_id])
+        return
+    init_collaboration_db(path)
+    with sqlite3.connect(path) as conn:
+        conn.execute("DELETE FROM client_cards WHERE card_id = ?", (card_id,))
 
 
 def _version_json(version: ProposalVersion) -> str:

@@ -15,7 +15,8 @@ from src.agent.planner import build_agent_plan, clarification_payload
 from src.agent.reasoning_graph import build_reasoning_graph
 from src.agent.schemas import AgentArtifact, AgentEvent, AgentStep, now_iso, artifact_id_for, event_id_for, step_id_for
 from src.agent.storage import load_events_for_run, load_run, load_steps_for_run, load_task, upsert_artifact, upsert_event, upsert_run, upsert_step, upsert_task
-from src.agent.tools import create_proposal_tool, run_project_tool, search_knowledge_tool
+from src.agent.tools import brief_deliverables_tool, create_proposal_tool, run_project_tool, search_knowledge_tool
+from src.intelligence.pr_os_judgment import PR_OS_AGENT_INSTRUCTIONS
 from src.agent import runtime as custom_runtime
 
 
@@ -26,6 +27,7 @@ class SdkExecutionResult:
     provider: str
     tool_traces: list[dict[str, Any]]
     knowledge: dict[str, Any]
+    deliverables: dict[str, Any]
     project: dict[str, Any]
 
 
@@ -227,6 +229,24 @@ def execute_agent_run_with_sdk(db_path: Path, run_id: str, top_n: int = 8, requi
         event("tool_result", "completed", "完成组织记忆检索", knowledge_artifact.summary, tool_name="search_knowledge", payload={"count": knowledge["count"]}, artifact_id=knowledge_artifact.artifact_id)
         event("memory_recall", "completed", "完成长程记忆召回", memory_recall_artifact.summary, tool_name="search_knowledge", payload=memory_recall["summary"], artifact_id=memory_recall_artifact.artifact_id)
 
+        deliverables = sdk_result.deliverables or brief_deliverables_tool(db_path, brief=task.brief, client_name=task.client_name, top_n=top_n)
+        deliverables_summary = deliverables.get("summary") or {}
+        deliverables_artifact = artifact(
+            "deliverables",
+            "媒介交付包",
+            f"{deliverables_summary.get('business_type') or '业务类型待确认'} · {deliverables_summary.get('package_name') or '报价骨架'} · {deliverables_summary.get('topic_count', 0)} 个选题",
+            deliverables,
+        )
+        event(
+            "tool_result",
+            "completed",
+            "完成媒介交付包",
+            deliverables_artifact.summary,
+            tool_name="generate_deliverables",
+            payload=deliverables_summary,
+            artifact_id=deliverables_artifact.artifact_id,
+        )
+
         project = sdk_result.project or run_project_tool(db_path, client_name=task.client_name, project_name=task.project_name, brief=task.brief, top_n=top_n)
         project_summary = project["summary"]
         project_artifact = artifact(
@@ -328,7 +348,7 @@ def _run_sdk_agent(db_path: Path, message: str, client_name: str, project_name: 
     if base_url:
         model = OpenAIChatCompletionsModel(model=model_name, openai_client=AsyncOpenAI(api_key=api_key, base_url=base_url))
 
-    captured: dict[str, Any] = {"knowledge": {}, "project": {}, "tool_traces": []}
+    captured: dict[str, Any] = {"knowledge": {}, "deliverables": {}, "project": {}, "tool_traces": []}
 
     @function_tool
     def sdk_parse_brief(raw_brief: str) -> dict[str, Any]:
@@ -358,20 +378,45 @@ def _run_sdk_agent(db_path: Path, message: str, client_name: str, project_name: 
         captured["tool_traces"].append(_trace_item("run_project", f"client={client_name}; project={project_name}; top_n={top_n}", f"推荐 {summary['matches']} 位 KOL，生成 {summary['narratives']} 条叙事资产。", summary, elapsed_ms=_elapsed_ms(started)))
         return summary
 
+    @function_tool
+    def sdk_generate_deliverables(brief_text: str) -> dict[str, Any]:
+        """Generate client card, topic cards, and quote skeleton from the PR brief."""
+        started = perf_counter()
+        result = brief_deliverables_tool(db_path, brief=brief_text, client_name=client_name, top_n=top_n)
+        summary = result.get("summary") or {}
+        trace = _trace_item(
+            "generate_deliverables",
+            f"brief={brief_text[:120]}",
+            f"{summary.get('business_type')} · {summary.get('topic_count')} 个选题",
+            summary,
+            elapsed_ms=_elapsed_ms(started),
+        )
+        captured["tool_traces"].append(trace)
+        captured["deliverables"] = result
+        return summary
+
     agent = Agent(
         name="PR OS SDK Agent",
-        instructions=(
-            "你是 AI Native PR 公司的项目经理 Agent。必须按顺序调用工具："
-            "1) sdk_parse_brief；2) sdk_search_knowledge；3) sdk_match_kol_and_build_project。"
-            "工具完成后，用中文输出面向内部团队的简洁结论，包括推荐数量、风险检查和下一步。"
-        ),
+        instructions=PR_OS_AGENT_INSTRUCTIONS
+        + " 必须按顺序调用工具：1) sdk_parse_brief；2) sdk_search_knowledge；3) sdk_generate_deliverables；4) sdk_match_kol_and_build_project。",
         model=model,
-        tools=[sdk_parse_brief, sdk_search_knowledge, sdk_match_kol_and_build_project],
+        tools=[sdk_parse_brief, sdk_search_knowledge, sdk_generate_deliverables, sdk_match_kol_and_build_project],
     )
     result = _run_agent_sync(Runner, agent, message, int(os.getenv("AGENT_SDK_MAX_TURNS") or "8"))
     if not captured["knowledge"]:
         captured["knowledge"] = search_knowledge_tool(db_path, query=brief, top_k=6)
         captured["tool_traces"].append(_trace_item("search_knowledge", "PR OS fallback after SDK run", f"找到 {captured['knowledge']['count']} 条可参考记录。", {"count": captured["knowledge"]["count"]}))
+    if not captured["deliverables"]:
+        captured["deliverables"] = brief_deliverables_tool(db_path, brief=brief, client_name=client_name, top_n=top_n)
+        summary = captured["deliverables"].get("summary") or {}
+        captured["tool_traces"].append(
+            _trace_item(
+                "generate_deliverables",
+                "PR OS fallback after SDK run",
+                f"{summary.get('business_type')} · {summary.get('topic_count')} 个选题",
+                summary,
+            )
+        )
     if not captured["project"]:
         captured["project"] = run_project_tool(db_path, client_name=client_name, project_name=project_name, brief=brief, top_n=top_n)
         summary = captured["project"]["summary"]
@@ -382,6 +427,7 @@ def _run_sdk_agent(db_path: Path, message: str, client_name: str, project_name: 
         provider=provider,
         tool_traces=captured["tool_traces"],
         knowledge=captured["knowledge"],
+        deliverables=captured["deliverables"],
         project=captured["project"],
     )
 
@@ -432,6 +478,8 @@ def _agent_role_for_tool(tool_name: str) -> str:
         return "Planner Agent"
     if "knowledge" in tool_name:
         return "Memory Agent"
+    if "deliverable" in tool_name:
+        return "Planner Agent"
     if "project" in tool_name or "kol" in tool_name:
         return "KOL Strategist Agent"
     if "proposal" in tool_name:
@@ -445,6 +493,8 @@ def _step_title_for_tool(tool_name: str) -> str:
     mapping = {
         "sdk_parse_brief": "解析 Brief",
         "search_knowledge": "检索组织记忆",
+        "sdk_generate_deliverables": "生成媒介交付包",
+        "generate_deliverables": "生成媒介交付包",
         "run_project": "匹配 KOL 与项目链路",
         "create_proposal": "生成甲方方案",
         "suggest_memory": "生成记忆建议",

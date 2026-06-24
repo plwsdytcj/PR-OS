@@ -4,6 +4,8 @@ from dataclasses import asdict
 from typing import Any
 
 from src.intelligence.brief_parser import parse_brief
+from src.intelligence.business_type import classify_business_type
+from src.intelligence.pr_os_judgment import PR_OS_OUTPUT_CHECKLIST, PR_OS_RED_LINES
 
 
 CRITICAL_FIELDS = {
@@ -15,6 +17,7 @@ CRITICAL_FIELDS = {
 
 def build_agent_plan(message: str, client_name: str = "", project_name: str = "", top_n: int = 8) -> dict[str, Any]:
     parsed = parse_brief(message)
+    business = classify_business_type(parsed)
     missing = missing_brief_fields(message, parsed)
     status = "needs_clarification" if missing else "ready"
     steps = [
@@ -26,11 +29,25 @@ def build_agent_plan(message: str, client_name: str = "", project_name: str = ""
             "reason": "把自然语言需求转成预算、平台、产品、目标人群等结构化字段。",
         },
         {
+            "id": "classify_business",
+            "label": "判断业务类型与结算目标",
+            "tool_name": "classify_business",
+            "status": "completed",
+            "reason": f"当前判断为「{business['business_type_label']}」，结算看：{business['settlement_target']}。",
+        },
+        {
             "id": "search_knowledge",
             "label": "检索公司知识库",
             "tool_name": "search_knowledge",
             "status": "pending" if not missing else "blocked",
-            "reason": "先查公司案例、客户偏好、风险规则和历史项目，避免凭空推荐。",
+            "reason": "先查公司案例、客户偏好、风险规则和 OS 判准，避免凭空推荐。",
+        },
+        {
+            "id": "generate_deliverables",
+            "label": "生成媒介交付包",
+            "tool_name": "generate_deliverables",
+            "status": "pending" if not missing else "blocked",
+            "reason": "输出客户卡、选题卡、报价骨架，作为内部与客户沟通底稿。",
         },
         {
             "id": "run_project",
@@ -44,30 +61,33 @@ def build_agent_plan(message: str, client_name: str = "", project_name: str = ""
             "label": "生成甲方方案",
             "tool_name": "create_proposal",
             "status": "pending" if not missing else "blocked",
-            "reason": "把内部推荐结果转成甲方可查看、可反馈的协作方案。",
+            "reason": "把推荐结果转成甲方可查看、可反馈的协作方案。",
         },
         {
             "id": "memory_suggestions",
             "label": "生成记忆回流建议",
             "tool_name": "suggest_memory",
             "status": "pending" if not missing else "blocked",
-            "reason": "把本次项目的方案、偏好和风险沉淀为可确认入库的知识。",
+            "reason": "把本次项目的方案、偏好、风险与案例回写沉淀为可确认入库的知识。",
         },
         {
             "id": "wait_for_approval",
             "label": "等待人工确认",
             "tool_name": "",
             "status": "pending" if not missing else "blocked",
-            "reason": "产物默认停在内部确认，不自动发送给甲方。",
+            "reason": "产物默认停在内部确认；项目结束后执行结算回写与案例沉淀。",
         },
     ]
     return {
-        "goal": _goal(client_name, project_name, parsed),
+        "goal": _goal(client_name, project_name, parsed, business),
         "status": status,
         "client_name": client_name,
         "project_name": project_name,
         "top_n": top_n,
         "parsed_brief": asdict(parsed),
+        "business": business,
+        "output_checklist": PR_OS_OUTPUT_CHECKLIST,
+        "red_lines": PR_OS_RED_LINES,
         "missing_fields": missing,
         "steps": steps,
     }
@@ -95,8 +115,10 @@ def clarification_payload(plan: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _goal(client_name: str, project_name: str, parsed: Any) -> str:
+def _goal(client_name: str, project_name: str, parsed: Any, business: dict[str, Any] | None = None) -> str:
     project = project_name or getattr(parsed, "product", "") or "PR 项目"
     client = client_name or "未命名客户"
     product = getattr(parsed, "product", "") or project
-    return f"为「{client}」的「{project}」完成 {product} 的 PR 方案规划、KOL 推荐、风险说明和客户交付草稿。"
+    settlement = (business or {}).get("settlement_target") or "可审计交付与案例回写"
+    label = (business or {}).get("business_type_label") or "传播"
+    return f"为「{client}」的「{project}」完成 {product} 的 {label} 方案：KOL 推荐、媒介交付包、风险说明与客户交付草稿；结算标准：{settlement}。"

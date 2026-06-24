@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
-    <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260624-30" />
+    <link rel="icon" href="/static/favicon.svg?v=20260624-32" type="image/svg+xml" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260624-35" />
   </head>
   <body>
     <div class="app-shell">
@@ -677,6 +677,8 @@
                   <button type="button" id="creatorFilterBriefApplyBtn" class="secondary">一键带入</button>
                 </div>
                 <div id="creatorFilterBriefHints" class="meta creator-filter-brief-hints hidden"></div>
+                <div id="creatorFilterBusinessType" class="creator-filter-business-type hidden"></div>
+                <div id="creatorFilterDeliverables" class="creator-filter-deliverables hidden"></div>
                 <div class="creator-filter-presets-row">
                   <select id="creatorFilterPresetSelect">
                     <option value="">已保存的方案…</option>
@@ -684,6 +686,7 @@
                   <button type="button" id="creatorFilterPresetLoadBtn" class="secondary">载入</button>
                   <button type="button" id="creatorFilterPresetSaveBtn" class="secondary">保存当前</button>
                   <button type="button" id="creatorFilterPresetDeleteBtn" class="secondary">删除</button>
+                  <button type="button" id="creatorFilterTwoStagePresetBtn" class="secondary">二段传播模式</button>
                 </div>
               </div>
 
@@ -817,6 +820,8 @@
                 全选当前名单
               </label>
               <span class="meta" id="creatorFilterSelectedCount">已选 0 人</span>
+              <button type="button" id="creatorFilterSettlementBtn" class="secondary">项目结算回写</button>
+              <button type="button" id="creatorFilterDeliverablesBtn" class="secondary">导出媒介包</button>
               <button type="button" id="creatorFilterExportBtn" class="primary">导出勾选博主列表</button>
             </div>
             <div id="creatorFilterList" class="creator-grid"></div>
@@ -832,6 +837,7 @@
               </div>
               <div class="button-row">
                 <button id="openCaseModalBtn" class="primary" type="button">+ 新增案例</button>
+                <button id="openSettlementWizardBtn" class="secondary" type="button">项目结算回写</button>
                 <input id="caseSearch" class="search" placeholder="搜索达人、品牌、行业、产品、主题" />
               </div>
             </div>
@@ -2125,6 +2131,45 @@
         </form>
       </section>
     </div>
+    <div id="settlementWizardModal" class="modal hidden">
+      <div class="modal-backdrop" data-close-settlement-wizard="true"></div>
+      <section class="modal-panel settlement-wizard-modal">
+        <div class="panel-header">
+          <div>
+            <span class="card-kicker">settlement write-back</span>
+            <h2>项目结算回写</h2>
+            <p>收集交付证据与客户确认，写入案例库并回写达人合作品牌与履约备注。</p>
+          </div>
+          <button id="closeSettlementWizardBtn" class="icon-btn" type="button" title="关闭">×</button>
+        </div>
+        <form id="settlementWizardForm" class="form">
+          <div class="field-row two">
+            <input name="project_name" placeholder="项目名称" />
+            <input name="client_name" placeholder="客户名称" />
+          </div>
+          <div class="field-row two">
+            <input name="brand_name" placeholder="合作品牌" required />
+            <input name="industry" placeholder="行业" />
+          </div>
+          <input name="product" placeholder="产品 / 服务" />
+          <div id="settlementWizardBusinessMeta" class="settlement-wizard-business-meta hidden"></div>
+          <div class="field-row two">
+            <label class="checkline"><input name="client_confirmed" type="checkbox" /> 客户已确认验收</label>
+            <select name="payment_status">
+              <option value="">付款状态</option>
+              <option value="paid">已付款</option>
+              <option value="partial">部分付款</option>
+              <option value="pending">待付款</option>
+            </select>
+          </div>
+          <div id="settlementWizardItems" class="settlement-wizard-items"></div>
+          <div class="decision-actions">
+            <button class="primary" type="submit">写入案例并回写达人</button>
+            <button class="secondary" data-close-settlement-wizard="true" type="button">取消</button>
+          </div>
+        </form>
+      </section>
+    </div>
     <div id="quickCreatorModal" class="modal hidden">
       <div class="modal-backdrop" data-close-quick-creator="true"></div>
       <section class="modal-panel quick-creator-modal">
@@ -2394,6 +2439,7 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260624-30"></script>
+    <script src="/static/build-version.js?v=20260624-35"></script>
+    <script src="/static/app.js?v=20260624-35"></script>
   </body>
 </html>

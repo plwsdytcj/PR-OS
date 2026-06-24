@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from src.intelligence.brief_parser import parse_brief
+from src.intelligence.business_type import classify_business_type
 from src.intelligence.tag_classifier import PLATFORM_ALIASES, classify_creator_tags
 from src.schemas import BrandBrief
 
@@ -184,6 +185,7 @@ def suggest_creator_filter_from_brief(brief: BrandBrief) -> dict[str, Any]:
             "platform_preference": brief.platform_preference,
             "content_preference": brief.content_preference,
         },
+        "business": classify_business_type(brief),
         "hard": hard,
         "tags": tags,
         "hints": hints,

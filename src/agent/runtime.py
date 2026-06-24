@@ -47,7 +47,7 @@ from src.agent.storage import (
     upsert_task,
     upsert_thread,
 )
-from src.agent.tools import create_proposal_tool, run_project_tool, search_knowledge_tool
+from src.agent.tools import brief_deliverables_tool, create_proposal_tool, run_project_tool, search_knowledge_tool
 from src.intelligence.brief_parser import parse_brief
 
 
@@ -414,6 +414,27 @@ def execute_agent_run(db_path: Path, run_id: str, top_n: int = 8, require_plan_a
             tool_name="search_knowledge",
             payload={"count": knowledge["count"]},
             artifact_id=knowledge_artifact.artifact_id,
+        )
+
+        event("tool_call", "running", "生成媒介交付包", "输出客户卡、选题卡、报价骨架与结算标准。", tool_name="generate_deliverables")
+        deliverables_trace = trace_start("generate_deliverables", f"brief={task.brief[:120]}", {"top_n": top_n})
+        deliverables = brief_deliverables_tool(db_path, brief=task.brief, client_name=task.client_name, top_n=top_n)
+        deliverables_summary = deliverables.get("summary") or {}
+        deliverables_artifact = artifact(
+            "deliverables",
+            "媒介交付包",
+            f"{deliverables_summary.get('business_type') or '业务类型待确认'} · {deliverables_summary.get('package_name') or '报价骨架'} · {deliverables_summary.get('topic_count', 0)} 个选题",
+            deliverables,
+        )
+        trace_end(deliverables_trace, "completed", deliverables_artifact.summary, deliverables_summary, artifact_id=deliverables_artifact.artifact_id)
+        event(
+            "tool_result",
+            "completed",
+            "完成媒介交付包",
+            deliverables_artifact.summary,
+            tool_name="generate_deliverables",
+            payload=deliverables_summary,
+            artifact_id=deliverables_artifact.artifact_id,
         )
 
         event("tool_call", "running", "运行 PR 项目链路", "解析 Brief、生成符号图谱、匹配 KOL、跑压力测试并创建 Campaign Room。", tool_name="run_project")
