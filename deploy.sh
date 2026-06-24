@@ -81,7 +81,7 @@ server {
         try_files \$uri \$uri/ /index.html;
     }
 
-    location ~ ^/(api|static|login|app|creator|client|openclaw|favicon\.ico)(/|$) {
+    location ~ ^/(api|static|login|app|creator-kit|creator|client|openclaw|favicon\.ico)(/|$) {
         proxy_pass http://127.0.0.1:8601;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;

@@ -4,31 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>达人商业名片刊例</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260624-28" />
-    <style>
-      body {
-        background: #f6f1e8;
-        margin: 0;
-        padding: 24px 16px 48px;
-      }
-      .creator-kit-page {
-        margin: 0 auto;
-        max-width: 920px;
-      }
-      .creator-kit-page-head {
-        margin-bottom: 16px;
-      }
-      .creator-kit-page-head h1 {
-        font-size: 22px;
-        margin: 0 0 6px;
-      }
-      .creator-kit-toolbar {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin: 12px 0 18px;
-      }
-    </style>
+    <link rel="stylesheet" href="/static/creator-kit-standalone.css?v=20260624-30" />
   </head>
   <body>
     <main class="creator-kit-page">
@@ -58,7 +34,19 @@
         if (num >= 10000) return `${Math.round((num / 10000) * 10) / 10}万`;
         return String(num);
       };
-      const creatorId = window.location.pathname.split("/").filter(Boolean).pop() || "";
+
+      function prOsPathPrefix() {
+        return window.location.pathname.includes("/pr-os/") ? "/pr-os" : "";
+      }
+
+      function parseCreatorKitId() {
+        const parts = window.location.pathname.split("/").filter(Boolean);
+        const idx = parts.indexOf("creator-kit");
+        if (idx >= 0) return decodeURIComponent(parts[idx + 1] || "");
+        return decodeURIComponent(parts[parts.length - 1] || "");
+      }
+
+      const creatorId = parseCreatorKitId();
       const shareUrl = window.location.href;
 
       function cleanList(v) {
@@ -152,7 +140,8 @@
           return;
         }
         try {
-          const response = await fetch(`/api/public/creator-kit/${encodeURIComponent(creatorId)}`);
+          const apiBase = prOsPathPrefix();
+          const response = await fetch(`${apiBase}/api/public/creator-kit/${encodeURIComponent(creatorId)}`);
           const data = await response.json();
           if (!response.ok) throw new Error(data.detail || "加载失败");
           const creator = data.creator || {};

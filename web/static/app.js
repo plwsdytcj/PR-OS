@@ -343,7 +343,46 @@ function appBasePath() {
 function creatorKitShareUrl(creatorId) {
   const id = String(creatorId || "").trim();
   if (!id) return "";
-  return new URL(`${appBasePath()}/creator-kit/${encodeURIComponent(id)}`, window.location.origin).href;
+  return new URL(`/creator-kit/${encodeURIComponent(id)}`, window.location.origin).href;
+}
+
+function buildCreatorKitStandalonePage({ cardHtml, title, meta }) {
+  const cssHref = `${window.location.origin}/static/creator-kit-standalone.css?v=20260624-30`;
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHTML(title || "商业名片刊例")}</title>
+  <link rel="stylesheet" href="${cssHref}" />
+</head>
+<body>
+  <main class="creator-kit-page">
+    <header class="creator-kit-page-head">
+      <div class="card-kicker">PR-OS · business rate card</div>
+      <h1>${escapeHTML(title || "商业名片刊例")}</h1>
+      ${meta ? `<p class="meta">${escapeHTML(meta)}</p>` : ""}
+    </header>
+    <div class="commercial-kit-output">${cardHtml}</div>
+  </main>
+</body>
+</html>`;
+}
+
+function openCreatorKitPreviewBlob(card, creator) {
+  const title = `${creator?.name || "达人"} · 商业名片刊例`;
+  const meta = [creator?.platform, creator?.follower_count ? `${fmtNumber(creator.follower_count)} 粉丝` : ""]
+    .filter(Boolean)
+    .join(" · ");
+  const html = buildCreatorKitStandalonePage({ cardHtml: card.outerHTML, title, meta });
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank", "noopener,noreferrer");
+  if (!win) {
+    toast("请允许弹窗后重试", true);
+    return;
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 120000);
 }
 
 async function loadHtml2PdfLib() {
@@ -8771,13 +8810,25 @@ function buildCreatorCommercialKitText(creator) {
 }
 
 function openCreatorCommercialKitWeb(creatorId = "") {
-  const id = String(creatorId || state.activeCreator?.creator_id || "").trim();
-  const url = creatorKitShareUrl(id);
-  if (!url) {
-    toast("请先保存达人后再打开网页版名片", true);
+  const form = $("#creatorEditForm");
+  const outputId = form?.id === "quickCreatorForm" ? "#quickCreatorCommercialKitOutput" : "#creatorCommercialKitOutput";
+  let card = $(outputId)?.querySelector(".creator-commercial-card");
+  if (!card) {
+    generateCreatorCommercialKit(form);
+    card = $(outputId)?.querySelector(".creator-commercial-card");
+  }
+  const creator = getCreatorDraftFromForm(form) || state.activeCreator || {};
+  const id = String(creatorId || creator.creator_id || state.activeCreator?.creator_id || "").trim();
+  if (id) {
+    const win = window.open(creatorKitShareUrl(id), "_blank", "noopener,noreferrer");
+    if (!win) toast("请允许弹窗后重试", true);
     return;
   }
-  window.open(url, "_blank", "noopener,noreferrer");
+  if (card) {
+    openCreatorKitPreviewBlob(card, creator);
+    return;
+  }
+  toast("请先生成名片刊例", true);
 }
 
 function generateCreatorCommercialKit(form = null) {
