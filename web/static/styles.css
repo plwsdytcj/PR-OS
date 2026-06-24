@@ -308,6 +308,11 @@ p {
   line-height: 1.45;
 }
 
+.home-brief-meta .home-brief-to-filter-btn {
+  justify-self: start;
+  margin-top: 6px;
+}
+
 .home-brief-steps {
   display: grid;
   gap: 8px;
@@ -1109,6 +1114,375 @@ button {
   padding: 16px;
 }
 
+.creator-filter-shortcuts {
+  border-bottom: 2px dashed rgba(23, 18, 13, 0.18);
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+}
+
+.creator-filter-brief-row {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.creator-filter-brief-field textarea {
+  margin-top: 6px;
+  min-height: 64px;
+  resize: vertical;
+  width: 100%;
+}
+
+.creator-filter-brief-hints {
+  color: #5a4b38;
+  line-height: 1.5;
+}
+
+.creator-filter-presets-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.creator-filter-presets-row select {
+  flex: 1 1 220px;
+  min-width: 180px;
+}
+
+.creator-filter-stepper {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 12px 0;
+}
+
+.creator-filter-step-tab {
+  align-items: center;
+  background: #fff;
+  border: 2px solid rgba(23, 18, 13, 0.18);
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.creator-filter-step-tab span {
+  align-items: center;
+  background: #17120d;
+  border-radius: 999px;
+  color: #fffdf4;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 900;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.creator-filter-step-tab strong {
+  display: block;
+  font-size: 14px;
+}
+
+.creator-filter-step-tab em {
+  color: #5a4b38;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.creator-filter-step-tab.active {
+  background: #fff3b0;
+  border-color: #17120d;
+  box-shadow: 4px 4px 0 #17120d;
+}
+
+.creator-filter-step-tab.done:not(.active) {
+  border-color: rgba(23, 18, 13, 0.35);
+}
+
+.creator-filter-funnel {
+  background: rgba(255, 243, 176, 0.35);
+  border: 2px dashed rgba(23, 18, 13, 0.2);
+  border-radius: 4px;
+  margin-bottom: 14px;
+  padding: 12px;
+}
+
+.creator-filter-funnel-head {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.creator-filter-funnel-track {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.creator-filter-funnel-node {
+  align-items: center;
+  background: #fff;
+  border: 2px solid rgba(23, 18, 13, 0.16);
+  border-radius: 4px;
+  cursor: pointer;
+  display: grid;
+  gap: 2px;
+  min-width: 72px;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.creator-filter-funnel-node span {
+  color: #5a4b38;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.creator-filter-funnel-node strong {
+  font-size: 18px;
+}
+
+.creator-filter-funnel-node.active {
+  background: #fff3b0;
+  border-color: #17120d;
+}
+
+.creator-filter-funnel-arrow {
+  color: #5a4b38;
+  font-weight: 900;
+}
+
+.creator-filter-step-panel {
+  display: none;
+  margin-bottom: 12px;
+}
+
+.creator-filter-step-panel.active {
+  display: block;
+}
+
+.creator-filter-step-desc {
+  margin: -4px 0 12px;
+}
+
+.creator-filter-step-nav {
+  border-top: 2px dashed rgba(23, 18, 13, 0.14);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.creator-filter-list-title {
+  font-size: 18px;
+  margin: 0 0 12px;
+}
+
+.creator-filter-card {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  position: relative;
+}
+
+.creator-filter-card h3,
+.creator-filter-card .kol-card-metrics strong,
+.creator-filter-card .kol-card-avatar,
+.creator-filter-card .open-creator-btn,
+.creator-filter-card .status-pill {
+  font-family: inherit;
+}
+
+.creator-filter-card h3 {
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.creator-filter-card .kol-card-metrics strong {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.creator-filter-card .kol-card-avatar {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.creator-filter-card-toolbar {
+  align-items: center;
+  border-bottom: 1px dashed rgba(23, 18, 13, 0.14);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin: -2px -2px 12px;
+  padding-bottom: 10px;
+}
+
+.creator-filter-card-badges {
+  display: none;
+}
+
+.creator-filter-judgment {
+  background: rgba(255, 243, 176, 0.45);
+  border: 2px solid rgba(23, 18, 13, 0.12);
+  border-radius: 4px;
+  display: grid;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 10px;
+}
+
+.creator-filter-judgment-row {
+  display: grid;
+  gap: 4px;
+}
+
+.creator-filter-judgment-row span {
+  color: #5a4b38;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.creator-filter-judgment-row strong {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.creator-filter-step2-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.creator-filter-step-badge {
+  background: #17120d;
+  border-radius: 999px;
+  color: #fff3b0;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 6px 12px;
+}
+
+.creator-filter-step2-title {
+  display: block;
+  font-size: 18px;
+  margin-bottom: 4px;
+}
+
+.creator-filter-narrative-inputs {
+  background: rgba(255, 243, 176, 0.28);
+  border: 2px dashed rgba(23, 18, 13, 0.16);
+  border-radius: 4px;
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 12px;
+}
+
+.creator-filter-upload-field textarea {
+  margin-top: 6px;
+  min-height: 96px;
+  resize: vertical;
+  width: 100%;
+}
+
+.creator-filter-upload-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.creator-filter-narrative-analysis {
+  margin-top: 4px;
+}
+
+.creator-filter-analysis-card {
+  background: #fff;
+  border: 2px solid rgba(23, 18, 13, 0.14);
+  border-radius: 4px;
+  padding: 12px;
+}
+
+.creator-filter-analysis-head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.creator-filter-analysis-tags {
+  margin: 10px 0 0;
+  padding-left: 18px;
+}
+
+.creator-filter-more-tags {
+  margin: 12px 0;
+}
+
+.creator-filter-more-tags summary {
+  cursor: pointer;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.creator-filter-export-bar {
+  align-items: center;
+  background: #fffdf4;
+  border: 2px solid #17120d;
+  border-radius: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+}
+
+.creator-filter-select-all {
+  align-items: center;
+  display: inline-flex;
+  flex-shrink: 0;
+  font-weight: 700;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.creator-filter-select-wrap {
+  align-items: center;
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 8px;
+  position: static;
+  white-space: nowrap;
+}
+
+.creator-filter-select-wrap input {
+  height: 16px;
+  margin: 0;
+  width: 16px;
+}
+
+.creator-filter-judgment-row.reason strong {
+  color: #3f3428;
+}
+
 .creator-filter-actions {
   align-items: center;
 }
@@ -1127,11 +1501,9 @@ button {
 }
 
 .creator-filter-tag-framework {
-  border-top: 2px dashed rgba(23, 18, 13, 0.18);
   display: grid;
   gap: 12px;
-  margin-top: 14px;
-  padding-top: 14px;
+  margin-top: 4px;
 }
 
 .creator-filter-tag-head {

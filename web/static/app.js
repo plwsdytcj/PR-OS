@@ -48,6 +48,10 @@ const state = {
   creators: [],
   creatorsFetchAttempted: false,
   creatorFilterTags: {},
+  creatorFilterStep: 1,
+  creatorFilterSelected: {},
+  creatorFilterRecommendations: {},
+  creatorFilterNarrativeAnalysis: null,
   cases: [],
   activeCase: null,
   lastProposal: "",
@@ -325,6 +329,50 @@ const CREATOR_TAG_FILTER_GROUPS = [
   { id: "narrative", label: "叙事角色", fields: ["suitable_goals"], essential: false },
 ];
 
+const CREATOR_FILTER_PRESETS_KEY = "pr_os_creator_filter_presets";
+
+const CREATOR_NARRATIVE_FILTER_GROUP_IDS = ["industry", "identity", "capability", "narrative"];
+const CREATOR_EXTRA_FILTER_GROUP_IDS = ["commercial", "delivery", "risk"];
+
+function appBasePath() {
+  const path = window.location.pathname || "";
+  if (path === "/pr-os" || path.startsWith("/pr-os/")) return "/pr-os";
+  return "";
+}
+
+function creatorKitShareUrl(creatorId) {
+  const id = String(creatorId || "").trim();
+  if (!id) return "";
+  return new URL(`${appBasePath()}/creator-kit/${encodeURIComponent(id)}`, window.location.origin).href;
+}
+
+async function loadHtml2PdfLib() {
+  if (window.html2pdf) return window.html2pdf;
+  await new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("PDF 组件加载失败"));
+    document.head.appendChild(script);
+  });
+  return window.html2pdf;
+}
+
+async function readCreatorFilterUploadFile(input) {
+  const file = input?.files?.[0];
+  if (!file) return "";
+  const text = await file.text();
+  return String(text || "").trim();
+}
+
+function getCreatorFilterNarrativeBriefText() {
+  return String($("#creatorFilterNarrativeBrief")?.value || $("#creatorFilterBriefInput")?.value || "").trim();
+}
+
+function getCreatorFilterTextTagsValue() {
+  return String($("#creatorFilterTextTags")?.value || "").trim();
+}
+
 const SYMBOLIC_EDITOR_FIELDS = {
   creator: [
     ["primary_tags", "主标签", "tags"],
@@ -363,7 +411,7 @@ const VIEW_TITLES = {
   projectRun: ["新建 PR 项目", "输入一个需求，自动跑完 brief、符号图谱、KOL 选择和 Campaign Room。"],
   ingest: ["数据接入", "把 Excel、链接和 API 变成统一 KOL Profile。"],
   creators: ["达人库", "扫描、修正和调用你的私有 KOL 资产。"],
-  creatorFilter: ["筛选达人工具", "硬指标 + 标签框架：与录入同一套字段、同一套词。"],
+  creatorFilter: ["筛选达人工具", "平台 → 叙事 → 数据：三步漏斗筛出合作候选。"],
   caseLibrary: ["案例库", "沉淀达人历史合作案例，供 Brief 匹配和方案背书引用。"],
   kolIntelligence: ["KOL 决策图谱", "证据标签、图谱演进和 KOL 预测推荐。"],
   governance: ["数据治理", "清理重复、补齐字段、提高推荐可信度。"],
@@ -1013,6 +1061,8 @@ async function loadCreators() {
     renderCreators();
     if (state.activeView === "creatorFilter") {
       renderCreatorFilterTagFramework();
+      renderCreatorFilterStepper();
+      renderCreatorFilterFunnel();
       renderCreatorFilterResults();
     }
     renderCreatorOptions();
@@ -1871,6 +1921,7 @@ function renderHomeBriefResult(data) {
     <div class="home-brief-meta">
       <span>${escapeHTML(data.project_name || "PR Brief")}</span>
       <strong>${escapeHTML(data.summary || "已完成 KOL 推演。")}</strong>
+      <button class="secondary home-brief-to-filter-btn" type="button">带入筛选达人</button>
     </div>
     <div class="home-brief-steps">
       ${(data.steps || [])
@@ -2196,33 +2247,46 @@ function creatorMatchesTagFilters(creator, tagCriteria) {
   return true;
 }
 
-function renderCreatorFilterTagFramework() {
-  const node = $("#creatorFilterTagFramework");
+function renderCreatorFilterTagGroupPanel(nodeId, groupIds, head = null) {
+  const node = $(nodeId);
   if (!node) return;
-  node.innerHTML = `
+  const groups = CREATOR_TAG_FILTER_GROUPS.filter((group) => groupIds.includes(group.id));
+  const headHtml = head
+    ? `
     <div class="creator-filter-tag-head">
-      <strong>标签框架筛选</strong>
-      <span class="meta">与录入同一套词 · 类内 OR · 类间 AND</span>
+      <strong>${escapeHTML(head.title || "")}</strong>
+      ${head.hint ? `<span class="meta">${escapeHTML(head.hint)}</span>` : ""}
     </div>
-    ${CREATOR_TAG_FILTER_GROUPS.map((group) => {
-      const selected = new Set(state.creatorFilterTags[group.id] || []);
-      const options = creatorFilterTagOptions(group);
-      const chips = options.length
-        ? options
-            .map((tag) => {
-              const active = selected.has(tag) ? " active" : "";
-              return `<button type="button" class="tag-chip small creator-filter-tag-chip${active}" data-filter-group="${escapeHTML(group.id)}" data-filter-tag="${escapeHTML(tag)}">${escapeHTML(tag)}</button>`;
-            })
-            .join("")
-        : '<span class="meta">暂无标签，请先在达人库录入</span>';
-      return `
-        <div class="creator-filter-tag-row" data-filter-group-row="${escapeHTML(group.id)}">
-          <span class="creator-filter-tag-label">${escapeHTML(group.label)}${group.essential ? '<em>*</em>' : ""}</span>
-          <div class="creator-filter-tag-chips">${chips}</div>
-        </div>
-      `;
-    }).join("")}
+  `
+    : "";
+  node.innerHTML = `
+    ${headHtml}
+    ${groups
+      .map((group) => {
+        const selected = new Set(state.creatorFilterTags[group.id] || []);
+        const options = creatorFilterTagOptions(group);
+        const chips = options.length
+          ? options
+              .map((tag) => {
+                const active = selected.has(tag) ? " active" : "";
+                return `<button type="button" class="tag-chip small creator-filter-tag-chip${active}" data-filter-group="${escapeHTML(group.id)}" data-filter-tag="${escapeHTML(tag)}">${escapeHTML(tag)}</button>`;
+              })
+              .join("")
+          : '<span class="meta">暂无标签，请先在达人库录入</span>';
+        return `
+          <div class="creator-filter-tag-row" data-filter-group-row="${escapeHTML(group.id)}">
+            <span class="creator-filter-tag-label">${escapeHTML(group.label)}${group.essential ? "<em>*</em>" : ""}</span>
+            <div class="creator-filter-tag-chips">${chips}</div>
+          </div>
+        `;
+      })
+      .join("")}
   `;
+}
+
+function renderCreatorFilterTagFramework() {
+  renderCreatorFilterTagGroupPanel("#creatorFilterTagFramework", CREATOR_NARRATIVE_FILTER_GROUP_IDS);
+  renderCreatorFilterTagGroupPanel("#creatorFilterTagFrameworkExtra", CREATOR_EXTRA_FILTER_GROUP_IDS);
 }
 
 function toggleCreatorFilterTag(groupId, tag) {
@@ -2238,6 +2302,412 @@ function toggleCreatorFilterTag(groupId, tag) {
 function clearCreatorFilterTags() {
   state.creatorFilterTags = {};
   renderCreatorFilterTagFramework();
+}
+
+function loadCreatorFilterPresets() {
+  try {
+    const raw = localStorage.getItem(CREATOR_FILTER_PRESETS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCreatorFilterPresetsToStorage(presets) {
+  localStorage.setItem(CREATOR_FILTER_PRESETS_KEY, JSON.stringify(presets));
+}
+
+function snapshotCreatorFilter() {
+  const form = $("#creatorFilterForm");
+  if (!form) return null;
+  return {
+    platform: String(form.elements.platform?.value || ""),
+    sort: form.elements.sort?.value || "follower_desc",
+    query: String(form.elements.query?.value || ""),
+    min_followers: form.elements.min_followers?.value || "",
+    max_followers: form.elements.max_followers?.value || "",
+    max_price: form.elements.max_price?.value || "",
+    min_like_fan_ratio: form.elements.min_like_fan_ratio?.value || "",
+    max_like_fan_ratio: form.elements.max_like_fan_ratio?.value || "",
+    min_engagement: form.elements.min_engagement?.value || "",
+    min_avg_likes: form.elements.min_avg_likes?.value || "",
+    min_recent_posts_count: form.elements.min_recent_posts_count?.value || "",
+    max_sync_age_days: form.elements.max_sync_age_days?.value || "",
+    narrative_brief: getCreatorFilterNarrativeBriefText(),
+    text_tags: getCreatorFilterTextTagsValue(),
+    step: state.creatorFilterStep,
+    tags: JSON.parse(JSON.stringify(state.creatorFilterTags)),
+  };
+}
+
+function applyCreatorFilterSnapshot(snapshot) {
+  const form = $("#creatorFilterForm");
+  if (!form || !snapshot) return;
+  if (snapshot.platform != null) form.elements.platform.value = snapshot.platform;
+  if (snapshot.sort) form.elements.sort.value = snapshot.sort;
+  if (snapshot.query != null) form.elements.query.value = snapshot.query;
+  ["min_followers", "max_followers", "max_price", "min_like_fan_ratio", "max_like_fan_ratio", "min_engagement", "min_avg_likes", "min_recent_posts_count", "max_sync_age_days"].forEach(
+    (name) => {
+      if (snapshot[name] != null) form.elements[name].value = snapshot[name];
+    },
+  );
+  if (snapshot.step) state.creatorFilterStep = Number(snapshot.step) || 1;
+  if (snapshot.narrative_brief != null) {
+    const narrative = $("#creatorFilterNarrativeBrief");
+    if (narrative) narrative.value = snapshot.narrative_brief;
+  }
+  if (snapshot.text_tags != null) {
+    const tags = $("#creatorFilterTextTags");
+    if (tags) tags.value = snapshot.text_tags;
+  }
+  state.creatorFilterTags =
+    snapshot.tags && typeof snapshot.tags === "object" ? JSON.parse(JSON.stringify(snapshot.tags)) : {};
+  renderCreatorFilterTagFramework();
+  renderCreatorFilterStepper();
+  setCreatorFilterStep(state.creatorFilterStep || 1);
+  renderCreatorFilterResults();
+}
+
+function renderCreatorFilterPresetSelect() {
+  const select = $("#creatorFilterPresetSelect");
+  if (!select) return;
+  const presets = loadCreatorFilterPresets();
+  const current = select.value;
+  select.innerHTML =
+    '<option value="">已保存的方案…</option>' +
+    presets.map((preset) => `<option value="${escapeHTML(preset.id)}">${escapeHTML(preset.name)}</option>`).join("");
+  if (current && presets.some((preset) => preset.id === current)) select.value = current;
+}
+
+function saveCreatorFilterPreset() {
+  const name = window.prompt("筛选方案名称", "");
+  if (!name || !name.trim()) return;
+  const snapshot = snapshotCreatorFilter();
+  if (!snapshot) return;
+  const presets = loadCreatorFilterPresets();
+  const id = `preset_${Date.now()}`;
+  presets.unshift({ id, name: name.trim(), savedAt: new Date().toISOString(), snapshot });
+  if (presets.length > 20) presets.length = 20;
+  saveCreatorFilterPresetsToStorage(presets);
+  renderCreatorFilterPresetSelect();
+  const select = $("#creatorFilterPresetSelect");
+  if (select) select.value = id;
+  toast(`已保存「${name.trim()}」`);
+}
+
+function loadSelectedCreatorFilterPreset() {
+  const select = $("#creatorFilterPresetSelect");
+  const id = select?.value;
+  if (!id) {
+    toast("请先选择一个方案", true);
+    return;
+  }
+  const preset = loadCreatorFilterPresets().find((item) => item.id === id);
+  if (!preset) {
+    toast("方案不存在", true);
+    return;
+  }
+  applyCreatorFilterSnapshot(preset.snapshot);
+  toast(`已载入「${preset.name}」`);
+}
+
+function deleteSelectedCreatorFilterPreset() {
+  const select = $("#creatorFilterPresetSelect");
+  const id = select?.value;
+  if (!id) {
+    toast("请先选择要删除的方案", true);
+    return;
+  }
+  const presets = loadCreatorFilterPresets().filter((item) => item.id !== id);
+  saveCreatorFilterPresetsToStorage(presets);
+  renderCreatorFilterPresetSelect();
+  toast("方案已删除");
+}
+
+function applyCreatorFilterFromBriefResult(data) {
+  const form = $("#creatorFilterForm");
+  if (!form || !data) return;
+  const hard = data.hard || {};
+  if (hard.platform) {
+    const platform = normalizePlatformValue(hard.platform);
+    form.elements.platform.value = PLATFORM_OPTIONS.includes(platform) ? platform : "";
+  }
+  if (hard.query) form.elements.query.value = hard.query;
+  if (hard.maxPrice != null) form.elements.max_price.value = String(hard.maxPrice);
+  if (hard.minLikeFanRatio != null) form.elements.min_like_fan_ratio.value = String(hard.minLikeFanRatio);
+  if (hard.minRecentPostsCount != null) form.elements.min_recent_posts_count.value = String(hard.minRecentPostsCount);
+  else if (hard.minLikeFanRatio != null && !form.elements.min_recent_posts_count.value) {
+    form.elements.min_recent_posts_count.value = "10";
+  }
+  const narrativeBrief = $("#creatorFilterNarrativeBrief");
+  const briefTop = $("#creatorFilterBriefInput");
+  const briefText = data.brief?.raw_text || briefTop?.value || "";
+  if (narrativeBrief && briefText) narrativeBrief.value = briefText;
+  if (briefTop && briefText) briefTop.value = briefText;
+
+  state.creatorFilterTags = {};
+  const tags = data.tags || {};
+  for (const group of CREATOR_TAG_FILTER_GROUPS) {
+    const values = tags[group.id];
+    if (Array.isArray(values) && values.length) state.creatorFilterTags[group.id] = [...values];
+  }
+  renderCreatorFilterTagFramework();
+  const hasTags = Object.keys(state.creatorFilterTags).length > 0;
+  const hasData =
+    hard.minLikeFanRatio != null ||
+    hard.maxPrice != null ||
+    hard.minRecentPostsCount != null ||
+    hard.minAvgLikes != null ||
+    hard.maxSyncAgeDays != null;
+  if (hasData) setCreatorFilterStep(3);
+  else if (hasTags || hard.platform) setCreatorFilterStep(2);
+  else setCreatorFilterStep(1);
+  renderCreatorFilterResults();
+
+  const hints = $("#creatorFilterBriefHints");
+  if (hints) {
+    const hintText = (data.hints || []).join(" · ");
+    hints.textContent = hintText || "已从 Brief 解析并点亮标签";
+    hints.classList.toggle("hidden", !hintText);
+  }
+  toast("Brief 已带入筛选");
+}
+
+async function applyCreatorFilterFromBriefText(text, options = {}) {
+  const brief = String(text || "").trim();
+  if (!brief && !options.parsedBrief) {
+    toast("请先粘贴 Brief", true);
+    return;
+  }
+  const btn = $("#creatorFilterBriefApplyBtn");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "解析中…";
+  }
+  try {
+    const payload = options.parsedBrief ? { parsed_brief: options.parsedBrief, brief } : { brief };
+    const data = await api("/api/creators/filter/from-brief", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    applyCreatorFilterFromBriefResult(data);
+  } catch (error) {
+    toast(error.message || "Brief 解析失败", true);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "一键带入";
+    }
+  }
+}
+
+async function openCreatorFilterWithBrief(text, options = {}) {
+  setView("creatorFilter");
+  await ensureCreatorsLoaded().catch(() => {});
+  const input = $("#creatorFilterBriefInput");
+  const narrativeInput = $("#creatorFilterNarrativeBrief");
+  if (input && text) input.value = text;
+  if (narrativeInput && text) narrativeInput.value = text;
+  await applyCreatorFilterFromBriefText(text, options);
+}
+
+function renderCreatorFilterNarrativeAnalysis(data) {
+  const node = $("#creatorFilterNarrativeAnalysis");
+  if (!node) return;
+  if (!data) {
+    node.classList.add("hidden");
+    node.innerHTML = "";
+    return;
+  }
+  const tagLines = Object.entries(data.narrative_tags || data.tags || {})
+    .map(([groupId, tags]) => {
+      const group = CREATOR_TAG_FILTER_GROUPS.find((item) => item.id === groupId);
+      return tags?.length ? `<li><strong>${escapeHTML(group?.label || groupId)}</strong>：${escapeHTML(tags.join("、"))}</li>` : "";
+    })
+    .filter(Boolean)
+    .join("");
+  node.classList.remove("hidden");
+  node.innerHTML = `
+    <div class="creator-filter-analysis-card">
+      <div class="creator-filter-analysis-head">
+        <strong>AI 叙事分析</strong>
+        ${data.ai_used ? '<span class="status-pill ok">LLM</span>' : '<span class="status-pill">规则</span>'}
+      </div>
+      <p>${escapeHTML(data.summary || "已完成叙事标签建议。")}</p>
+      ${data.narrative_strategy ? `<p class="meta">${escapeHTML(data.narrative_strategy)}</p>` : ""}
+      ${tagLines ? `<ul class="creator-filter-analysis-tags">${tagLines}</ul>` : ""}
+    </div>
+  `;
+}
+
+function applyCreatorFilterNarrativeAnalysis(data) {
+  if (!data) return;
+  const form = $("#creatorFilterForm");
+  const hard = data.hard || {};
+  if (form && hard.platform) {
+    const platform = normalizePlatformValue(hard.platform);
+    form.elements.platform.value = PLATFORM_OPTIONS.includes(platform) ? platform : form.elements.platform.value;
+  }
+  if (form && hard.query) form.elements.query.value = hard.query;
+  if (form && hard.maxPrice != null) form.elements.max_price.value = String(hard.maxPrice);
+  if (form && hard.minLikeFanRatio != null) form.elements.min_like_fan_ratio.value = String(hard.minLikeFanRatio);
+  if (form && hard.minRecentPostsCount != null) form.elements.min_recent_posts_count.value = String(hard.minRecentPostsCount);
+
+  state.creatorFilterTags = {};
+  const tags = data.tags || {};
+  for (const group of CREATOR_TAG_FILTER_GROUPS) {
+    const values = tags[group.id];
+    if (Array.isArray(values) && values.length) state.creatorFilterTags[group.id] = [...values];
+  }
+  state.creatorFilterNarrativeAnalysis = data;
+  renderCreatorFilterNarrativeAnalysis(data);
+  renderCreatorFilterTagFramework();
+  setCreatorFilterStep(2);
+  renderCreatorFilterResults();
+}
+
+async function runCreatorFilterNarrativeAnalyze() {
+  const brief = getCreatorFilterNarrativeBriefText();
+  const textTags = getCreatorFilterTextTagsValue();
+  if (!brief) {
+    toast("请先填写或上传 Brief", true);
+    return;
+  }
+  const btn = $("#creatorFilterNarrativeAnalyzeBtn");
+  const status = $("#creatorFilterNarrativeAnalyzeStatus");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "AI 分析中…";
+  }
+  if (status) status.textContent = "正在解析 Brief、文字标签并生成叙事筛选建议…";
+  try {
+    const criteria = getCreatorFilterCriteria();
+    const data = await api("/api/creators/filter/narrative-analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        brief,
+        text_tags: textTags,
+        platform: criteria.platform,
+      }),
+    });
+    applyCreatorFilterNarrativeAnalysis(data);
+    if (status) status.textContent = data.ai_used ? "AI 已给出叙事标签建议，请确认后进入数据验证。" : "规则引擎已给出叙事标签建议，可继续微调。";
+    toast("叙事 AI 分析完成");
+  } catch (error) {
+    if (status) status.textContent = error.message || "分析失败";
+    toast(error.message || "叙事 AI 分析失败", true);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "启动 AI 分析";
+    }
+  }
+}
+
+async function refreshCreatorFilterRecommendations(creatorIds) {
+  const brief = getCreatorFilterNarrativeBriefText();
+  if (!brief || !creatorIds.length) {
+    state.creatorFilterRecommendations = {};
+    return;
+  }
+  try {
+    const data = await api("/api/creators/filter/recommendations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        brief,
+        text_tags: getCreatorFilterTextTagsValue(),
+        creator_ids: creatorIds,
+      }),
+    });
+    const map = {};
+    (data.items || []).forEach((item) => {
+      map[item.creator_id] = item;
+    });
+    state.creatorFilterRecommendations = map;
+  } catch {
+    state.creatorFilterRecommendations = {};
+  }
+}
+
+function getCreatorFilterRecommendationText(creatorId) {
+  const item = state.creatorFilterRecommendations[creatorId];
+  if (!item) return "";
+  return item.reason_text || (item.reasons || []).join("；");
+}
+
+function isCreatorFilterSelected(creatorId) {
+  return Boolean(state.creatorFilterSelected[creatorId]);
+}
+
+function setCreatorFilterSelected(creatorId, selected) {
+  if (selected) state.creatorFilterSelected[creatorId] = true;
+  else delete state.creatorFilterSelected[creatorId];
+  const criteria = getCreatorFilterCriteria();
+  const items = state.creators.filter((creator) => creatorMatchesFilter(creator, criteria));
+  renderCreatorFilterExportBar(items);
+}
+
+function renderCreatorFilterExportBar(items = []) {
+  const bar = $("#creatorFilterExportBar");
+  const countNode = $("#creatorFilterSelectedCount");
+  const selectAll = $("#creatorFilterSelectAll");
+  if (!bar) return;
+  const visibleIds = items.map((item) => item.creator_id);
+  const selectedCount = visibleIds.filter((id) => isCreatorFilterSelected(id)).length;
+  bar.classList.toggle("hidden", !items.length);
+  if (countNode) countNode.textContent = `已选 ${selectedCount} 人`;
+  if (selectAll) {
+    selectAll.checked = visibleIds.length > 0 && selectedCount === visibleIds.length;
+    selectAll.indeterminate = selectedCount > 0 && selectedCount < visibleIds.length;
+  }
+}
+
+function exportSelectedCreatorFilterList() {
+  const criteria = getCreatorFilterCriteria();
+  const items = sortFilteredCreators(
+    state.creators.filter((creator) => creatorMatchesFilter(creator, criteria)),
+    criteria.sort,
+  ).filter((creator) => isCreatorFilterSelected(creator.creator_id));
+  if (!items.length) {
+    toast("请先勾选要导出的博主", true);
+    return;
+  }
+  const rows = items.map((creator) => {
+    const rec = state.creatorFilterRecommendations[creator.creator_id] || {};
+    return {
+      达人: creator.name || "",
+      平台: creator.platform || "",
+      粉丝: creator.follower_count || 0,
+      报价: creator.listed_price || 0,
+      赞粉比: creator.like_fan_ratio || "",
+      近期均赞: creator.avg_likes || 0,
+      近N条样本: creator.recent_posts_count || 0,
+      叙事角色: asTagList(creator.suitable_goals).join("、"),
+      领域: asTagList(creator.industry_fit_tags).join("、"),
+      推荐理由: rec.reason_text || getCreatorFilterRecommendationText(creator.creator_id) || "",
+      推荐等级: rec.recommendation_level || "",
+      匹配分: rec.match_score || "",
+      名片刊例网页: creatorKitShareUrl(creator.creator_id),
+      主页: creator.homepage_url || "",
+    };
+  });
+  const csvHeader = Object.keys(rows[0]);
+  const csvBody = rows
+    .map((row) => csvHeader.map((key) => `"${String(row[key] ?? "").replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+  const csv = `\ufeff${csvHeader.join(",")}\n${csvBody}`;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `合作候选博主_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast(`已导出 ${rows.length} 位博主`);
 }
 
 function creatorSearchText(creator) {
@@ -2327,6 +2797,122 @@ function creatorCardHtml(creator) {
   `;
 }
 
+function creatorSyncAgeDays(creator) {
+  const raw = String(creator.last_synced_at || "").trim();
+  if (!raw) return null;
+  const synced = new Date(raw.includes("T") ? raw : `${raw}T00:00:00`);
+  if (Number.isNaN(synced.getTime())) return null;
+  const diffMs = Date.now() - synced.getTime();
+  if (diffMs < 0) return 0;
+  return Math.floor(diffMs / 86400000);
+}
+
+function formatCreatorSyncAgeLabel(creator) {
+  const age = creatorSyncAgeDays(creator);
+  if (age == null) return "更新时间待补";
+  if (age === 0) return "今天更新";
+  return `${age} 天前更新`;
+}
+
+function creatorMatchedFilterTags(creator, tagCriteria) {
+  const matched = [];
+  for (const { fields, tags } of Object.values(tagCriteria || {})) {
+    const creatorTags = new Set(creatorTagsFromFields(creator, fields));
+    tags.forEach((tag) => {
+      if (creatorTags.has(tag)) matched.push(tag);
+    });
+  }
+  return matched;
+}
+
+function creatorFilterCardHtml(creator, criteria) {
+  const matchedTags = creatorMatchedFilterTags(creator, criteria.tagCriteria);
+  const narrativeText =
+    matchedTags.slice(0, 4).join(" · ") ||
+    String(creator.narrative_position || "").trim() ||
+    "叙事标签待补";
+  const recommendation = getCreatorFilterRecommendationText(creator.creator_id);
+  const recMeta = state.creatorFilterRecommendations[creator.creator_id];
+  const recentPosts = Number(creator.recent_posts_count || 0);
+  const avgLikes = Number(creator.avg_likes || 0);
+  const ratioText = supportsLikeFanRatio(creator.platform)
+    ? creator.like_fan_ratio
+      ? `赞粉比 ${formatLikeFanRatio(Number(creator.like_fan_ratio))}`
+      : "赞粉比待补"
+    : creator.engagement_rate
+      ? `互动率 ${Math.round(Number(creator.engagement_rate) * 1000) / 10}%`
+      : "互动率待补";
+  const recentDataText = [
+    ratioText,
+    recentPosts ? `近 ${recentPosts} 条样本` : "近期条数待补",
+    avgLikes ? `均赞 ${fmtNumber(avgLikes)}` : "",
+    formatCreatorSyncAgeLabel(creator),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const kitUrl = creatorKitShareUrl(creator.creator_id);
+  const tags = [
+    ...asTagList(creator.industry_fit_tags),
+    ...asTagList(creator.identity_tags),
+    ...asTagList(creator.content_capability_tags),
+    ...asTagList(creator.suitable_goals),
+  ]
+    .slice(0, 5)
+    .map((tag) => `<span class="tag">${escapeHTML(tag)}</span>`)
+    .join("");
+  const risks = asTagList(creator.risk_tags)
+    .slice(0, 2)
+    .map((tag) => `<span class="tag risk">${escapeHTML(tag)}</span>`)
+    .join("");
+  const initials = creator.name ? creator.name.slice(0, 2).toUpperCase() : "KOL";
+  const avatar = creator.avatar_url
+    ? `<img src="${escapeHTML(creator.avatar_url)}" alt="${escapeHTML(creator.name || "达人")}头像" loading="lazy" />`
+    : `<span>${escapeHTML(initials)}</span>`;
+  const checked = isCreatorFilterSelected(creator.creator_id) ? " checked" : "";
+  return `
+    <article class="creator-card kol-profile-card creator-filter-card open-creator-card" data-creator-id="${escapeHTML(creator.creator_id)}">
+      <div class="creator-filter-card-toolbar">
+        <label class="creator-filter-select-wrap">
+          <input class="creator-filter-select" type="checkbox" data-creator-id="${escapeHTML(creator.creator_id)}"${checked} />
+          <span>纳入导出</span>
+        </label>
+        ${recMeta?.recommendation_level ? `<span class="status-pill ok">${escapeHTML(recMeta.recommendation_level)}</span>` : '<span class="status-pill ok">合作候选</span>'}
+      </div>
+      <div class="kol-card-top">
+        <div class="kol-card-avatar">${avatar}</div>
+        <div>
+          <div class="card-kicker">${escapeHTML(creator.platform || "未知平台")}</div>
+          <h3>${escapeHTML(creator.name || "未命名达人")}</h3>
+          <div class="meta">${escapeHTML(creator.region || creator.platform_user_id || "未补充地区 / ID")}</div>
+        </div>
+        <button class="secondary open-creator-btn" data-creator-id="${escapeHTML(creator.creator_id)}" type="button">详情</button>
+      </div>
+      <div class="creator-filter-judgment">
+        <div class="creator-filter-judgment-row narrative">
+          <span>叙事匹配</span>
+          <strong>${escapeHTML(narrativeText)}</strong>
+        </div>
+        <div class="creator-filter-judgment-row data">
+          <span>近期流量信号</span>
+          <strong>${escapeHTML(recentDataText)}</strong>
+        </div>
+        ${recommendation ? `<div class="creator-filter-judgment-row reason"><span>推荐理由</span><strong>${escapeHTML(recommendation)}</strong></div>` : ""}
+      </div>
+      <div class="kol-card-metrics">
+        <div><span>粉丝</span><strong>${fmtNumber(creator.follower_count)}</strong></div>
+        <div><span>报价</span><strong>${fmtNumber(creator.listed_price)}</strong></div>
+        <div><span>均赞</span><strong>${avgLikes ? fmtNumber(avgLikes) : "-"}</strong></div>
+      </div>
+      <p>${escapeHTML(creator.ai_summary || creator.bio || "待生成画像")}</p>
+      <div class="kol-card-links">
+        ${kitUrl ? `<a class="text-btn" href="${escapeHTML(kitUrl)}" target="_blank" rel="noreferrer">名片刊例</a>` : ""}
+        ${creator.homepage_url ? `<a class="text-btn" href="${escapeHTML(creator.homepage_url)}" target="_blank" rel="noreferrer">主页</a>` : ""}
+      </div>
+      <div class="tag-list">${tags}${risks}</div>
+    </article>
+  `;
+}
+
 function parseCreatorFilterNumber(value) {
   if (value === "" || value == null) return null;
   const number = Number(value);
@@ -2347,22 +2933,29 @@ function getCreatorFilterCriteria() {
     minLikeFanRatio: parseCreatorFilterNumber(form.elements.min_like_fan_ratio?.value),
     maxLikeFanRatio: parseCreatorFilterNumber(form.elements.max_like_fan_ratio?.value),
     minEngagement: parseCreatorFilterNumber(form.elements.min_engagement?.value),
-    sort: form.elements.sort?.value || "follower_desc",
+    minAvgLikes: parseCreatorFilterNumber(form.elements.min_avg_likes?.value),
+    minRecentPostsCount: parseCreatorFilterNumber(form.elements.min_recent_posts_count?.value),
+    maxSyncAgeDays: parseCreatorFilterNumber(form.elements.max_sync_age_days?.value),
+    sort: form.elements.sort?.value || "like_fan_ratio_desc",
     tagCriteria: getCreatorFilterTagCriteria(),
   };
 }
 
-function formatCreatorFilterSummary(items, total, criteria) {
-  const tagCount = Object.values(state.creatorFilterTags).reduce((sum, tags) => sum + (tags?.length || 0), 0);
-  const parts = [`匹配 ${items.length}${total ? ` / ${total}` : ""} 位`];
-  if (criteria.platform) parts.push(`平台=${criteria.platform}`);
-  if (tagCount) parts.push(`标签 ${tagCount} 项`);
-  if (criteria.query) parts.push("含关键词");
-  return parts.join(" · ");
+function creatorMatchesPlatformFilter(creator, criteria) {
+  if (criteria.platform && normalizePlatformValue(creator.platform) !== criteria.platform) return false;
+  if (criteria.query && !creatorSearchText(creator).includes(criteria.query)) return false;
+  return true;
 }
 
-function creatorMatchesFilter(creator, criteria) {
-  if (criteria.platform && normalizePlatformValue(creator.platform) !== criteria.platform) return false;
+function creatorMatchesNarrativeFilter(creator, criteria) {
+  if (!creatorMatchesPlatformFilter(creator, criteria)) return false;
+  if (criteria.tagCriteria && Object.keys(criteria.tagCriteria).length && !creatorMatchesTagFilters(creator, criteria.tagCriteria)) {
+    return false;
+  }
+  return true;
+}
+
+function creatorMatchesDataFilter(creator, criteria) {
   const followers = Number(creator.follower_count || 0);
   if (criteria.minFollowers != null && followers < criteria.minFollowers) return false;
   if (criteria.maxFollowers != null && followers > criteria.maxFollowers) return false;
@@ -2377,11 +2970,120 @@ function creatorMatchesFilter(creator, criteria) {
     const rate = Number(creator.engagement_rate || 0) * 100;
     if (rate < criteria.minEngagement) return false;
   }
-  if (criteria.query) {
-    if (!creatorSearchText(creator).includes(criteria.query)) return false;
+  const avgLikes = Number(creator.avg_likes || 0);
+  if (criteria.minAvgLikes != null && avgLikes < criteria.minAvgLikes) return false;
+  const recentPosts = Number(creator.recent_posts_count || 0);
+  if (criteria.minRecentPostsCount != null && recentPosts < criteria.minRecentPostsCount) return false;
+  if (criteria.maxSyncAgeDays != null) {
+    const syncAge = creatorSyncAgeDays(creator);
+    if (syncAge == null || syncAge > criteria.maxSyncAgeDays) return false;
   }
-  if (criteria.tagCriteria && !creatorMatchesTagFilters(creator, criteria.tagCriteria)) return false;
   return true;
+}
+
+function getCreatorFilterFunnel() {
+  const total = state.creators.length;
+  const criteria = getCreatorFilterCriteria();
+  const platformCriteria = { platform: criteria.platform, query: criteria.query };
+  const afterPlatform = state.creators.filter((creator) => creatorMatchesPlatformFilter(creator, platformCriteria));
+  const afterNarrative = afterPlatform.filter((creator) => creatorMatchesNarrativeFilter(creator, criteria));
+  const finalists = afterNarrative.filter((creator) => creatorMatchesDataFilter(creator, criteria));
+  return {
+    total,
+    afterPlatform: afterPlatform.length,
+    afterNarrative: afterNarrative.length,
+    finalists: finalists.length,
+  };
+}
+
+function renderCreatorFilterFunnel() {
+  const node = $("#creatorFilterFunnel");
+  if (!node) return;
+  const funnel = getCreatorFilterFunnel();
+  const step = state.creatorFilterStep || 1;
+  const nodes = [
+    { id: "total", label: "全库", count: funnel.total, step: 0 },
+    { id: "platform", label: "① 平台", count: funnel.afterPlatform, step: 1 },
+    { id: "narrative", label: "② 叙事", count: funnel.afterNarrative, step: 2 },
+    { id: "data", label: "③ 数据", count: funnel.finalists, step: 3 },
+  ];
+  node.innerHTML = `
+    <div class="creator-filter-funnel-head">
+      <strong>筛选漏斗</strong>
+      <span class="meta">先平台、再叙事、最后看近期流量信号</span>
+    </div>
+    <div class="creator-filter-funnel-track">
+      ${nodes
+        .map((item, index) => {
+          const active = item.step === step || (step === 3 && item.id === "data");
+          const arrow = index < nodes.length - 1 ? '<span class="creator-filter-funnel-arrow">→</span>' : "";
+          return `
+            <button type="button" class="creator-filter-funnel-node${active ? " active" : ""}" data-filter-step="${item.step || 1}">
+              <span>${escapeHTML(item.label)}</span>
+              <strong>${item.count}</strong>
+            </button>
+            ${arrow}
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderCreatorFilterStepper() {
+  const node = $("#creatorFilterStepper");
+  if (!node) return;
+  const step = state.creatorFilterStep || 1;
+  const steps = [
+    { id: 1, label: "平台", hint: "先定渠道" },
+    { id: 2, label: "叙事", hint: "能否纳入商业叙事" },
+    { id: 3, label: "数据", hint: "近期有没有流量" },
+  ];
+  node.innerHTML = steps
+    .map((item) => {
+      const active = item.id === step;
+      const done = item.id < step;
+      return `
+        <button type="button" class="creator-filter-step-tab${active ? " active" : ""}${done ? " done" : ""}" data-filter-step="${item.id}">
+          <span>${item.id}</span>
+          <div>
+            <strong>${escapeHTML(item.label)}</strong>
+            <em>${escapeHTML(item.hint)}</em>
+          </div>
+        </button>
+      `;
+    })
+    .join("");
+  $$(".creator-filter-step-panel").forEach((panel) => {
+    panel.classList.toggle("active", Number(panel.dataset.step) === step);
+  });
+}
+
+function setCreatorFilterStep(step) {
+  const next = Math.max(1, Math.min(3, Number(step) || 1));
+  state.creatorFilterStep = next;
+  renderCreatorFilterStepper();
+  renderCreatorFilterFunnel();
+  const panel = $(`#creatorFilterStep${next}`);
+  panel?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function formatCreatorFilterSummary(items, total, criteria, funnel) {
+  const tagCount = Object.values(state.creatorFilterTags).reduce((sum, tags) => sum + (tags?.length || 0), 0);
+  const parts = [`入围 ${items.length}${total ? ` / ${total}` : ""} 人`];
+  if (funnel) {
+    parts.push(`漏斗 ${funnel.afterPlatform}→${funnel.afterNarrative}→${funnel.finalists}`);
+  }
+  if (criteria.platform) parts.push(`平台=${criteria.platform}`);
+  if (tagCount) parts.push(`叙事标签 ${tagCount} 项`);
+  if (criteria.minLikeFanRatio != null) parts.push(`赞粉比≥${criteria.minLikeFanRatio}`);
+  if (criteria.minRecentPostsCount != null) parts.push(`近${criteria.minRecentPostsCount}条样本`);
+  if (criteria.maxSyncAgeDays != null) parts.push(`更新≤${criteria.maxSyncAgeDays}天`);
+  return parts.join(" · ");
+}
+
+function creatorMatchesFilter(creator, criteria) {
+  return creatorMatchesNarrativeFilter(creator, criteria) && creatorMatchesDataFilter(creator, criteria);
 }
 
 function sortFilteredCreators(items, sortKey) {
@@ -2396,6 +3098,8 @@ function sortFilteredCreators(items, sortKey) {
       return sorted.sort((a, b) => num(a.like_fan_ratio) - num(b.like_fan_ratio));
     case "engagement_desc":
       return sorted.sort((a, b) => num(b.engagement_rate) - num(a.engagement_rate));
+    case "avg_likes_desc":
+      return sorted.sort((a, b) => num(b.avg_likes) - num(a.avg_likes));
     case "price_asc":
       return sorted.sort((a, b) => num(a.listed_price) - num(b.listed_price));
     case "price_desc":
@@ -2409,24 +3113,47 @@ function sortFilteredCreators(items, sortKey) {
 function renderCreatorFilterResults() {
   const list = $("#creatorFilterList");
   const summary = $("#creatorFilterSummary");
+  const listTitle = $("#creatorFilterListTitle");
   if (!list) return;
   const criteria = getCreatorFilterCriteria();
+  const funnel = getCreatorFilterFunnel();
   const total = state.creators.length;
+  renderCreatorFilterFunnel();
   const items = sortFilteredCreators(
     state.creators.filter((creator) => creatorMatchesFilter(creator, criteria)),
     criteria.sort,
   );
   if (summary) {
-    summary.textContent = total ? formatCreatorFilterSummary(items, total, criteria) : "达人库暂无数据";
+    summary.textContent = total ? formatCreatorFilterSummary(items, total, criteria, funnel) : "达人库暂无数据";
+  }
+  if (listTitle) {
+    listTitle.textContent =
+      items.length > 0
+        ? `合作候选名单 · ${items.length} 人（投前判断完成，可勾选导出）`
+        : "合作候选名单";
   }
   if (!items.length) {
+    renderCreatorFilterExportBar([]);
+    const step = state.creatorFilterStep || 1;
+    const hints = [
+      "全库暂无数据，先去达人库导入。",
+      "没有符合平台条件的达人，换平台或清空平台筛选。",
+      "叙事标签过严，放宽标签或先只保留领域/叙事角色。",
+      "数据门槛过高，降低赞粉比、均赞、更新天数或近期样本条数要求。",
+    ];
     list.innerHTML = emptyState(
-      total ? "没有符合当前条件的达人" : "暂无达人数据",
-      total ? "放宽粉丝、赞粉比或报价条件后再试，或先去达人库补充数据。" : "先导入 Excel / CSV 或使用示例数据启动达人雷达。",
+      total ? "当前暂无入围达人" : "暂无达人数据",
+      total ? hints[step] || hints[3] : "先导入 Excel / CSV 或使用示例数据启动达人雷达。",
     );
     return;
   }
-  list.innerHTML = items.map((creator) => creatorCardHtml(creator)).join("");
+  renderCreatorFilterExportBar(items);
+  list.innerHTML = items.map((creator) => creatorFilterCardHtml(creator, criteria)).join("");
+  refreshCreatorFilterRecommendations(items.map((creator) => creator.creator_id)).then(() => {
+    if ($("#creatorFilterList")) {
+      list.innerHTML = items.map((creator) => creatorFilterCardHtml(creator, criteria)).join("");
+    }
+  });
 }
 
 function setCreatorListLoading(loading) {
@@ -8043,6 +8770,16 @@ function buildCreatorCommercialKitText(creator) {
   return lines.filter(Boolean).join("\n");
 }
 
+function openCreatorCommercialKitWeb(creatorId = "") {
+  const id = String(creatorId || state.activeCreator?.creator_id || "").trim();
+  const url = creatorKitShareUrl(id);
+  if (!url) {
+    toast("请先保存达人后再打开网页版名片", true);
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
 function generateCreatorCommercialKit(form = null) {
   const targetForm = form || $("#creatorEditForm");
   const creator = getCreatorDraftFromForm(targetForm);
@@ -8074,37 +8811,36 @@ function refreshCreatorCommercialKitPreview(form = $("#quickCreatorForm")) {
   output.dataset.copyText = text;
 }
 
-function creatorKitFilename(form = null) {
+function creatorKitFilename(form = null, ext = "pdf") {
   const targetForm = form || $("#creatorEditForm");
   const creator = getCreatorDraftFromForm(targetForm);
   const name = (creator?.name || state.activeCreator?.name || "达人").replace(/[\\/:*?"<>|\\s]+/g, "_");
-  return `${name}_商业名片刊例.html`;
+  return `${name}_商业名片刊例.${ext}`;
 }
 
-function downloadCreatorCommercialKit(form = null) {
+async function downloadCreatorCommercialKit(form = null) {
   const targetForm = form || $("#creatorEditForm");
   const outputId = targetForm?.id === "quickCreatorForm" ? "#quickCreatorCommercialKitOutput" : "#creatorCommercialKitOutput";
   const output = $(outputId);
   if (!output?.querySelector(".creator-commercial-card")) generateCreatorCommercialKit(targetForm);
-  if (!output?.querySelector(".creator-commercial-card")) return;
-  const styles = Array.from(document.styleSheets)
-    .map((sheet) => {
-      try {
-        return Array.from(sheet.cssRules || []).map((rule) => rule.cssText).join("\n");
-      } catch {
-        return "";
-      }
-    })
-    .join("\n");
-  const creator = getCreatorDraftFromForm(targetForm);
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHTML(creator?.name || "达人")}商业名片刊例</title><style>${styles}</style></head><body><main style="max-width:920px;margin:24px auto;">${output.innerHTML}</main></body></html>`;
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = creatorKitFilename(targetForm);
-  a.click();
-  URL.revokeObjectURL(url);
+  const card = output?.querySelector(".creator-commercial-card");
+  if (!card) return;
+  try {
+    const html2pdf = await loadHtml2PdfLib();
+    await html2pdf()
+      .set({
+        margin: [10, 10, 10, 10],
+        filename: creatorKitFilename(targetForm, "pdf"),
+        image: { type: "jpeg", quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+      })
+      .from(card)
+      .save();
+    toast("PDF 已下载");
+  } catch (error) {
+    toast(error.message || "PDF 生成失败", true);
+  }
 }
 
 async function runCreatorFormAiJudgment(form) {
@@ -8323,6 +9059,8 @@ function bindEvents() {
           await ensureCreatorsLoaded();
           if (button.dataset.view === "creatorFilter") {
             renderCreatorFilterTagFramework();
+            renderCreatorFilterStepper();
+            renderCreatorFilterFunnel();
             renderCreatorFilterResults();
           }
         } catch (error) {
@@ -9084,22 +9822,102 @@ function bindEvents() {
   bindCreatorCardClicks($("#creatorList"));
   bindCreatorCardClicks($("#creatorFilterList"));
   renderCreatorFilterTagFramework();
+  renderCreatorFilterPresetSelect();
+  renderCreatorFilterStepper();
+  setCreatorFilterStep(1);
   $("#creatorFilterForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
+    setCreatorFilterStep(3);
     renderCreatorFilterResults();
   });
   $("#creatorFilterForm")?.addEventListener("input", renderCreatorFilterResults);
+  $("#creatorFilterForm")?.addEventListener("click", (event) => {
+    const nextBtn = event.target.closest(".creator-filter-next-btn");
+    if (nextBtn) {
+      event.preventDefault();
+      setCreatorFilterStep(nextBtn.dataset.filterStep);
+      renderCreatorFilterResults();
+      return;
+    }
+    const prevBtn = event.target.closest(".creator-filter-prev-btn");
+    if (prevBtn) {
+      event.preventDefault();
+      setCreatorFilterStep(prevBtn.dataset.filterStep);
+      return;
+    }
+    const tab = event.target.closest(".creator-filter-step-tab, .creator-filter-funnel-node");
+    if (tab?.dataset.filterStep) {
+      event.preventDefault();
+      const step = Number(tab.dataset.filterStep);
+      if (step >= 1 && step <= 3) setCreatorFilterStep(step);
+    }
+  });
   $("#creatorFilterTagFramework")?.addEventListener("click", (event) => {
     const chip = event.target.closest(".creator-filter-tag-chip");
     if (!chip) return;
     event.preventDefault();
     toggleCreatorFilterTag(chip.dataset.filterGroup, chip.dataset.filterTag);
   });
+  $("#creatorFilterTagFrameworkExtra")?.addEventListener("click", (event) => {
+    const chip = event.target.closest(".creator-filter-tag-chip");
+    if (!chip) return;
+    event.preventDefault();
+    toggleCreatorFilterTag(chip.dataset.filterGroup, chip.dataset.filterTag);
+  });
+  $("#creatorFilterNarrativeAnalyzeBtn")?.addEventListener("click", () => runCreatorFilterNarrativeAnalyze());
+  $("#creatorFilterBriefFile")?.addEventListener("change", async (event) => {
+    const text = await readCreatorFilterUploadFile(event.currentTarget);
+    if (!text) return;
+    const node = $("#creatorFilterNarrativeBrief");
+    if (node) node.value = text;
+    toast("Brief 文件已载入");
+  });
+  $("#creatorFilterTagsFile")?.addEventListener("change", async (event) => {
+    const text = await readCreatorFilterUploadFile(event.currentTarget);
+    if (!text) return;
+    const node = $("#creatorFilterTextTags");
+    if (node) node.value = text;
+    toast("标签文件已载入");
+  });
+  $("#creatorFilterList")?.addEventListener("change", (event) => {
+    const checkbox = event.target.closest(".creator-filter-select");
+    if (!checkbox) return;
+    event.stopPropagation();
+    setCreatorFilterSelected(checkbox.dataset.creatorId, checkbox.checked);
+  });
+  $("#creatorFilterList")?.addEventListener("click", (event) => {
+    if (event.target.closest(".creator-filter-select-wrap, .creator-filter-select")) {
+      event.stopPropagation();
+    }
+  });
+  $("#creatorFilterSelectAll")?.addEventListener("change", (event) => {
+    const criteria = getCreatorFilterCriteria();
+    const items = state.creators.filter((creator) => creatorMatchesFilter(creator, criteria));
+    items.forEach((creator) => setCreatorFilterSelected(creator.creator_id, event.currentTarget.checked));
+    renderCreatorFilterResults();
+  });
+  $("#creatorFilterExportBtn")?.addEventListener("click", exportSelectedCreatorFilterList);
   $("#creatorFilterResetBtn")?.addEventListener("click", () => {
     $("#creatorFilterForm")?.reset();
     clearCreatorFilterTags();
+    $("#creatorFilterBriefInput") && ($("#creatorFilterBriefInput").value = "");
+    $("#creatorFilterNarrativeBrief") && ($("#creatorFilterNarrativeBrief").value = "");
+    $("#creatorFilterTextTags") && ($("#creatorFilterTextTags").value = "");
+    $("#creatorFilterBriefHints")?.classList.add("hidden");
+    renderCreatorFilterNarrativeAnalysis(null);
+    state.creatorFilterNarrativeAnalysis = null;
+    state.creatorFilterSelected = {};
+    state.creatorFilterRecommendations = {};
+    setCreatorFilterStep(1);
     renderCreatorFilterResults();
   });
+  $("#creatorFilterBriefApplyBtn")?.addEventListener("click", async () => {
+    const text = $("#creatorFilterBriefInput")?.value || "";
+    await applyCreatorFilterFromBriefText(text);
+  });
+  $("#creatorFilterPresetSaveBtn")?.addEventListener("click", saveCreatorFilterPreset);
+  $("#creatorFilterPresetLoadBtn")?.addEventListener("click", loadSelectedCreatorFilterPreset);
+  $("#creatorFilterPresetDeleteBtn")?.addEventListener("click", deleteSelectedCreatorFilterPreset);
   $("#caseSearch")?.addEventListener("input", renderCases);
   $("#openCaseModalBtn")?.addEventListener("click", () => openCaseModal());
   $("#closeCaseModalBtn")?.addEventListener("click", closeCaseModal);
@@ -9133,6 +9951,7 @@ function bindEvents() {
   $("#closeCreatorModalBtn").addEventListener("click", closeCreatorModal);
   $("#deleteCreatorBtn")?.addEventListener("click", deleteActiveCreator);
   $("#generateCreatorKitBtn")?.addEventListener("click", () => generateCreatorCommercialKit($("#creatorEditForm")));
+  $("#openCreatorKitWebBtn")?.addEventListener("click", () => openCreatorCommercialKitWeb(state.activeCreator?.creator_id));
   $("#copyCreatorKitBtn")?.addEventListener("click", async () => {
     const output = $("#creatorCommercialKitOutput");
     const text = output?.dataset.copyText || generateCreatorCommercialKit($("#creatorEditForm"));
@@ -9634,6 +10453,14 @@ function bindEvents() {
       setView("proposal");
       $("#proposalOutput").value = state.lastProposal || "";
       toast("已打开方案页");
+      return;
+    }
+    if (event.target.closest(".home-brief-to-filter-btn")) {
+      const conversation = state.homeBriefConversation;
+      const form = $("#homeBriefForm");
+      const text = String(form?.elements?.brief?.value || conversation?.brief?.raw_text || "").trim();
+      const parsedBrief = conversation?.brief && typeof conversation.brief === "object" ? conversation.brief : null;
+      await openCreatorFilterWithBrief(text, parsedBrief ? { parsedBrief } : {});
     }
   });
 

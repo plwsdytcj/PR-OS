@@ -126,6 +126,8 @@ from src.creator_commercial.storage import (
     upsert_invitation,
 )
 from src.intelligence.brief_parser import parse_brief
+from src.intelligence.filter_from_brief import suggest_creator_filter_from_brief, suggest_creator_filter_from_text
+from src.intelligence.narrative_filter import analyze_narrative_filter, recommend_creators_for_filter
 from src.intelligence.data_quality import find_duplicate_candidates, governance_summary, quality_issues, strong_dedupe_profiles
 from src.intelligence.matching import rank_creators
 from src.intelligence.creator_multimodal import analyze_creator_image
@@ -176,7 +178,7 @@ from src.platform_os.storage import init_platform_db, load_all_campaign_projects
 from src.project_run.service import run_pr_project
 from src.report.proposal_generator import generate_markdown_proposal
 from src.rules.storage import init_rule_db, load_rule_config, reset_rule_config, save_rule_config
-from src.schemas import CreatorProfile, split_tags, stable_id
+from src.schemas import BrandBrief, CreatorProfile, split_tags, stable_id
 from src.simulation.llm_fallback import LlmFallbackStressTest
 from src.simulation.mirofish_adapter import MiroFishCliAdapter
 from src.llm.glm_client import GlmClient
@@ -231,8 +233,8 @@ ACCESS_KEY = os.getenv("PR_AI_OS_ACCESS_KEY", "").strip()
 AUTH_ENABLED = os.getenv("PR_AI_OS_AUTH_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
 AUTH_COOKIE_NAME = "pr_ai_os_session"
 AUTH_SESSION_HEADER = "X-Session-Token"
-PUBLIC_PATH_PREFIXES = ("/", "/static/", "/favicon.ico", "/creator/brief/", "/creator/invite/")
-PUBLIC_API_PREFIXES = ("/api/client/share/", "/api/creator/brief/", "/api/creator/invite/")
+PUBLIC_PATH_PREFIXES = ("/", "/static/", "/favicon.ico", "/creator/brief/", "/creator/invite/", "/creator-kit/")
+PUBLIC_API_PREFIXES = ("/api/client/share/", "/api/creator/brief/", "/api/creator/invite/", "/api/public/creator-kit/")
 _TENANT_RE = re.compile(r"[^a-zA-Z0-9_-]+")
 _db_path_ctx: contextvars.ContextVar[Path] = contextvars.ContextVar("db_path", default=DEFAULT_DB_PATH)
 _template_path_ctx: contextvars.ContextVar[Path] = contextvars.ContextVar("template_path", default=DEFAULT_TEMPLATE_PATH)
@@ -960,6 +962,11 @@ def creator_invite_page(token: str) -> FileResponse:
 @app.get("/creator/brief/{token}", response_class=HTMLResponse)
 def creator_brief_page(token: str) -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/creator-kit/{creator_id}", response_class=HTMLResponse)
+def creator_kit_page(creator_id: str) -> FileResponse:
+    return FileResponse(STATIC_DIR / "creator-kit.html")
 
 
 @app.get("/api/status")
@@ -3586,6 +3593,71 @@ async def classify_creator_tags_api(payload: dict[str, Any]) -> dict[str, Any]:
     }
     result = classify_creator_tags(tags, platform=str(payload.get("platform", "")).strip(), existing=existing)
     return {"classification": result}
+
+
+@app.post("/api/creators/filter/from-brief")
+async def creator_filter_from_brief(payload: dict[str, Any]) -> dict[str, Any]:
+    text = str(payload.get("brief") or "").strip()
+    parsed = payload.get("parsed_brief")
+    if isinstance(parsed, dict) and parsed:
+        brief = BrandBrief(
+            raw_text=str(parsed.get("raw_text") or text),
+            industry=str(parsed.get("industry") or ""),
+            product=str(parsed.get("product") or ""),
+            budget=int(parsed.get("budget") or 0),
+            campaign_stage=str(parsed.get("campaign_stage") or ""),
+            goals=list(parsed.get("goals") or []),
+            target_audience=list(parsed.get("target_audience") or []),
+            platform_preference=list(parsed.get("platform_preference") or []),
+            content_preference=list(parsed.get("content_preference") or []),
+        )
+        return suggest_creator_filter_from_brief(brief)
+    if not text:
+        raise HTTPException(status_code=400, detail="brief is required")
+    return suggest_creator_filter_from_text(text)
+
+
+@app.post("/api/creators/filter/narrative-analyze")
+async def creator_filter_narrative_analyze(payload: dict[str, Any]) -> dict[str, Any]:
+    brief = str(payload.get("brief") or "").strip()
+    if not brief:
+        raise HTTPException(status_code=400, detail="brief is required")
+    return analyze_narrative_filter(
+        brief_text=brief,
+        text_tags=payload.get("text_tags") or payload.get("tags") or "",
+        platform=str(payload.get("platform") or "").strip(),
+    )
+
+
+@app.post("/api/creators/filter/recommendations")
+async def creator_filter_recommendations(payload: dict[str, Any]) -> dict[str, Any]:
+    brief = str(payload.get("brief") or "").strip()
+    creator_ids = [str(item).strip() for item in (payload.get("creator_ids") or []) if str(item).strip()]
+    profiles = load_profiles(DB_PATH)
+    if creator_ids:
+        wanted = set(creator_ids)
+        profiles = [profile for profile in profiles if profile.creator_id in wanted]
+    items = recommend_creators_for_filter(
+        brief_text=brief,
+        text_tags=payload.get("text_tags") or payload.get("tags") or "",
+        creators=profiles,
+    )
+    return {"items": items}
+
+
+@app.get("/api/public/creator-kit/{creator_id}")
+def public_creator_kit(creator_id: str) -> dict[str, Any]:
+    try:
+        profile = _find_creator(creator_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="creator not found") from exc
+    return {
+        "creator": profile_payload(profile),
+        "creator_id": profile.creator_id,
+        "share_path": f"/creator-kit/{profile.creator_id}",
+    }
 
 
 @app.post("/api/creators/intake/preview")

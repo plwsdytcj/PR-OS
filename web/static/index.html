@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260624-23" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260624-29" />
   </head>
   <body>
     <div class="app-shell">
@@ -664,61 +664,161 @@
             <div class="panel-header">
               <div>
                 <h2>筛选达人工具</h2>
-                <p>硬指标缩范围，标签框架点选找人——与达人库录入同一套字段、同一套词。</p>
+                <p>按公关选博主流水线：先定平台 → 再看叙事能否纳入商业叙事 → 最后用赞粉比与近期内容数据判断有没有流量，筛出合作候选。</p>
               </div>
             </div>
             <form id="creatorFilterForm" class="form creator-filter-form">
-              <div class="creator-filter-section-label">硬指标</div>
-              <div class="field-row three">
-                <label>平台
-                  <select id="creatorFilterPlatform" name="platform">
-                    <option value="">全部平台</option>
+              <div class="creator-filter-shortcuts">
+                <div class="creator-filter-section-label">Brief 与方案</div>
+                <div class="creator-filter-brief-row">
+                  <label class="creator-filter-brief-field">从 Brief 带入
+                    <textarea id="creatorFilterBriefInput" rows="2" placeholder="粘贴 Brief，自动点亮平台、叙事标签与数据门槛…"></textarea>
+                  </label>
+                  <button type="button" id="creatorFilterBriefApplyBtn" class="secondary">一键带入</button>
+                </div>
+                <div id="creatorFilterBriefHints" class="meta creator-filter-brief-hints hidden"></div>
+                <div class="creator-filter-presets-row">
+                  <select id="creatorFilterPresetSelect">
+                    <option value="">已保存的方案…</option>
                   </select>
-                </label>
-                <label>排序
-                  <select id="creatorFilterSort" name="sort">
-                    <option value="follower_desc">粉丝数 ↓</option>
-                    <option value="follower_asc">粉丝数 ↑</option>
-                    <option value="like_fan_ratio_desc">赞粉比 ↓</option>
-                    <option value="like_fan_ratio_asc">赞粉比 ↑</option>
-                    <option value="engagement_desc">互动率 ↓</option>
-                    <option value="price_asc">报价 ↑</option>
-                    <option value="price_desc">报价 ↓</option>
-                  </select>
-                </label>
-                <label>关键词
-                  <input id="creatorFilterQuery" name="query" placeholder="名称、标签、摘要" />
-                </label>
+                  <button type="button" id="creatorFilterPresetLoadBtn" class="secondary">载入</button>
+                  <button type="button" id="creatorFilterPresetSaveBtn" class="secondary">保存当前</button>
+                  <button type="button" id="creatorFilterPresetDeleteBtn" class="secondary">删除</button>
+                </div>
               </div>
-              <div class="field-row three">
-                <label>粉丝 ≥
-                  <input id="creatorFilterMinFollowers" name="min_followers" type="number" min="0" placeholder="如 10000" />
-                </label>
-                <label>粉丝 ≤
-                  <input id="creatorFilterMaxFollowers" name="max_followers" type="number" min="0" placeholder="如 500000" />
-                </label>
-                <label>报价 ≤
-                  <input id="creatorFilterMaxPrice" name="max_price" type="number" min="0" placeholder="刊例上限" />
-                </label>
+
+              <div id="creatorFilterStepper" class="creator-filter-stepper"></div>
+              <div id="creatorFilterFunnel" class="creator-filter-funnel"></div>
+
+              <div id="creatorFilterStep1" class="creator-filter-step-panel active" data-step="1">
+                <div class="creator-filter-section-label">第一步 · 平台</div>
+                <p class="meta creator-filter-step-desc">先定投放渠道，缩小候选池。</p>
+                <div class="field-row two">
+                  <label>平台
+                    <select id="creatorFilterPlatform" name="platform">
+                      <option value="">全部平台</option>
+                    </select>
+                  </label>
+                  <label>关键词
+                    <input id="creatorFilterQuery" name="query" placeholder="名称、叙事、标签、摘要" />
+                  </label>
+                </div>
+                <div class="button-row creator-filter-step-nav">
+                  <button type="button" class="primary creator-filter-next-btn" data-filter-step="2">下一步：叙事匹配 →</button>
+                </div>
               </div>
-              <div class="field-row three">
-                <label>赞粉比 ≥
-                  <input id="creatorFilterMinLikeFanRatio" name="min_like_fan_ratio" type="number" min="0" step="0.001" placeholder="如 10" />
-                </label>
-                <label>赞粉比 ≤
-                  <input id="creatorFilterMaxLikeFanRatio" name="max_like_fan_ratio" type="number" min="0" step="0.001" placeholder="如 50" />
-                </label>
-                <label>互动率 ≥ (%)
-                  <input id="creatorFilterMinEngagement" name="min_engagement" type="number" min="0" step="0.1" placeholder="如 3" />
-                </label>
+
+              <div id="creatorFilterStep2" class="creator-filter-step-panel" data-step="2">
+                <div class="creator-filter-step2-head">
+                  <span class="creator-filter-step-badge">第二步</span>
+                  <div>
+                    <strong class="creator-filter-step2-title">叙事与标签匹配</strong>
+                    <p class="meta creator-filter-step-desc">判断能否纳入本次商业叙事：叙事角色、领域、身份、内容能力</p>
+                  </div>
+                </div>
+                <div class="creator-filter-narrative-inputs">
+                  <div class="field-row two">
+                    <label class="creator-filter-upload-field">Brief
+                      <textarea id="creatorFilterNarrativeBrief" rows="4" placeholder="粘贴甲方 Brief，或上传 txt/md 文件…"></textarea>
+                      <div class="creator-filter-upload-row">
+                        <input id="creatorFilterBriefFile" type="file" accept=".txt,.md,.markdown,text/plain" />
+                        <span class="meta">支持 txt / md</span>
+                      </div>
+                    </label>
+                    <label class="creator-filter-upload-field">文字标签
+                      <textarea id="creatorFilterTextTags" rows="4" placeholder="逗号或换行分隔，如：电影、深度稿、影评人、圈层扩散"></textarea>
+                      <div class="creator-filter-upload-row">
+                        <input id="creatorFilterTagsFile" type="file" accept=".txt,.md,.markdown,text/plain" />
+                        <span class="meta">支持 txt / md</span>
+                      </div>
+                    </label>
+                  </div>
+                  <div class="button-row">
+                    <button type="button" id="creatorFilterNarrativeAnalyzeBtn" class="primary">启动 AI 分析</button>
+                    <span class="meta" id="creatorFilterNarrativeAnalyzeStatus">上传 Brief 与标签后，AI 会建议应点亮哪些叙事标签</span>
+                  </div>
+                  <div id="creatorFilterNarrativeAnalysis" class="creator-filter-narrative-analysis hidden"></div>
+                </div>
+                <div id="creatorFilterTagFramework" class="creator-filter-tag-framework"></div>
+                <details class="creator-filter-more-tags" id="creatorFilterMoreTags">
+                  <summary>更多标签（商业、履约、风险）</summary>
+                  <div id="creatorFilterTagFrameworkExtra" class="creator-filter-tag-framework extra"></div>
+                </details>
+                <div class="button-row creator-filter-step-nav">
+                  <button type="button" class="secondary creator-filter-prev-btn" data-filter-step="1">← 上一步：平台</button>
+                  <button type="button" class="primary creator-filter-next-btn" data-filter-step="3">下一步：数据验证 →</button>
+                </div>
               </div>
-              <div id="creatorFilterTagFramework" class="creator-filter-tag-framework"></div>
+
+              <div id="creatorFilterStep3" class="creator-filter-step-panel" data-step="3">
+                <div class="creator-filter-section-label">第三步 · 近期数据</div>
+                <p class="meta creator-filter-step-desc">用赞粉比、近 N 条内容均赞、数据新鲜度与粉丝量，判断现在投会不会有流量（投后再看实际表现）。</p>
+                <div class="field-row three">
+                  <label>赞粉比 ≥
+                    <input id="creatorFilterMinLikeFanRatio" name="min_like_fan_ratio" type="number" min="0" step="0.001" placeholder="如 5" />
+                  </label>
+                  <label>近 N 条样本 ≥
+                    <input id="creatorFilterMinRecentPosts" name="min_recent_posts_count" type="number" min="0" placeholder="如 10" />
+                  </label>
+                  <label>近期均赞 ≥
+                    <input id="creatorFilterMinAvgLikes" name="min_avg_likes" type="number" min="0" placeholder="近10条平均点赞" />
+                  </label>
+                </div>
+                <div class="field-row three">
+                  <label>粉丝 ≥
+                    <input id="creatorFilterMinFollowers" name="min_followers" type="number" min="0" placeholder="如 10000" />
+                  </label>
+                  <label>粉丝 ≤
+                    <input id="creatorFilterMaxFollowers" name="max_followers" type="number" min="0" placeholder="如 500000" />
+                  </label>
+                  <label>最近更新 ≤ (天)
+                    <input id="creatorFilterMaxSyncAge" name="max_sync_age_days" type="number" min="1" placeholder="如 30" />
+                  </label>
+                </div>
+                <div class="field-row three">
+                  <label>报价 ≤
+                    <input id="creatorFilterMaxPrice" name="max_price" type="number" min="0" placeholder="刊例上限" />
+                  </label>
+                  <label>互动率 ≥ (%)
+                    <input id="creatorFilterMinEngagement" name="min_engagement" type="number" min="0" step="0.1" placeholder="如 3" />
+                  </label>
+                  <label>赞粉比 ≤
+                    <input id="creatorFilterMaxLikeFanRatio" name="max_like_fan_ratio" type="number" min="0" step="0.001" placeholder="异常高可设上限" />
+                  </label>
+                </div>
+                <div class="field-row three">
+                  <label>入围排序
+                    <select id="creatorFilterSort" name="sort">
+                      <option value="like_fan_ratio_desc">赞粉比 ↓</option>
+                      <option value="avg_likes_desc">近期均赞 ↓</option>
+                      <option value="engagement_desc">互动率 ↓</option>
+                      <option value="follower_desc">粉丝数 ↓</option>
+                      <option value="follower_asc">粉丝数 ↑</option>
+                      <option value="price_asc">报价 ↑</option>
+                      <option value="price_desc">报价 ↓</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="button-row creator-filter-step-nav">
+                  <button type="button" class="secondary creator-filter-prev-btn" data-filter-step="2">← 上一步：叙事</button>
+                  <button type="submit" class="primary">确认入围名单</button>
+                </div>
+              </div>
+
               <div class="button-row creator-filter-actions">
-                <button type="submit" class="primary">应用筛选</button>
                 <button type="button" id="creatorFilterResetBtn" class="secondary">重置全部</button>
                 <span class="meta" id="creatorFilterSummary">—</span>
               </div>
             </form>
+            <h3 id="creatorFilterListTitle" class="creator-filter-list-title">合作候选名单</h3>
+            <div id="creatorFilterExportBar" class="creator-filter-export-bar hidden">
+              <label class="creator-filter-select-all">
+                <input id="creatorFilterSelectAll" type="checkbox" />
+                全选当前名单
+              </label>
+              <span class="meta" id="creatorFilterSelectedCount">已选 0 人</span>
+              <button type="button" id="creatorFilterExportBtn" class="primary">导出勾选博主列表</button>
+            </div>
             <div id="creatorFilterList" class="creator-grid"></div>
           </div>
         </section>
@@ -1957,8 +2057,9 @@
             </div>
             <div class="button-row">
               <button id="generateCreatorKitBtn" class="primary" type="button">生成名片刊例</button>
+              <button id="openCreatorKitWebBtn" class="secondary" type="button">打开网页版</button>
               <button id="copyCreatorKitBtn" class="secondary" type="button">复制</button>
-              <button id="downloadCreatorKitBtn" class="secondary" type="button">下载</button>
+              <button id="downloadCreatorKitBtn" class="secondary" type="button">下载 PDF</button>
             </div>
             <div id="creatorCommercialKitOutput" class="commercial-kit-output">
               <div class="commercial-card-empty">点击生成后，会在这里出现卡片式商业名片刊例。</div>
@@ -2205,7 +2306,7 @@
             <div class="button-row">
               <button id="generateQuickCreatorKitBtn" class="primary" type="button">生成名片刊例</button>
               <button id="copyQuickCreatorKitBtn" class="secondary" type="button">复制</button>
-              <button id="downloadQuickCreatorKitBtn" class="secondary" type="button">下载</button>
+              <button id="downloadQuickCreatorKitBtn" class="secondary" type="button">下载 PDF</button>
             </div>
             <div id="quickCreatorCommercialKitOutput" class="commercial-kit-output">
               <div class="commercial-card-empty">填写信息后点击生成，会在这里出现卡片式商业名片刊例预览。</div>
@@ -2293,6 +2394,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260624-23"></script>
+    <script src="/static/app.js?v=20260624-29"></script>
   </body>
 </html>

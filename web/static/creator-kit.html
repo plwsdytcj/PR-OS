@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>达人商业名片刊例</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260624-28" />
+    <style>
+      body {
+        background: #f6f1e8;
+        margin: 0;
+        padding: 24px 16px 48px;
+      }
+      .creator-kit-page {
+        margin: 0 auto;
+        max-width: 920px;
+      }
+      .creator-kit-page-head {
+        margin-bottom: 16px;
+      }
+      .creator-kit-page-head h1 {
+        font-size: 22px;
+        margin: 0 0 6px;
+      }
+      .creator-kit-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 12px 0 18px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="creator-kit-page">
+      <header class="creator-kit-page-head">
+        <div class="card-kicker">PR-OS · business rate card</div>
+        <h1 id="kitPageTitle">达人商业名片刊例</h1>
+        <p id="kitPageMeta" class="meta">加载中…</p>
+      </header>
+      <div class="creator-kit-toolbar">
+        <button id="kitDownloadPdfBtn" class="primary" type="button" hidden>下载 PDF</button>
+        <button id="kitCopyLinkBtn" class="secondary" type="button" hidden>复制网页链接</button>
+      </div>
+      <div id="kitPageOutput" class="commercial-kit-output">
+        <div class="commercial-card-empty">正在加载名片刊例…</div>
+      </div>
+    </main>
+    <script>
+      const $ = (s) => document.querySelector(s);
+      const escapeHTML = (v) =>
+        String(v ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      const fmtNumber = (n) => {
+        const num = Number(n) || 0;
+        if (num >= 10000) return `${Math.round((num / 10000) * 10) / 10}万`;
+        return String(num);
+      };
+      const creatorId = window.location.pathname.split("/").filter(Boolean).pop() || "";
+      const shareUrl = window.location.href;
+
+      function cleanList(v) {
+        if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter(Boolean);
+        return String(v || "")
+          .split(/[,，、\n]+/)
+          .map((x) => x.trim())
+          .filter(Boolean);
+      }
+
+      function buildKitHtml(creator) {
+        const avatar = creator.avatar_url
+          ? `<img src="${escapeHTML(creator.avatar_url)}" alt="${escapeHTML(creator.name)}头像" />`
+          : `<span>${escapeHTML((creator.name || "KOL").slice(0, 2).toUpperCase())}</span>`;
+        const meta = [
+          creator.platform ? `<span>${escapeHTML(creator.platform)}</span>` : "",
+          creator.follower_count ? `<span>${fmtNumber(creator.follower_count)} 粉丝</span>` : "",
+          creator.homepage_url ? `<a href="${escapeHTML(creator.homepage_url)}" target="_blank" rel="noreferrer">主页</a>` : "",
+          creator.contact ? `<span>${escapeHTML(creator.contact)}</span>` : "",
+        ]
+          .filter(Boolean)
+          .join("");
+        const chip = (items, tone = "") =>
+          cleanList(items)
+            .map((item) => `<span class="commercial-chip ${tone}">${escapeHTML(item)}</span>`)
+            .join("");
+        const section = (title, items, tone = "") => {
+          const list = cleanList(items);
+          if (!list.length) return "";
+          return `<section class="commercial-card-section"><h4>${escapeHTML(title)}</h4><div class="commercial-chip-row">${chip(list, tone)}</div></section>`;
+        };
+        const price = Number(creator.listed_price || 0);
+        const rateCards = price
+          ? `<section class="commercial-card-section"><h4>刊例报价</h4><div class="rate-card-grid"><div class="rate-card"><span>报价</span><strong>${fmtNumber(price)} 元</strong></div></div></section>`
+          : "";
+        return `
+          <article class="creator-commercial-card">
+            <header class="commercial-card-header">
+              <div class="commercial-card-avatar">${avatar}</div>
+              <div>
+                <div class="card-kicker">business rate card</div>
+                <h3>${escapeHTML(creator.name || "未命名达人")}</h3>
+                ${meta ? `<div class="commercial-card-meta">${meta}</div>` : ""}
+              </div>
+            </header>
+            ${creator.bio || creator.ai_summary ? `<p class="commercial-card-bio">${escapeHTML(creator.bio || creator.ai_summary)}</p>` : ""}
+            ${rateCards}
+            ${section("服务品牌", creator.cooperation_brands)}
+            ${section("领域", creator.industry_fit_tags)}
+            ${section("身份", creator.identity_tags)}
+            ${section("内容能力", creator.content_capability_tags)}
+            ${section("合作形式", creator.cooperation_formats)}
+            ${section("叙事角色", creator.suitable_goals)}
+            ${section("风险提示", creator.risk_tags, "risk")}
+          </article>
+        `;
+      }
+
+      async function loadHtml2Pdf() {
+        if (window.html2pdf) return window.html2pdf;
+        await new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+        return window.html2pdf;
+      }
+
+      async function downloadPdf() {
+        const card = $("#kitPageOutput .creator-commercial-card");
+        if (!card) return;
+        const html2pdf = await loadHtml2Pdf();
+        const name = ($("#kitPageTitle").textContent || "达人").replace(/[\\/:*?"<>|\\s]+/g, "_");
+        await html2pdf()
+          .set({
+            margin: [10, 10, 10, 10],
+            filename: `${name}_商业名片刊例.pdf`,
+            image: { type: "jpeg", quality: 0.95 },
+            html2canvas: { scale: 2, useCORS: true },
+            jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+          })
+          .from(card)
+          .save();
+      }
+
+      async function init() {
+        if (!creatorId) {
+          $("#kitPageOutput").innerHTML = '<div class="commercial-card-empty">无效的名片链接。</div>';
+          return;
+        }
+        try {
+          const response = await fetch(`/api/public/creator-kit/${encodeURIComponent(creatorId)}`);
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.detail || "加载失败");
+          const creator = data.creator || {};
+          $("#kitPageTitle").textContent = `${creator.name || "达人"} · 商业名片刊例`;
+          $("#kitPageMeta").textContent = `${creator.platform || "未知平台"} · 粉丝 ${fmtNumber(creator.follower_count)}`;
+          $("#kitPageOutput").innerHTML = buildKitHtml(creator);
+          $("#kitDownloadPdfBtn").hidden = false;
+          $("#kitCopyLinkBtn").hidden = false;
+        } catch (error) {
+          $("#kitPageOutput").innerHTML = `<div class="commercial-card-empty">${escapeHTML(error.message || "加载失败")}</div>`;
+        }
+      }
+
+      $("#kitDownloadPdfBtn")?.addEventListener("click", () => downloadPdf().catch(() => alert("PDF 生成失败")));
+      $("#kitCopyLinkBtn")?.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(shareUrl);
+          $("#kitCopyLinkBtn").textContent = "已复制";
+          setTimeout(() => {
+            $("#kitCopyLinkBtn").textContent = "复制网页链接";
+          }, 1600);
+        } catch {
+          alert(shareUrl);
+        }
+      });
+      init();
+    </script>
+  </body>
+</html>
