@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260611-1" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260624-21" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260624-23" />
   </head>
   <body>
     <div class="app-shell">
@@ -664,10 +664,11 @@
             <div class="panel-header">
               <div>
                 <h2>筛选达人工具</h2>
-                <p>按平台、粉丝、赞粉比、互动率、报价等条件筛选达人库，快速拉出备选名单。</p>
+                <p>硬指标缩范围，标签框架点选找人——与达人库录入同一套字段、同一套词。</p>
               </div>
             </div>
             <form id="creatorFilterForm" class="form creator-filter-form">
+              <div class="creator-filter-section-label">硬指标</div>
               <div class="field-row three">
                 <label>平台
                   <select id="creatorFilterPlatform" name="platform">
@@ -711,9 +712,10 @@
                   <input id="creatorFilterMinEngagement" name="min_engagement" type="number" min="0" step="0.1" placeholder="如 3" />
                 </label>
               </div>
+              <div id="creatorFilterTagFramework" class="creator-filter-tag-framework"></div>
               <div class="button-row creator-filter-actions">
                 <button type="submit" class="primary">应用筛选</button>
-                <button type="button" id="creatorFilterResetBtn" class="secondary">重置</button>
+                <button type="button" id="creatorFilterResetBtn" class="secondary">重置全部</button>
                 <span class="meta" id="creatorFilterSummary">—</span>
               </div>
             </form>
@@ -2291,6 +2293,6 @@
         </form>
       </section>
     </div>
-    <script src="/static/app.js?v=20260624-22"></script>
+    <script src="/static/app.js?v=20260624-23"></script>
   </body>
 </html>

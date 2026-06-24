@@ -1117,6 +1117,64 @@ button {
   margin-left: auto;
 }
 
+.creator-filter-section-label {
+  color: #17120d;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  margin: 4px 0 10px;
+  text-transform: uppercase;
+}
+
+.creator-filter-tag-framework {
+  border-top: 2px dashed rgba(23, 18, 13, 0.18);
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.creator-filter-tag-head {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.creator-filter-tag-head strong {
+  font-size: 15px;
+}
+
+.creator-filter-tag-row {
+  display: grid;
+  gap: 8px;
+}
+
+.creator-filter-tag-label {
+  color: #17120d;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.creator-filter-tag-label em {
+  color: var(--coral);
+  font-style: normal;
+  margin-left: 2px;
+}
+
+.creator-filter-tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.creator-filter-tag-chip.active {
+  background: var(--accent);
+  box-shadow: 3px 3px 0 #17120d;
+  transform: translate(-1px, -1px);
+}
+
 .creator-tag-system {
   display: grid;
   gap: 14px;

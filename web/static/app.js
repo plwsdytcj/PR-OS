@@ -47,6 +47,7 @@ const state = {
   clientPortalProjects: [],
   creators: [],
   creatorsFetchAttempted: false,
+  creatorFilterTags: {},
   cases: [],
   activeCase: null,
   lastProposal: "",
@@ -313,6 +314,17 @@ const TAG_NARRATIVE_FRAMEWORK_ROW = {
   essential: false,
 };
 
+/** 录入与筛选共用：类内 OR、类间 AND。fields 支持多字段（如商业 = budget + 合作品牌） */
+const CREATOR_TAG_FILTER_GROUPS = [
+  { id: "industry", label: "领域", fields: ["industry_fit_tags"], essential: true },
+  { id: "identity", label: "身份", fields: ["identity_tags"], essential: true },
+  { id: "capability", label: "内容能力", fields: ["content_capability_tags"], essential: true },
+  { id: "commercial", label: "商业", fields: ["budget_fit_tags", "cooperation_brands"], essential: false },
+  { id: "delivery", label: "履约", fields: ["delivery_tags"], essential: false },
+  { id: "risk", label: "风险", fields: ["risk_tags"], essential: false },
+  { id: "narrative", label: "叙事角色", fields: ["suitable_goals"], essential: false },
+];
+
 const SYMBOLIC_EDITOR_FIELDS = {
   creator: [
     ["primary_tags", "主标签", "tags"],
@@ -351,7 +363,7 @@ const VIEW_TITLES = {
   projectRun: ["新建 PR 项目", "输入一个需求，自动跑完 brief、符号图谱、KOL 选择和 Campaign Room。"],
   ingest: ["数据接入", "把 Excel、链接和 API 变成统一 KOL Profile。"],
   creators: ["达人库", "扫描、修正和调用你的私有 KOL 资产。"],
-  creatorFilter: ["筛选达人工具", "按粉丝、赞粉比、互动率、报价等条件快速拉出备选达人名单。"],
+  creatorFilter: ["筛选达人工具", "硬指标 + 标签框架：与录入同一套字段、同一套词。"],
   caseLibrary: ["案例库", "沉淀达人历史合作案例，供 Brief 匹配和方案背书引用。"],
   kolIntelligence: ["KOL 决策图谱", "证据标签、图谱演进和 KOL 预测推荐。"],
   governance: ["数据治理", "清理重复、补齐字段、提高推荐可信度。"],
@@ -999,7 +1011,10 @@ async function loadCreators() {
     const data = await api("/api/creators");
     state.creators = data.items || [];
     renderCreators();
-    if (state.activeView === "creatorFilter") renderCreatorFilterResults();
+    if (state.activeView === "creatorFilter") {
+      renderCreatorFilterTagFramework();
+      renderCreatorFilterResults();
+    }
     renderCreatorOptions();
     renderCaseCreatorOptions();
   } catch (error) {
@@ -2153,19 +2168,96 @@ function renderCreatorOptions() {
   }
 }
 
+function creatorTagsFromFields(creator, fields) {
+  return fields.flatMap((field) => asTagList(creator[field]));
+}
+
+function creatorFilterTagOptions(group) {
+  const presets = group.fields.flatMap((field) => QUICK_CREATOR_TAG_PRESETS[field] || []);
+  const fromCreators = state.creators.flatMap((creator) => creatorTagsFromFields(creator, group.fields));
+  const selected = state.creatorFilterTags[group.id] || [];
+  return [...selected, ...presets, ...fromCreators].filter((tag, index, list) => list.indexOf(tag) === index).slice(0, 28);
+}
+
+function getCreatorFilterTagCriteria() {
+  const criteria = {};
+  for (const group of CREATOR_TAG_FILTER_GROUPS) {
+    const tags = (state.creatorFilterTags[group.id] || []).map((tag) => String(tag).trim()).filter(Boolean);
+    if (tags.length) criteria[group.id] = { fields: group.fields, tags };
+  }
+  return criteria;
+}
+
+function creatorMatchesTagFilters(creator, tagCriteria) {
+  for (const { fields, tags } of Object.values(tagCriteria)) {
+    const creatorTags = new Set(creatorTagsFromFields(creator, fields));
+    if (!tags.some((tag) => creatorTags.has(tag))) return false;
+  }
+  return true;
+}
+
+function renderCreatorFilterTagFramework() {
+  const node = $("#creatorFilterTagFramework");
+  if (!node) return;
+  node.innerHTML = `
+    <div class="creator-filter-tag-head">
+      <strong>标签框架筛选</strong>
+      <span class="meta">与录入同一套词 · 类内 OR · 类间 AND</span>
+    </div>
+    ${CREATOR_TAG_FILTER_GROUPS.map((group) => {
+      const selected = new Set(state.creatorFilterTags[group.id] || []);
+      const options = creatorFilterTagOptions(group);
+      const chips = options.length
+        ? options
+            .map((tag) => {
+              const active = selected.has(tag) ? " active" : "";
+              return `<button type="button" class="tag-chip small creator-filter-tag-chip${active}" data-filter-group="${escapeHTML(group.id)}" data-filter-tag="${escapeHTML(tag)}">${escapeHTML(tag)}</button>`;
+            })
+            .join("")
+        : '<span class="meta">暂无标签，请先在达人库录入</span>';
+      return `
+        <div class="creator-filter-tag-row" data-filter-group-row="${escapeHTML(group.id)}">
+          <span class="creator-filter-tag-label">${escapeHTML(group.label)}${group.essential ? '<em>*</em>' : ""}</span>
+          <div class="creator-filter-tag-chips">${chips}</div>
+        </div>
+      `;
+    }).join("")}
+  `;
+}
+
+function toggleCreatorFilterTag(groupId, tag) {
+  const current = [...(state.creatorFilterTags[groupId] || [])];
+  const index = current.indexOf(tag);
+  if (index >= 0) current.splice(index, 1);
+  else current.push(tag);
+  state.creatorFilterTags[groupId] = current;
+  renderCreatorFilterTagFramework();
+  renderCreatorFilterResults();
+}
+
+function clearCreatorFilterTags() {
+  state.creatorFilterTags = {};
+  renderCreatorFilterTagFramework();
+}
+
 function creatorSearchText(creator) {
   return [
     creator.name,
     creator.platform,
     creator.ai_summary,
     creator.bio,
+    creator.narrative_position,
     ...asTagList(creator.industry_fit_tags),
     ...asTagList(creator.identity_tags),
     ...asTagList(creator.content_capability_tags),
     ...asTagList(creator.suitable_goals),
+    ...asTagList(creator.suitable_stages),
     ...asTagList(creator.delivery_tags),
     ...asTagList(creator.personal_tags),
     ...asTagList(creator.risk_tags),
+    ...asTagList(creator.budget_fit_tags),
+    ...asTagList(creator.cooperation_brands),
+    ...asTagList(creator.cooperation_formats),
   ]
     .filter(Boolean)
     .join(" ")
@@ -2243,7 +2335,7 @@ function parseCreatorFilterNumber(value) {
 
 function getCreatorFilterCriteria() {
   const form = $("#creatorFilterForm");
-  if (!form) return { sort: "follower_desc", query: "", platform: "" };
+  if (!form) return { sort: "follower_desc", query: "", platform: "", tagCriteria: {} };
   return {
     platform: String(form.elements.platform?.value || "").trim(),
     query: String(form.elements.query?.value || "")
@@ -2256,7 +2348,17 @@ function getCreatorFilterCriteria() {
     maxLikeFanRatio: parseCreatorFilterNumber(form.elements.max_like_fan_ratio?.value),
     minEngagement: parseCreatorFilterNumber(form.elements.min_engagement?.value),
     sort: form.elements.sort?.value || "follower_desc",
+    tagCriteria: getCreatorFilterTagCriteria(),
   };
+}
+
+function formatCreatorFilterSummary(items, total, criteria) {
+  const tagCount = Object.values(state.creatorFilterTags).reduce((sum, tags) => sum + (tags?.length || 0), 0);
+  const parts = [`匹配 ${items.length}${total ? ` / ${total}` : ""} 位`];
+  if (criteria.platform) parts.push(`平台=${criteria.platform}`);
+  if (tagCount) parts.push(`标签 ${tagCount} 项`);
+  if (criteria.query) parts.push("含关键词");
+  return parts.join(" · ");
 }
 
 function creatorMatchesFilter(creator, criteria) {
@@ -2278,6 +2380,7 @@ function creatorMatchesFilter(creator, criteria) {
   if (criteria.query) {
     if (!creatorSearchText(creator).includes(criteria.query)) return false;
   }
+  if (criteria.tagCriteria && !creatorMatchesTagFilters(creator, criteria.tagCriteria)) return false;
   return true;
 }
 
@@ -2314,7 +2417,7 @@ function renderCreatorFilterResults() {
     criteria.sort,
   );
   if (summary) {
-    summary.textContent = total ? `匹配 ${items.length} / ${total} 位达人` : "达人库暂无数据";
+    summary.textContent = total ? formatCreatorFilterSummary(items, total, criteria) : "达人库暂无数据";
   }
   if (!items.length) {
     list.innerHTML = emptyState(
@@ -8218,7 +8321,10 @@ function bindEvents() {
       if (button.dataset.view === "creatorFilter" || button.dataset.view === "creators") {
         try {
           await ensureCreatorsLoaded();
-          if (button.dataset.view === "creatorFilter") renderCreatorFilterResults();
+          if (button.dataset.view === "creatorFilter") {
+            renderCreatorFilterTagFramework();
+            renderCreatorFilterResults();
+          }
         } catch (error) {
           toast(error.message, true);
         }
@@ -8977,13 +9083,21 @@ function bindEvents() {
   $("#creatorSearch").addEventListener("input", renderCreators);
   bindCreatorCardClicks($("#creatorList"));
   bindCreatorCardClicks($("#creatorFilterList"));
+  renderCreatorFilterTagFramework();
   $("#creatorFilterForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
     renderCreatorFilterResults();
   });
   $("#creatorFilterForm")?.addEventListener("input", renderCreatorFilterResults);
+  $("#creatorFilterTagFramework")?.addEventListener("click", (event) => {
+    const chip = event.target.closest(".creator-filter-tag-chip");
+    if (!chip) return;
+    event.preventDefault();
+    toggleCreatorFilterTag(chip.dataset.filterGroup, chip.dataset.filterTag);
+  });
   $("#creatorFilterResetBtn")?.addEventListener("click", () => {
     $("#creatorFilterForm")?.reset();
+    clearCreatorFilterTags();
     renderCreatorFilterResults();
   });
   $("#caseSearch")?.addEventListener("input", renderCases);
