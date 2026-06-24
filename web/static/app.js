@@ -54,6 +54,7 @@ const state = {
   creatorFilterNarrativeAnalysis: null,
   creatorFilterBusinessType: null,
   creatorFilterDeliverables: null,
+  settlementWizardCreators: [],
   cases: [],
   activeCase: null,
   lastProposal: "",
@@ -1062,7 +1063,7 @@ function setView(viewId) {
   });
   if (viewId === "history") ensureWorkspaceHistoryLoaded();
   if (viewId === "creators" || viewId === "creatorFilter") ensureCreatorsLoaded().catch(() => {});
-  if (viewId === "cases") {
+  if (viewId === "caseLibrary") {
     ensureCreatorsLoaded().catch(() => {});
     if (!state.cases.length) loadCases().catch(() => {});
     else renderCases();
@@ -1442,31 +1443,61 @@ function openSettlementWizard(creators = []) {
   const modal = $("#settlementWizardModal");
   const form = $("#settlementWizardForm");
   if (!modal || !form) return;
-  const list = creators.length ? creators : settlementCreatorsForWizard();
-  if (!list.length) {
-    toast("请先勾选至少一位合作达人", true);
-    return;
-  }
+  state.settlementWizardCreators = creators.length ? creators : settlementCreatorsForWizard();
   form.reset();
-  const brief = state.creatorFilterNarrativeAnalysis?.brief || {};
-  const business = state.creatorFilterBusinessType || state.creatorFilterNarrativeAnalysis?.business || null;
-  if (form.elements.project_name) form.elements.project_name.value = brief.product ? `${brief.product} 传播项目` : "";
+  const brief = state.creatorFilterNarrativeAnalysis?.brief || state.creatorFilterDeliverables?.brief || {};
+  const business = state.creatorFilterBusinessType || state.creatorFilterNarrativeAnalysis?.business || state.creatorFilterDeliverables?.business || null;
+  if (form.elements.project_name) {
+    form.elements.project_name.value =
+      brief.product ? `${brief.product} 传播项目` : state.creatorFilterDeliverables?.client_card?.product_service || "";
+  }
   const clientCard = state.creatorFilterDeliverables?.client_card || {};
   if (form.elements.brand_name) form.elements.brand_name.value = clientCard.product_service || brief.product || "";
   if (form.elements.client_name) form.elements.client_name.value = clientCard.client_name || "";
   if (form.elements.industry) form.elements.industry.value = clientCard.industry || brief.industry || "";
   if (form.elements.product) form.elements.product.value = clientCard.product_service || brief.product || "";
+  if (form.elements.payment_status && clientCard.payment_status) form.elements.payment_status.value = clientCard.payment_status;
   renderSettlementWizardBusinessMeta(business);
-  renderSettlementWizardItems(list);
+  renderSettlementWizardCreatorPicker();
+  renderSettlementWizardItems(state.settlementWizardCreators);
   modal.classList.remove("hidden");
+}
+
+function renderSettlementWizardCreatorPicker() {
+  const node = $("#settlementWizardCreatorPicker");
+  if (!node) return;
+  const creators = state.creators || [];
+  node.innerHTML = `
+    <div class="field-row two settlement-wizard-picker-row">
+      <select id="settlementWizardAddCreatorSelect">
+        <option value="">选择达人加入回写列表…</option>
+        ${creators.map((creator) => `<option value="${escapeHTML(creator.creator_id)}">${escapeHTML(creator.name)} · ${escapeHTML(creator.platform || "")}</option>`).join("")}
+      </select>
+      <button type="button" class="secondary" id="settlementWizardAddCreatorBtn">添加达人</button>
+    </div>
+    <p class="meta">${state.settlementWizardCreators.length ? `已选 ${state.settlementWizardCreators.length} 位达人` : "可从达人库添加，或在「筛选达人工具」中勾选后打开本向导。"}</p>
+  `;
+  $("#settlementWizardAddCreatorBtn")?.addEventListener("click", () => {
+    const creatorId = $("#settlementWizardAddCreatorSelect")?.value || "";
+    if (!creatorId) return toast("请选择达人", true);
+    const creator = creators.find((item) => item.creator_id === creatorId);
+    if (!creator) return;
+    if (state.settlementWizardCreators.some((item) => item.creator_id === creatorId)) {
+      return toast("该达人已在列表中", true);
+    }
+    state.settlementWizardCreators = [...state.settlementWizardCreators, creator];
+    renderSettlementWizardCreatorPicker();
+    renderSettlementWizardItems(state.settlementWizardCreators);
+  });
 }
 
 function closeSettlementWizard() {
   $("#settlementWizardModal")?.classList.add("hidden");
+  state.settlementWizardCreators = [];
 }
 
 async function submitSettlementWizard(form) {
-  const business = state.creatorFilterBusinessType || state.creatorFilterNarrativeAnalysis?.business || {};
+  const business = state.creatorFilterBusinessType || state.creatorFilterNarrativeAnalysis?.business || state.creatorFilterDeliverables?.business || {};
   const items = [...form.querySelectorAll(".settlement-wizard-item")]
     .map((row) => {
       const creatorId = row.dataset.creatorId || "";
@@ -2640,6 +2671,42 @@ function persistClientCardDraft(card) {
   saveStoredClientCards(cards);
 }
 
+function normalizeDeliverablesPayload(data) {
+  if (!data || typeof data !== "object") return data;
+  const business = data.business || {};
+  const quote = data.quote_skeleton || {};
+  const topics = data.topic_cards || [];
+  const summary = {
+    business_type: business.business_type_label || data.summary?.business_type || "",
+    topic_count: topics.length,
+    package_name: quote.package_name || data.summary?.package_name || "",
+    ai_enriched: Boolean(data.ai_enriched ?? data.summary?.ai_enriched),
+  };
+  return { ...data, business, summary };
+}
+
+function syncDeliverablesLinkage(data) {
+  const payload = normalizeDeliverablesPayload(data);
+  if (!payload) return null;
+  if (payload.business?.business_type_label) {
+    state.creatorFilterBusinessType = payload.business;
+    renderCreatorFilterBusinessType(payload.business);
+    applyCreatorFilterBusinessFromData({ business: payload.business });
+  }
+  return payload;
+}
+
+function businessTypeFromClientCard(card) {
+  if (!card) return null;
+  const label = String(card.demand_type || "").trim();
+  if (!label) return null;
+  return {
+    business_type_label: label,
+    settlement_target: card.settlement_target || "",
+    recommend_two_stage: /公关|品牌|商誉/.test(label),
+  };
+}
+
 async function fetchClientCardsList(query = "") {
   try {
     const data = await api(`/api/client-cards${query ? `?q=${encodeURIComponent(query)}` : ""}`);
@@ -2652,6 +2719,11 @@ async function fetchClientCardsList(query = "") {
 function applyClientCardToDeliverables(card) {
   if (!card || !state.creatorFilterDeliverables) return;
   state.creatorFilterDeliverables.client_card = { ...(state.creatorFilterDeliverables.client_card || {}), ...card };
+  const business = businessTypeFromClientCard(card);
+  if (business) {
+    state.creatorFilterBusinessType = business;
+    renderCreatorFilterBusinessType(business);
+  }
   renderCreatorFilterDeliverables(state.creatorFilterDeliverables);
 }
 
@@ -2663,17 +2735,18 @@ async function renderCreatorFilterDeliverables(data) {
     node.innerHTML = "";
     return;
   }
-  state.creatorFilterDeliverables = data;
-  const client = data.client_card || {};
-  const quote = data.quote_skeleton || {};
-  const topics = data.topic_cards || [];
+  state.creatorFilterDeliverables = normalizeDeliverablesPayload(data);
+  const client = state.creatorFilterDeliverables.client_card || {};
+  const quote = state.creatorFilterDeliverables.quote_skeleton || {};
+  const topics = state.creatorFilterDeliverables.topic_cards || [];
+  const summary = state.creatorFilterDeliverables.summary || {};
   const savedCards = await fetchClientCardsList();
   node.classList.remove("hidden");
   node.innerHTML = `
     <div class="creator-filter-deliverables-card">
       <div class="creator-filter-deliverables-head">
         <strong>媒介交付包</strong>
-        <span class="meta">${escapeHTML(quote.package_name || "报价骨架")}${data.summary?.ai_enriched ? " · AI 润色" : ""}</span>
+        <span class="meta">${escapeHTML(quote.package_name || "报价骨架")}${summary.ai_enriched ? " · AI 润色" : ""}</span>
         <div class="button-row compact-row">
           <label class="inline-check"><input type="checkbox" id="deliverableUseLlm" /> AI 润色选题</label>
           <select id="deliverableClientCardPicker" class="secondary compact-select">
@@ -2739,8 +2812,14 @@ async function renderCreatorFilterDeliverables(data) {
     if (card) applyClientCardToDeliverables(card);
   });
   if ($("#deliverableUseLlm")) {
-    $("#deliverableUseLlm").checked = Boolean(data.summary?.ai_enriched);
+    $("#deliverableUseLlm").checked = Boolean(summary.ai_enriched);
+    $("#deliverableUseLlm").onchange = async () => {
+      const briefText = getCreatorFilterNarrativeBriefText() || $("#creatorFilterBriefInput")?.value || "";
+      if (!briefText) return toast("请先填写 Brief", true);
+      await loadCreatorFilterDeliverables(briefText);
+    };
   }
+  syncDeliverablesLinkage(state.creatorFilterDeliverables);
 }
 
 function collectDeliverableClientCard() {
@@ -2820,16 +2899,18 @@ async function loadCreatorFilterDeliverables(briefText, options = {}) {
   const selectedCount = getSelectedCreatorFilterIds().length;
   const useLlm = Boolean($("#deliverableUseLlm")?.checked || options.useLlm);
   try {
-    const data = await api("/api/brief/deliverables", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        brief,
-        client_name: options.clientName || "",
-        creator_count: selectedCount || options.creatorCount || 8,
-        use_llm: useLlm,
+    const data = normalizeDeliverablesPayload(
+      await api("/api/brief/deliverables", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          brief,
+          client_name: options.clientName || collectDeliverableClientCard().client_name || "",
+          creator_count: selectedCount || options.creatorCount || 8,
+          use_llm: useLlm,
+        }),
       }),
-    });
+    );
     await renderCreatorFilterDeliverables(data);
   } catch (error) {
     renderCreatorFilterDeliverables(null);
@@ -2996,8 +3077,7 @@ function applyCreatorFilterFromBriefResult(data) {
     hints.classList.toggle("hidden", !hintText);
   }
   applyCreatorFilterBusinessFromData(data);
-  const briefText = data.brief?.raw_text || $("#creatorFilterBriefInput")?.value || getCreatorFilterNarrativeBriefText();
-  loadCreatorFilterDeliverables(briefText);
+  loadCreatorFilterDeliverables(briefText || getCreatorFilterNarrativeBriefText());
   toast("Brief 已带入筛选");
 }
 
@@ -3038,6 +3118,10 @@ async function openCreatorFilterWithBrief(text, options = {}) {
   if (input && text) input.value = text;
   if (narrativeInput && text) narrativeInput.value = text;
   await applyCreatorFilterFromBriefText(text, options);
+  if (options.clientName && state.creatorFilterDeliverables?.client_card) {
+    state.creatorFilterDeliverables.client_card.client_name = options.clientName;
+    await renderCreatorFilterDeliverables(state.creatorFilterDeliverables);
+  }
 }
 
 function renderCreatorFilterNarrativeAnalysis(data) {
@@ -5735,6 +5819,7 @@ function renderAgentArtifact(artifact) {
           .map((topic, index) => `<li>${index + 1}. ${escapeHTML(topic.topic_title || "选题")} <span>${escapeHTML(topic.content_format || "")}</span></li>`)
           .join("")}
       </ul>
+      <button class="secondary agent-deliverables-to-filter-btn" data-artifact-id="${escapeHTML(artifact.artifact_id)}" type="button">带入筛选达人</button>
     `;
   } else if (artifact.artifact_type === "proposal") {
     const summary = payload.summary || {};
@@ -7274,7 +7359,10 @@ function renderProjectRunSaveNotice(run) {
         <strong>已保存到 Campaign 资产库</strong>
         <p>${escapeHTML(campaign.client_name || run.brand?.name || "当前客户")} · ${escapeHTML(campaign.project_name || "PR 项目")} · ${escapeHTML(campaign.status || "active")}</p>
       </div>
-      <button class="secondary open-platform-campaign-btn" data-campaign-id="${escapeHTML(campaign.campaign_id)}" type="button">打开完整资产</button>
+      <div class="button-row">
+        <button class="secondary project-run-to-filter-btn" type="button">带入筛选达人</button>
+        <button class="secondary open-platform-campaign-btn" data-campaign-id="${escapeHTML(campaign.campaign_id)}" type="button">打开完整资产</button>
+      </div>
     `
     : `
       <div>
@@ -7282,6 +7370,7 @@ function renderProjectRunSaveNotice(run) {
         <strong>当前结果已生成</strong>
         <p>未拿到 Campaign ID，刷新资产库后可确认是否已保存。</p>
       </div>
+      <button class="secondary project-run-to-filter-btn" type="button">带入筛选达人</button>
     `;
 }
 
@@ -9623,6 +9712,15 @@ function bindEvents() {
           toast(error.message, true);
         }
       }
+      if (button.dataset.view === "caseLibrary") {
+        try {
+          await ensureCreatorsLoaded().catch(() => {});
+          if (!state.cases.length) await loadCases();
+          else renderCases();
+        } catch (error) {
+          toast(error.message, true);
+        }
+      }
     })
   );
   $$(".nav-group").forEach((group) => {
@@ -10454,7 +10552,13 @@ function bindEvents() {
   });
   $("#creatorFilterExportBtn")?.addEventListener("click", exportSelectedCreatorFilterList);
   $("#creatorFilterSettlementBtn")?.addEventListener("click", () => openSettlementWizard());
-  $("#creatorFilterDeliverablesBtn")?.addEventListener("click", downloadDeliverablesMarkdown);
+  $("#creatorFilterDeliverablesBtn")?.addEventListener("click", async () => {
+    const brief = getCreatorFilterNarrativeBriefText() || $("#creatorFilterBriefInput")?.value || "";
+    if (!state.creatorFilterDeliverables?.markdown && brief) {
+      await loadCreatorFilterDeliverables(brief);
+    }
+    downloadDeliverablesMarkdown();
+  });
   $("#creatorFilterTwoStagePresetBtn")?.addEventListener("click", applyTwoStagePropagationPreset);
   $("#creatorFilterResetBtn")?.addEventListener("click", () => {
     $("#creatorFilterForm")?.reset();
@@ -11039,10 +11143,34 @@ function bindEvents() {
     if (event.target.closest(".home-brief-to-filter-btn")) {
       const conversation = state.homeBriefConversation;
       const form = $("#homeBriefForm");
-      const text = String(form?.elements?.brief?.value || conversation?.brief?.raw_text || "").trim();
+      const text = String(form?.elements?.message?.value || conversation?.brief?.raw_text || "").trim();
       const parsedBrief = conversation?.brief && typeof conversation.brief === "object" ? conversation.brief : null;
-      await openCreatorFilterWithBrief(text, parsedBrief ? { parsedBrief } : {});
+      const clientName = String(form?.elements?.client_name?.value || conversation?.client_name || "").trim();
+      await openCreatorFilterWithBrief(text, { parsedBrief, clientName });
+      return;
     }
+  });
+
+  $("#projectRunResult")?.addEventListener("click", async (event) => {
+    if (!event.target.closest(".project-run-to-filter-btn")) return;
+    const form = $("#projectRunForm");
+    const text = String(form?.elements?.brief?.value || "").trim();
+    const clientName = String(form?.elements?.client_name?.value || "").trim();
+    await openCreatorFilterWithBrief(text, { clientName });
+  });
+
+  $("#agentArtifactList")?.addEventListener("click", async (event) => {
+    const button = event.target.closest(".agent-deliverables-to-filter-btn");
+    if (!button) return;
+    const artifactId = button.dataset.artifactId || "";
+    const artifact = state.activeAgentArtifacts.find((item) => item.artifact_id === artifactId);
+    const payload = artifact?.payload || {};
+    const taskBrief = state.activeAgentRun?.task?.brief || state.activeAgentThread?.task?.brief || "";
+    const briefText = String(payload.brief?.raw_text || taskBrief || "").trim();
+    const clientName = String(payload.client_card?.client_name || state.activeAgentRun?.task?.client_name || "").trim();
+    if (!briefText) return toast("未找到可带入的 Brief", true);
+    state.creatorFilterDeliverables = normalizeDeliverablesPayload(payload);
+    await openCreatorFilterWithBrief(briefText, { clientName });
   });
 
   $("#kolIntakeForm")?.addEventListener("submit", async (event) => {

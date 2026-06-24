@@ -243,12 +243,19 @@ def generate_brief_deliverables(
             "budget": brief.budget,
             "goals": brief.goals,
             "platform_preference": brief.platform_preference,
+            "raw_text": brief.raw_text,
         },
         "business": business,
         "client_card": client_card,
         "topic_cards": topics,
         "quote_skeleton": quote,
         "ai_enriched": use_llm,
+        "summary": {
+            "business_type": business.get("business_type_label") or "",
+            "topic_count": len(topics),
+            "package_name": quote.get("package_name") or "",
+            "ai_enriched": use_llm,
+        },
         "markdown": render_deliverables_markdown(client_card, business, topics, quote),
     }
 

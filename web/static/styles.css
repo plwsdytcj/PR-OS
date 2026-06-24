@@ -1511,9 +1511,12 @@ button {
   white-space: nowrap;
 }
 
-.creator-filter-deliverables-head .compact-select {
-  max-width: 180px;
-  min-width: 140px;
+.settlement-wizard-creator-picker {
+  margin: 10px 0 14px;
+}
+
+.settlement-wizard-picker-row {
+  align-items: center;
 }
 
 .creator-filter-deliverable-block {

@@ -28,6 +28,7 @@ def brief_deliverables_tool(
     _ = db_path
     result = generate_brief_deliverables(brief, client_name=client_name, creator_count=top_n, use_llm=True)
     return {
+        "brief": result.get("brief"),
         "business": result.get("business"),
         "client_card": result.get("client_card"),
         "topic_cards": result.get("topic_cards"),
@@ -37,6 +38,7 @@ def brief_deliverables_tool(
             "business_type": (result.get("business") or {}).get("business_type_label"),
             "topic_count": len(result.get("topic_cards") or []),
             "package_name": (result.get("quote_skeleton") or {}).get("package_name"),
+            "ai_enriched": bool(result.get("ai_enriched")),
         },
     }
 
