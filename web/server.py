@@ -108,6 +108,14 @@ from src.creator_commercial.service import (
     review_creator_submission,
     save_creator_case,
     settlement_writeback,
+    sync_creator_commercial_cases,
+)
+from src.creator_commercial.showcase import (
+    case_display_summary,
+    case_display_title,
+    decode_brand_slug,
+    filter_public_cases,
+    public_case_payload,
 )
 from src.creator_commercial.storage import (
     delete_case,
@@ -236,8 +244,15 @@ ACCESS_KEY = os.getenv("PR_AI_OS_ACCESS_KEY", "").strip()
 AUTH_ENABLED = os.getenv("PR_AI_OS_AUTH_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
 AUTH_COOKIE_NAME = "pr_ai_os_session"
 AUTH_SESSION_HEADER = "X-Session-Token"
-PUBLIC_PATH_PREFIXES = ("/", "/static/", "/favicon.ico", "/creator/brief/", "/creator/invite/", "/creator-kit/")
-PUBLIC_API_PREFIXES = ("/api/client/share/", "/api/creator/brief/", "/api/creator/invite/", "/api/public/creator-kit/")
+PUBLIC_PATH_PREFIXES = ("/", "/static/", "/favicon.ico", "/creator/brief/", "/creator/invite/", "/creator-kit/", "/showcase", "/cases/")
+PUBLIC_API_PREFIXES = (
+    "/api/client/share/",
+    "/api/creator/brief/",
+    "/api/creator/invite/",
+    "/api/public/creator-kit/",
+    "/api/public/cases",
+    "/api/public/brands/",
+)
 _TENANT_RE = re.compile(r"[^a-zA-Z0-9_-]+")
 _db_path_ctx: contextvars.ContextVar[Path] = contextvars.ContextVar("db_path", default=DEFAULT_DB_PATH)
 _template_path_ctx: contextvars.ContextVar[Path] = contextvars.ContextVar("template_path", default=DEFAULT_TEMPLATE_PATH)
@@ -976,6 +991,35 @@ def creator_brief_page(token: str) -> FileResponse:
 @app.get("/creator-kit/{creator_id}", response_class=HTMLResponse)
 def creator_kit_page(creator_id: str) -> FileResponse:
     return FileResponse(STATIC_DIR / "creator-kit.html")
+
+
+@app.get("/showcase", response_class=HTMLResponse)
+def showcase_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "showcase.html")
+
+
+@app.get("/showcase/brands/{brand_slug}", response_class=HTMLResponse)
+def showcase_brand_page(brand_slug: str) -> FileResponse:
+    return FileResponse(STATIC_DIR / "showcase-brand.html")
+
+
+@app.get("/cases/{case_id}", response_class=HTMLResponse)
+def public_case_page(case_id: str) -> FileResponse:
+    return FileResponse(STATIC_DIR / "case-detail.html")
+
+
+def _public_case_items(cases: list[Any], profiles: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    profiles = profiles or {}
+    return [public_case_payload(case, creator=profiles.get(case.creator_id)) for case in cases]
+
+
+def _creator_profile_map(creator_ids: list[str]) -> dict[str, dict[str, Any]]:
+    profiles: dict[str, dict[str, Any]] = {}
+    for creator_id in creator_ids:
+        profile = load_profile(DB_PATH, creator_id)
+        if profile is not None:
+            profiles[creator_id] = profile_payload(profile)
+    return profiles
 
 
 @app.get("/api/status")
@@ -2904,11 +2948,26 @@ async def update_creator(creator_id: str, payload: dict[str, Any]) -> dict[str, 
     profile = load_profile(DB_PATH, creator_id)
     if profile is None:
         raise HTTPException(status_code=404, detail="creator not found")
+    commercial_cases = payload.pop("commercial_cases", None)
     data = asdict(profile)
     data = _apply_creator_payload(data, payload)
     updated = enrich_profiles([CreatorProfile(**data)])[0]
     save_profile(DB_PATH, updated)
+    if isinstance(commercial_cases, list):
+        sync_creator_commercial_cases(DB_PATH, updated, commercial_cases)
+        updated = load_profile(DB_PATH, creator_id) or updated
     return {"creator": profile_payload(updated)}
+
+
+@app.post("/api/creators/{creator_id}/commercial-cases/sync")
+async def sync_creator_commercial_cases_api(creator_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    require_internal("write")
+    profile = load_profile(DB_PATH, creator_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="creator not found")
+    cases = sync_creator_commercial_cases(DB_PATH, profile, payload.get("cases") or [])
+    refreshed = load_profile(DB_PATH, creator_id) or profile
+    return {"cases": [_case_payload(case) for case in cases], "creator": profile_payload(refreshed)}
 
 
 @app.delete("/api/creators/{creator_id}")
@@ -3734,10 +3793,78 @@ def public_creator_kit(creator_id: str) -> dict[str, Any]:
         raise
     except Exception as exc:
         raise HTTPException(status_code=404, detail="creator not found") from exc
+    creator_cases = filter_public_cases(load_all_cases(DB_PATH), creator_id=profile.creator_id, featured_only=True)
+    public_cases = _public_case_items(creator_cases, {profile.creator_id: profile_payload(profile)})
     return {
         "creator": profile_payload(profile),
         "creator_id": profile.creator_id,
         "share_path": f"/creator-kit/{profile.creator_id}",
+        "cases": public_cases,
+    }
+
+
+@app.get("/api/public/cases")
+def public_cases_list(
+    q: str = "",
+    brand: str = "",
+    creator_id: str = "",
+    industry: str = "",
+    platform: str = "",
+    content_format: str = "",
+) -> dict[str, Any]:
+    items = filter_public_cases(
+        load_all_cases(DB_PATH),
+        query=q,
+        brand_name=brand,
+        creator_id=creator_id,
+        industry=industry,
+        platform=platform,
+        content_format=content_format,
+    )
+    profiles = _creator_profile_map([case.creator_id for case in items])
+    payload = _public_case_items(items, profiles)
+    brands = sorted({case.brand_name for case in items if case.brand_name})
+    return {
+        "items": payload,
+        "total": len(payload),
+        "facets": {
+            "brands": brands[:80],
+            "industries": sorted({case.industry for case in items if case.industry})[:40],
+            "platforms": sorted({case.platform for case in items if case.platform})[:20],
+            "formats": sorted({case.content_format for case in items if case.content_format})[:20],
+        },
+    }
+
+
+@app.get("/api/public/cases/{case_id}")
+def public_case_detail(case_id: str) -> dict[str, Any]:
+    case = load_case(DB_PATH, case_id)
+    if case is None or case.visibility not in {"public", "client_summary"}:
+        raise HTTPException(status_code=404, detail="case not found")
+    creator = load_profile(DB_PATH, case.creator_id)
+    creator_payload = profile_payload(creator) if creator is not None else None
+    related_brand = filter_public_cases(load_all_cases(DB_PATH), brand_name=case.brand_name)
+    related_creator = filter_public_cases(load_all_cases(DB_PATH), creator_id=case.creator_id)
+    profile_map = _creator_profile_map(
+        list({item.creator_id for item in related_brand + related_creator if item.creator_id})
+    )
+    return {
+        "case": public_case_payload(case, creator=creator_payload),
+        "brand_cases": _public_case_items([item for item in related_brand if item.case_id != case.case_id][:8], profile_map),
+        "creator_cases": _public_case_items([item for item in related_creator if item.case_id != case.case_id][:8], profile_map),
+    }
+
+
+@app.get("/api/public/brands/{brand_slug}/cases")
+def public_brand_cases(brand_slug: str, q: str = "") -> dict[str, Any]:
+    brand_name = decode_brand_slug(brand_slug)
+    items = filter_public_cases(load_all_cases(DB_PATH), brand_name=brand_name, query=q)
+    profiles = _creator_profile_map([case.creator_id for case in items])
+    return {
+        "brand_name": brand_name,
+        "brand_slug": brand_slug,
+        "items": _public_case_items(items, profiles),
+        "total": len(items),
     }
 
 
@@ -3824,7 +3951,12 @@ async def import_manual(payload: dict[str, Any]) -> dict[str, Any]:
     data = _apply_creator_payload(data, payload)
     profiles = enrich_profiles([CreatorProfile(**data)])
     upsert_profiles(DB_PATH, profiles)
-    return {"imported": len(profiles), "creator": profile_payload(profiles[0])}
+    creator = profiles[0]
+    commercial_cases = payload.get("commercial_cases")
+    if isinstance(commercial_cases, list) and commercial_cases:
+        sync_creator_commercial_cases(DB_PATH, creator, commercial_cases)
+        creator = load_profile(DB_PATH, creator.creator_id) or creator
+    return {"imported": len(profiles), "creator": profile_payload(creator)}
 
 
 @app.post("/api/import/api")

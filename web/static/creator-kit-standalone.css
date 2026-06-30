@@ -213,3 +213,48 @@ button.secondary {
   font-size: 26px;
   margin-top: 6px;
 }
+
+.commercial-case-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.commercial-case-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fffdf8;
+  padding: 12px;
+}
+
+.commercial-case-card-brand {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.commercial-case-card h5 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.commercial-case-card p {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.commercial-case-card-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.commercial-case-card-links a {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}

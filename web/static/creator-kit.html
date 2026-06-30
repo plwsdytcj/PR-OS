@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>达人商业名片刊例</title>
-    <link rel="stylesheet" href="/static/creator-kit-standalone.css?v=20260624-32" />
+    <link rel="stylesheet" href="/static/creator-kit-standalone.css" />
   </head>
   <body>
     <main class="creator-kit-page">
@@ -21,7 +21,7 @@
         <div class="commercial-card-empty">正在加载名片刊例…</div>
       </div>
     </main>
-    <script src="/static/build-version.js?v=20260624-32"></script>
+    <script src="/static/build-version.js"></script>
     <script>
       const $ = (s) => document.querySelector(s);
       const escapeHTML = (v) =>
@@ -58,7 +58,7 @@
           .filter(Boolean);
       }
 
-      function buildKitHtml(creator) {
+      function buildKitHtml(creator, cases = []) {
         const avatar = creator.avatar_url
           ? `<img src="${escapeHTML(creator.avatar_url)}" alt="${escapeHTML(creator.name)}头像" />`
           : `<span>${escapeHTML((creator.name || "KOL").slice(0, 2).toUpperCase())}</span>`;
@@ -83,6 +83,28 @@
         const rateCards = price
           ? `<section class="commercial-card-section"><h4>刊例报价</h4><div class="rate-card-grid"><div class="rate-card"><span>报价</span><strong>${fmtNumber(price)} 元</strong></div></div></section>`
           : "";
+        const caseCards = (Array.isArray(cases) ? cases : [])
+          .map((item) => {
+            const title = item.case_title || item.content_topic || item.brand_name || "合作案例";
+            const summary = item.case_summary || item.cooperation_goal || "";
+            const link = item.content_url || "";
+            const casePath = item.public_url || (item.case_id ? `/cases/${encodeURIComponent(item.case_id)}` : "");
+            return `
+              <article class="commercial-case-card">
+                <div class="commercial-case-card-brand">${escapeHTML(item.brand_name || "")}</div>
+                <h5>${escapeHTML(title)}</h5>
+                ${summary ? `<p>${escapeHTML(summary)}</p>` : ""}
+                <div class="commercial-case-card-links">
+                  ${link ? `<a href="${escapeHTML(link)}" target="_blank" rel="noreferrer">原内容</a>` : ""}
+                  ${casePath ? `<a href="${escapeHTML(casePath)}">案例页</a>` : ""}
+                </div>
+              </article>
+            `;
+          })
+          .join("");
+        const caseSection = caseCards
+          ? `<section class="commercial-card-section"><h4>精选合作案例</h4><div class="commercial-case-grid">${caseCards}</div></section>`
+          : "";
         return `
           <article class="creator-commercial-card">
             <header class="commercial-card-header">
@@ -102,6 +124,7 @@
             ${section("合作形式", creator.cooperation_formats)}
             ${section("叙事角色", creator.suitable_goals)}
             ${section("风险提示", creator.risk_tags, "risk")}
+            ${caseSection}
           </article>
         `;
       }
@@ -148,7 +171,7 @@
           const creator = data.creator || {};
           $("#kitPageTitle").textContent = `${creator.name || "达人"} · 商业名片刊例`;
           $("#kitPageMeta").textContent = `${creator.platform || "未知平台"} · 粉丝 ${fmtNumber(creator.follower_count)}`;
-          $("#kitPageOutput").innerHTML = buildKitHtml(creator);
+          $("#kitPageOutput").innerHTML = buildKitHtml(creator, data.cases || []);
           $("#kitDownloadPdfBtn").hidden = false;
           $("#kitCopyLinkBtn").hidden = false;
         } catch (error) {

@@ -1235,6 +1235,150 @@ function caseSuccessLabel(value) {
   return "待评估";
 }
 
+function caseVisibilityLabel(value) {
+  if (value === "public") return "公开";
+  if (value === "client_summary") return "客户方案";
+  if (value === "internal") return "内部";
+  return "公开";
+}
+
+function caseDisplayTitle(item) {
+  return (item.case_title || item.content_topic || "").trim() || item.brand_name || "合作案例";
+}
+
+function caseDisplaySummary(item) {
+  return (item.case_summary || item.cooperation_goal || item.comment_feedback || item.reuse_suggestion || "").trim();
+}
+
+function emptyCommercialCaseRow() {
+  return {
+    case_id: "",
+    brand_name: "",
+    case_title: "",
+    case_summary: "",
+    content_url: "",
+    content_format: "",
+    visibility: "public",
+    featured_on_kit: true,
+  };
+}
+
+function commercialCaseRowHtml(caseItem, index, creatorId = "") {
+  const featured = caseItem.featured_on_kit !== false;
+  const visibility = caseItem.visibility || "public";
+  const resolvedCreatorId = creatorId || caseItem.creator_id || "";
+  return `
+    <article class="commercial-case-row" data-case-index="${index}">
+      <input type="hidden" data-field="case_id" value="${escapeHTML(caseItem.case_id || "")}" />
+      <p class="meta commercial-case-creator-id">博主 ID：${resolvedCreatorId ? escapeHTML(resolvedCreatorId) : "保存后自动关联"}</p>
+      <div class="field-row">
+        <input data-field="brand_name" placeholder="合作品牌" value="${escapeHTML(caseItem.brand_name || "")}" />
+        <input data-field="case_title" placeholder="案例标题" value="${escapeHTML(caseItem.case_title || caseItem.content_topic || "")}" />
+      </div>
+      <textarea data-field="case_summary" rows="2" placeholder="案例介绍">${escapeHTML(caseItem.case_summary || caseItem.cooperation_goal || "")}</textarea>
+      <div class="field-row">
+        <input data-field="content_url" placeholder="案例链接" value="${escapeHTML(caseItem.content_url || "")}" />
+        <input data-field="content_format" placeholder="合作形式" value="${escapeHTML(caseItem.content_format || "")}" />
+      </div>
+      <div class="field-row commercial-case-row-meta">
+        <label class="checkline"><input data-field="featured_on_kit" type="checkbox" ${featured ? "checked" : ""} /> 刊例页展示</label>
+        <select data-field="visibility">
+          <option value="public" ${visibility === "public" ? "selected" : ""}>对外公开</option>
+          <option value="client_summary" ${visibility === "client_summary" ? "selected" : ""}>仅客户方案</option>
+          <option value="internal" ${visibility === "internal" ? "selected" : ""}>仅内部</option>
+        </select>
+        <button type="button" class="secondary danger-text" data-remove-commercial-case>删除</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderCommercialCasesEditor(form, cases = []) {
+  const list = form?.querySelector("[data-commercial-case-list]");
+  if (!list) return;
+  const rows = Array.isArray(cases) ? cases : [];
+  const creatorId = String(form.elements.creator_id?.value || "").trim();
+  list.innerHTML = rows.length
+    ? rows.map((item, index) => commercialCaseRowHtml(item, index, creatorId)).join("")
+    : '<p class="meta commercial-cases-empty">暂无案例，点击「添加案例」录入品牌合作。</p>';
+}
+
+async function loadCommercialCasesForCreator(creatorId, form) {
+  if (!form) return;
+  if (!creatorId) {
+    renderCommercialCasesEditor(form, []);
+    return;
+  }
+  try {
+    const data = await api(`/api/cases?creator_id=${encodeURIComponent(creatorId)}`);
+    renderCommercialCasesEditor(form, data.items || []);
+  } catch {
+    renderCommercialCasesEditor(form, []);
+  }
+}
+
+function collectCommercialCasesFromForm(form) {
+  const list = form?.querySelector("[data-commercial-case-list]");
+  if (!list) return [];
+  return [...list.querySelectorAll(".commercial-case-row")]
+    .map((row) => {
+      const get = (field) => {
+        const el = row.querySelector(`[data-field="${field}"]`);
+        if (!el) return "";
+        if (el.type === "checkbox") return el.checked;
+        return String(el.value || "").trim();
+      };
+      const brand = get("brand_name");
+      if (!brand) return null;
+      return {
+        case_id: get("case_id") || undefined,
+        brand_name: brand,
+        case_title: get("case_title"),
+        case_summary: get("case_summary"),
+        content_url: get("content_url"),
+        content_format: get("content_format"),
+        visibility: get("visibility") || "public",
+        featured_on_kit: Boolean(get("featured_on_kit")),
+      };
+    })
+    .filter(Boolean);
+}
+
+function bindCommercialCasesEditor(form) {
+  if (!form || form.dataset.commercialCasesBound === "true") return;
+  form.dataset.commercialCasesBound = "true";
+  form.addEventListener("click", (event) => {
+    const addBtn = event.target.closest("[data-add-commercial-case-btn]");
+    if (addBtn && form.contains(addBtn)) {
+      const list = form.querySelector("[data-commercial-case-list]");
+      if (!list) return;
+      list.querySelector(".commercial-cases-empty")?.remove();
+      const index = list.querySelectorAll(".commercial-case-row").length;
+      const creatorId = String(form.elements.creator_id?.value || "").trim();
+      list.insertAdjacentHTML("beforeend", commercialCaseRowHtml(emptyCommercialCaseRow(), index, creatorId));
+      refreshCommercialKitPreview(form);
+      return;
+    }
+    const removeBtn = event.target.closest("[data-remove-commercial-case]");
+    if (!removeBtn || !form.contains(removeBtn)) return;
+    removeBtn.closest(".commercial-case-row")?.remove();
+    const list = form.querySelector("[data-commercial-case-list]");
+    if (list && !list.querySelector(".commercial-case-row")) {
+      list.innerHTML = '<p class="meta commercial-cases-empty">暂无案例，点击「添加案例」录入品牌合作。</p>';
+    }
+    refreshCommercialKitPreview(form);
+  });
+  form.addEventListener("input", (event) => {
+    if (!event.target.closest("[data-commercial-case-list]")) return;
+    window.clearTimeout(form.__commercialCasesPreviewTimer);
+    form.__commercialCasesPreviewTimer = window.setTimeout(() => refreshCommercialKitPreview(form), 220);
+  });
+  form.addEventListener("change", (event) => {
+    if (!event.target.closest("[data-commercial-case-list]")) return;
+    refreshCommercialKitPreview(form);
+  });
+}
+
 function renderCases() {
   const query = ($("#caseSearch")?.value || "").toLowerCase();
   const list = $("#caseList");
@@ -1275,22 +1419,28 @@ function renderCases() {
         .slice(0, 3)
         .map(([key, value]) => `<span class="meta">${escapeHTML(key)}: ${escapeHTML(String(value))}</span>`)
         .join("");
+      const visibility = item.visibility || "public";
+      const publicPath = visibility !== "internal" && item.case_id ? `/cases/${encodeURIComponent(item.case_id)}` : "";
       return `
         <article class="case-card">
           <div class="case-card-top">
             <div>
-              <div class="card-kicker">${escapeHTML(item.industry || item.platform || "合作案例")}</div>
-              <h3>${escapeHTML(item.brand_name || "未命名品牌")}</h3>
+              <div class="card-kicker">${escapeHTML(item.brand_name || item.industry || item.platform || "合作案例")}</div>
+              <h3>${escapeHTML(caseDisplayTitle(item))}</h3>
               <div class="meta">${escapeHTML(item.creator_name || "未关联达人")}${item.product ? ` · ${escapeHTML(item.product)}` : ""}</div>
             </div>
-            <span class="case-status ${escapeHTML(item.is_successful || "unknown")}">${escapeHTML(caseSuccessLabel(item.is_successful))}</span>
+            <div class="case-card-badges">
+              <span class="case-visibility ${escapeHTML(visibility)}">${escapeHTML(caseVisibilityLabel(visibility))}</span>
+              <span class="case-status ${escapeHTML(item.is_successful || "unknown")}">${escapeHTML(caseSuccessLabel(item.is_successful))}</span>
+            </div>
           </div>
-          <p>${escapeHTML(item.content_topic || item.cooperation_goal || item.content_format || "待补充案例说明")}</p>
+          <p>${escapeHTML(caseDisplaySummary(item) || item.content_format || "待补充案例说明")}</p>
           <div class="case-card-meta">${metrics}</div>
           <div class="tag-list">${tags}</div>
           ${item.reuse_suggestion ? `<p class="meta case-reuse">复用：${escapeHTML(item.reuse_suggestion)}</p>` : ""}
           <div class="button-row">
-            ${item.content_url ? `<a class="text-btn" href="${escapeHTML(item.content_url)}" target="_blank" rel="noreferrer">内容链接</a>` : ""}
+            ${item.content_url ? `<a class="text-btn" href="${escapeHTML(item.content_url)}" target="_blank" rel="noreferrer">原内容</a>` : ""}
+            ${publicPath ? `<a class="text-btn" href="${escapeHTML(publicPath)}" target="_blank" rel="noreferrer">公开页</a>` : ""}
             <button class="secondary open-case-btn" data-case-id="${escapeHTML(item.case_id)}" type="button">编辑</button>
             ${item.creator_id ? `<button class="secondary open-creator-from-case-btn" data-creator-id="${escapeHTML(item.creator_id)}" type="button">看达人</button>` : ""}
           </div>
@@ -1313,6 +1463,8 @@ function openCaseModal(caseItem = null) {
     form.elements.case_id.value = caseItem.case_id || "";
     form.elements.creator_id.value = caseItem.creator_id || "";
     form.elements.brand_name.value = caseItem.brand_name || "";
+    form.elements.case_title.value = caseItem.case_title || caseItem.content_topic || "";
+    form.elements.case_summary.value = caseItem.case_summary || caseItem.cooperation_goal || "";
     form.elements.industry.value = caseItem.industry || "";
     form.elements.product.value = caseItem.product || "";
     form.elements.content_format.value = caseItem.content_format || "";
@@ -1324,6 +1476,11 @@ function openCaseModal(caseItem = null) {
     form.elements.is_successful.value = caseItem.is_successful || "";
     form.elements.comment_feedback.value = caseItem.comment_feedback || "";
     form.elements.reuse_suggestion.value = caseItem.reuse_suggestion || "";
+    if (form.elements.featured_on_kit) form.elements.featured_on_kit.checked = caseItem.featured_on_kit !== false;
+    if (form.elements.visibility) form.elements.visibility.value = caseItem.visibility || "public";
+  } else if (form.elements.featured_on_kit) {
+    form.elements.featured_on_kit.checked = true;
+    if (form.elements.visibility) form.elements.visibility.value = "public";
   }
   modal.classList.remove("hidden");
 }
@@ -1341,6 +1498,8 @@ function caseFormPayload(form) {
     case_id: form.elements.case_id.value || undefined,
     creator_id: form.elements.creator_id.value,
     brand_name: form.elements.brand_name.value,
+    case_title: form.elements.case_title?.value || "",
+    case_summary: form.elements.case_summary?.value || "",
     industry: form.elements.industry.value,
     product: form.elements.product.value,
     content_format: form.elements.content_format.value,
@@ -1352,6 +1511,8 @@ function caseFormPayload(form) {
     is_successful: form.elements.is_successful.value,
     comment_feedback: form.elements.comment_feedback.value,
     reuse_suggestion: form.elements.reuse_suggestion.value,
+    featured_on_kit: Boolean(form.elements.featured_on_kit?.checked),
+    visibility: form.elements.visibility?.value || "public",
   };
 }
 
@@ -1359,6 +1520,7 @@ async function saveCaseForm(form) {
   const payload = caseFormPayload(form);
   if (!payload.creator_id) return toast("请选择达人", true);
   if (!payload.brand_name?.trim()) return toast("请填写合作品牌", true);
+  if (!payload.case_title?.trim()) return toast("请填写案例标题", true);
   const isEdit = Boolean(payload.case_id);
   const data = await api(isEdit ? `/api/cases/${encodeURIComponent(payload.case_id)}` : "/api/cases", {
     method: isEdit ? "PATCH" : "POST",
@@ -8084,6 +8246,8 @@ function openQuickCreatorModal() {
   initPlatformSelects();
   renderQuickCreatorRateFields(form);
   initQuickCreatorTagEditors(form);
+  bindCommercialCasesEditor(form);
+  renderCommercialCasesEditor(form, []);
   syncCreatorDataCardPanel(form);
   modal.classList.remove("hidden");
   form.elements.name?.focus();
@@ -8935,6 +9099,8 @@ function prepareQuickCreatorPayload(form) {
 async function saveManualCreator(form, { openDetail = false } = {}) {
   await ensureCreatorTagsClassified(form);
   const payload = creatorFormPayload(form);
+  const commercialCases = collectCommercialCasesFromForm(form);
+  if (commercialCases.length) payload.commercial_cases = commercialCases;
   const data = await api("/api/import/manual", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -9016,6 +9182,8 @@ function renderCreatorModal(creator) {
   setCreatorFormField(form, "manual_notes", remarkTagsFromNotes(creator.manual_notes || "").join("，"));
   renderCreatorRateFields(form, $("#creatorEditRateFields"), rateValuesFromNotes(creator.manual_notes || "", creator.platform));
   initCreatorTagEditors(form);
+  bindCommercialCasesEditor(form);
+  loadCommercialCasesForCreator(creator.creator_id, form);
   const kitOutput = $("#creatorCommercialKitOutput");
   if (kitOutput) {
     kitOutput.innerHTML = '<div class="commercial-card-empty">点击生成后，会在这里出现卡片式商业名片刊例。</div>';
@@ -9352,7 +9520,35 @@ function renderCommercialTagSection(title, items, tone = "") {
   return renderCommercialSection(title, `<div class="commercial-chip-row">${renderCommercialChips(list, tone)}</div>`);
 }
 
-function buildCreatorCommercialKitHtml(creator) {
+function renderCommercialCasesSection(cases = []) {
+  const items = (Array.isArray(cases) ? cases : []).filter((item) => {
+    const visibility = item.visibility || "public";
+    return item.featured_on_kit !== false && visibility !== "internal";
+  });
+  if (!items.length) return "";
+  const cards = items
+    .map((item) => {
+      const title = caseDisplayTitle(item);
+      const summary = caseDisplaySummary(item);
+      const link = item.content_url || "";
+      const publicPath = item.case_id && (item.visibility || "public") !== "internal" ? `/cases/${encodeURIComponent(item.case_id)}` : "";
+      return `
+        <article class="commercial-case-card">
+          <div class="commercial-case-card-brand">${escapeHTML(item.brand_name || "")}</div>
+          <h5>${escapeHTML(title)}</h5>
+          ${summary ? `<p>${escapeHTML(summary)}</p>` : ""}
+          <div class="commercial-case-card-links">
+            ${link ? `<a href="${escapeHTML(link)}" target="_blank" rel="noreferrer">原内容</a>` : ""}
+            ${publicPath ? `<a href="${escapeHTML(publicPath)}" target="_blank" rel="noreferrer">案例页</a>` : ""}
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+  return renderCommercialSection("精选合作案例", `<div class="commercial-case-grid">${cards}</div>`);
+}
+
+function buildCreatorCommercialKitHtml(creator, featuredCases = []) {
   const data = creatorCommercialKitData(creator);
   const avatar = data.avatar
     ? `<img src="${escapeHTML(data.avatar)}" alt="${escapeHTML(data.name)}头像" />`
@@ -9384,6 +9580,7 @@ function buildCreatorCommercialKitHtml(creator) {
       ${renderCommercialTagSection("叙事角色", data.narratives)}
       ${renderCommercialTagSection("履约备注", data.notes)}
       ${renderCommercialTagSection("风险提示", data.risks, "risk")}
+      ${renderCommercialCasesSection(featuredCases)}
     </article>
   `;
 }
@@ -9434,7 +9631,8 @@ function generateCreatorCommercialKit(form = null) {
   }
   const outputId = targetForm?.id === "quickCreatorForm" ? "#quickCreatorCommercialKitOutput" : "#creatorCommercialKitOutput";
   const output = $(outputId);
-  const html = buildCreatorCommercialKitHtml(creator);
+  const cases = collectCommercialCasesFromForm(targetForm);
+  const html = buildCreatorCommercialKitHtml(creator, cases);
   const text = buildCreatorCommercialKitText(creator);
   if (output) {
     output.innerHTML = html;
@@ -9444,16 +9642,23 @@ function generateCreatorCommercialKit(form = null) {
   return text;
 }
 
-function refreshCreatorCommercialKitPreview(form = $("#quickCreatorForm")) {
-  if (!form || form.id !== "quickCreatorForm") return;
+function refreshCommercialKitPreview(form) {
+  if (!form) return;
+  const outputId = form.id === "quickCreatorForm" ? "#quickCreatorCommercialKitOutput" : "#creatorCommercialKitOutput";
+  const output = $(outputId);
+  if (!output) return;
+  if (form.id !== "quickCreatorForm" && !output.querySelector(".creator-commercial-card")) return;
   const creator = getCreatorDraftFromForm(form);
   if (!creator?.name) return;
-  const output = $("#quickCreatorCommercialKitOutput");
-  if (!output) return;
-  const html = buildCreatorCommercialKitHtml(creator);
+  const cases = collectCommercialCasesFromForm(form);
+  const html = buildCreatorCommercialKitHtml(creator, cases);
   const text = buildCreatorCommercialKitText(creator);
   output.innerHTML = html;
   output.dataset.copyText = text;
+}
+
+function refreshCreatorCommercialKitPreview(form = $("#quickCreatorForm")) {
+  refreshCommercialKitPreview(form);
 }
 
 function creatorKitFilename(form = null, ext = "pdf") {
@@ -10669,6 +10874,8 @@ function bindEvents() {
   bindCreatorTagHubEvents(document);
   bindCreatorDataCardEvents($("#creatorEditForm"));
   bindCreatorDataCardEvents($("#quickCreatorForm"));
+  bindCommercialCasesEditor($("#creatorEditForm"));
+  bindCommercialCasesEditor($("#quickCreatorForm"));
   bindModalDismiss($("#quickCreatorModal"), "[data-close-quick-creator]", closeQuickCreatorModal);
   bindModalDismiss($("#caseModal"), "[data-close-case-modal]", closeCaseModal);
   bindModalDismiss($("#artifactModal"), "[data-close-artifact-modal]", closeArtifactModal);
@@ -11265,6 +11472,7 @@ function bindEvents() {
       const creatorId = form.elements.creator_id.value;
       await ensureCreatorTagsClassified(form);
       const payload = creatorFormPayload(form);
+      payload.commercial_cases = collectCommercialCasesFromForm(form);
       const data = await api(`/api/creators/${creatorId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },

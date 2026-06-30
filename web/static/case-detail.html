@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>合作案例 · PR-OS</title>
+    <link rel="stylesheet" href="/static/showcase.css" />
+  </head>
+  <body>
+    <main class="case-detail-page">
+      <a class="showcase-back" href="/showcase">← 返回案例库</a>
+      <article id="caseDetailHero" class="case-detail-hero">
+        <div class="showcase-empty">正在加载案例…</div>
+      </article>
+      <section id="brandRelated" class="case-related" hidden>
+        <h2>同品牌案例</h2>
+        <div id="brandRelatedGrid" class="case-related-grid"></div>
+      </section>
+      <section id="creatorRelated" class="case-related" hidden>
+        <h2>同达人案例</h2>
+        <div id="creatorRelatedGrid" class="case-related-grid"></div>
+      </section>
+    </main>
+    <script src="/static/build-version.js"></script>
+    <script>
+      const $ = (s) => document.querySelector(s);
+      const escapeHTML = (v) =>
+        String(v ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+
+      function prOsPathPrefix() {
+        return window.location.pathname.includes("/pr-os/") ? "/pr-os" : "";
+      }
+
+      function brandPagePath(brandName) {
+        if (!brandName) return "";
+        return `${prOsPathPrefix()}/showcase/brands/${encodeURIComponent(brandName)}`;
+      }
+
+      function parseCaseId() {
+        const parts = window.location.pathname.split("/").filter(Boolean);
+        const idx = parts.indexOf("cases");
+        if (idx >= 0) return decodeURIComponent(parts[idx + 1] || "");
+        return decodeURIComponent(parts[parts.length - 1] || "");
+      }
+
+      function relatedCard(item) {
+        const path = item.public_url || `/cases/${encodeURIComponent(item.case_id)}`;
+        const creator = item.creator || {};
+        return `
+          <article class="case-related-card">
+            <div class="card-kicker">${escapeHTML(item.brand_name || "")}</div>
+            <h3><a href="${escapeHTML(path)}">${escapeHTML(item.case_title || item.brand_name || "合作案例")}</a></h3>
+            <p class="meta">${escapeHTML(creator.name || item.creator_name || "")}</p>
+          </article>
+        `;
+      }
+
+      function renderRelated(sectionId, gridId, items) {
+        const section = $(sectionId);
+        const grid = $(gridId);
+        if (!section || !grid) return;
+        if (!items?.length) {
+          section.hidden = true;
+          return;
+        }
+        section.hidden = false;
+        grid.innerHTML = items.map(relatedCard).join("");
+      }
+
+      async function init() {
+        const caseId = parseCaseId();
+        const hero = $("#caseDetailHero");
+        if (!caseId) {
+          hero.innerHTML = '<div class="showcase-empty">无效的案例链接。</div>';
+          return;
+        }
+        try {
+          const apiBase = prOsPathPrefix();
+          const response = await fetch(`${apiBase}/api/public/cases/${encodeURIComponent(caseId)}`);
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.detail || "案例不存在或未公开");
+          const item = data.case || {};
+          const creator = item.creator || {};
+          const brandPath = item.brand_name ? brandPagePath(item.brand_name) : "";
+          document.title = `${item.case_title || item.brand_name || "合作案例"} · PR-OS`;
+          hero.innerHTML = `
+            <div class="card-kicker">${item.brand_name ? `<a class="showcase-brand-link" href="${escapeHTML(brandPath)}">${escapeHTML(item.brand_name)}</a>` : escapeHTML(item.industry || "合作案例")}</div>
+            <h1>${escapeHTML(item.case_title || item.brand_name || "合作案例")}</h1>
+            <p class="case-detail-summary">${escapeHTML(item.case_summary || item.content_topic || item.cooperation_goal || "")}</p>
+            <div class="case-detail-meta">
+              <span>达人：${escapeHTML(creator.name || item.creator_name || "—")}</span>
+              ${item.platform ? `<span>平台：${escapeHTML(item.platform)}</span>` : ""}
+              ${item.content_format ? `<span>形式：${escapeHTML(item.content_format)}</span>` : ""}
+              ${item.industry ? `<span>行业：${escapeHTML(item.industry)}</span>` : ""}
+            </div>
+            <div class="case-detail-actions">
+              ${item.content_url ? `<a class="primary" href="${escapeHTML(item.content_url)}" target="_blank" rel="noreferrer">查看原内容</a>` : ""}
+              ${brandPath ? `<a href="${escapeHTML(brandPath)}">品牌专题</a>` : ""}
+              ${item.creator_kit_url ? `<a href="${escapeHTML(item.creator_kit_url)}">达人刊例页</a>` : ""}
+              <a href="/showcase">浏览更多案例</a>
+            </div>
+          `;
+          renderRelated("#brandRelated", "#brandRelatedGrid", data.brand_cases);
+          renderRelated("#creatorRelated", "#creatorRelatedGrid", data.creator_cases);
+        } catch (error) {
+          hero.innerHTML = `<div class="showcase-empty">${escapeHTML(error.message || "加载失败")}</div>`;
+        }
+      }
+
+      init();
+    </script>
+  </body>
+</html>

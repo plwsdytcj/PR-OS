@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PR AI OS - Media Copilot</title>
     <link rel="icon" href="/static/favicon.svg?v=20260624-32" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260624-37" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260624-38" />
   </head>
   <body>
     <div class="app-shell">
@@ -838,6 +838,7 @@
               <div class="button-row">
                 <button id="openCaseModalBtn" class="primary" type="button">+ 新增案例</button>
                 <button id="openSettlementWizardBtn" class="secondary" type="button">项目结算回写</button>
+                <a class="secondary text-btn" href="/showcase" target="_blank" rel="noreferrer">打开对外案例库</a>
                 <input id="caseSearch" class="search" placeholder="搜索达人、品牌、行业、产品、主题" />
               </div>
             </div>
@@ -1954,9 +1955,19 @@
               </div>
               <div id="creatorEditRateFields" class="platform-rate-grid" aria-live="polite"></div>
               <input name="listed_price" type="hidden" />
+              <div class="creator-commercial-cases-editor" data-commercial-cases-editor>
+                <div class="creator-commercial-cases-head">
+                  <div>
+                    <strong>商业化合作案例</strong>
+                    <p class="meta">品牌 × 案例标题 × 介绍 × 链接。对外展示时会同步到刊例页与案例库。</p>
+                  </div>
+                  <button type="button" class="secondary" data-add-commercial-case-btn>+ 添加案例</button>
+                </div>
+                <div class="creator-commercial-cases-list" data-commercial-case-list></div>
+              </div>
               <input name="cooperation_brands" type="hidden" />
               <div class="tag-editor" data-tag-field="cooperation_brands">
-                <label>合作品牌</label>
+                <label>服务品牌 <span class="meta">（案例保存后也会自动汇总）</span></label>
                 <div class="tag-chip-list" data-tag-list></div>
                 <input data-tag-entry placeholder="输入品牌后回车，如 理想、特斯拉" />
               </div>
@@ -2101,15 +2112,17 @@
             </select>
             <input name="brand_name" placeholder="合作品牌" required />
           </div>
+          <input name="case_title" placeholder="案例标题" required />
+          <textarea name="case_summary" rows="3" placeholder="案例介绍：合作背景、内容亮点、传播结果…"></textarea>
+          <input name="content_url" placeholder="案例链接" />
           <div class="field-row">
             <input name="industry" placeholder="行业" />
             <input name="product" placeholder="产品" />
           </div>
           <div class="field-row">
             <input name="content_format" placeholder="合作形式，如 深度稿 / 代发 / 专访" />
-            <input name="content_topic" placeholder="内容主题" />
+            <input name="content_topic" placeholder="内容主题（可选）" />
           </div>
-          <input name="content_url" placeholder="内容链接" />
           <input name="cooperation_goal" placeholder="传播目标 / 叙事角色" />
           <input name="active_tags" placeholder="激活标签，逗号分隔" />
           <div class="field-row">
@@ -2119,6 +2132,14 @@
               <option value="success">成功</option>
               <option value="partial">部分达成</option>
               <option value="failed">未达预期</option>
+            </select>
+          </div>
+          <div class="field-row">
+            <label class="checkline"><input name="featured_on_kit" type="checkbox" checked /> 展示在刊例页</label>
+            <select name="visibility">
+              <option value="public">对外公开</option>
+              <option value="client_summary">仅客户方案</option>
+              <option value="internal">仅内部</option>
             </select>
           </div>
           <textarea name="comment_feedback" placeholder="评论反馈 / 舆情观察"></textarea>
@@ -2246,11 +2267,21 @@
               </div>
               <div id="quickCreatorRateFields" class="platform-rate-grid" aria-live="polite"></div>
               <input name="listed_price" type="hidden" />
+              <div class="creator-commercial-cases-editor" data-commercial-cases-editor>
+                <div class="creator-commercial-cases-head">
+                  <div>
+                    <strong>商业化合作案例</strong>
+                    <p class="meta">品牌 × 案例标题 × 介绍 × 链接。保存后同步到刊例页与对外案例库。</p>
+                  </div>
+                  <button type="button" class="secondary" data-add-commercial-case-btn>+ 添加案例</button>
+                </div>
+                <div class="creator-commercial-cases-list" data-commercial-case-list></div>
+              </div>
               <input name="cooperation_brands" type="hidden" />
               <div class="tag-editor" data-tag-field="cooperation_brands">
-                <label>合作品牌</label>
+                <label>服务品牌 <span class="meta">（案例保存后也会自动汇总）</span></label>
                 <div class="tag-chip-list" data-tag-list></div>
-                <input data-tag-entry placeholder="输入品牌后回车，如 理想、特斯拉" />
+                <input data-tag-entry placeholder="输入品牌后回车，如 腾讯、华为、美团" />
               </div>
               <input name="cooperation_formats" type="hidden" />
               <div class="tag-editor" data-tag-field="cooperation_formats">
@@ -2440,7 +2471,7 @@
         </form>
       </section>
     </div>
-    <script src="/static/build-version.js?v=20260624-37"></script>
-    <script src="/static/app.js?v=20260624-37"></script>
+    <script src="/static/build-version.js?v=20260624-38"></script>
+    <script src="/static/app.js?v=20260624-38"></script>
   </body>
 </html>

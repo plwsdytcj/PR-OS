@@ -16,7 +16,7 @@ from src.creator_commercial.schemas import (
     now_iso,
     submission_id_for,
 )
-from src.creator_commercial.storage import upsert_case, upsert_commercial_profile, upsert_invitation, upsert_submission
+from src.creator_commercial.storage import delete_case, load_all_cases, load_case, upsert_case, upsert_commercial_profile, upsert_invitation, upsert_submission
 from src.intelligence.profiling import enrich_profiles
 from src.schemas import CreatorProfile, split_tags
 from src.storage.db import load_profile, save_profile
@@ -204,7 +204,45 @@ def save_creator_case(db_path: Path, creator: CreatorProfile, payload: dict[str,
     case = _case_from_payload(creator.creator_id, merged)
     case.updated_at = now_iso()
     upsert_case(db_path, case)
+    _sync_creator_brands_from_cases(db_path, creator, [case])
     return case
+
+
+def sync_creator_commercial_cases(db_path: Path, creator: CreatorProfile, cases_payload: list[dict[str, Any]]) -> list[CreatorCase]:
+    existing = [case for case in load_all_cases(db_path) if case.creator_id == creator.creator_id]
+    kept_ids: set[str] = set()
+    saved: list[CreatorCase] = []
+    for item in cases_payload:
+        brand = str(item.get("brand_name") or item.get("brand") or "").strip()
+        title = str(item.get("case_title") or item.get("title") or "").strip()
+        if not brand and not title:
+            continue
+        merged = {
+            **item,
+            "creator_id": creator.creator_id,
+            "creator_name": creator.name,
+            "platform": str(item.get("platform") or creator.platform or ""),
+        }
+        case = _case_from_payload(creator.creator_id, merged)
+        case.updated_at = now_iso()
+        upsert_case(db_path, case)
+        kept_ids.add(case.case_id)
+        saved.append(case)
+    for case in existing:
+        if case.case_id not in kept_ids:
+            delete_case(db_path, case.case_id)
+    _sync_creator_brands_from_cases(db_path, creator, saved)
+    return saved
+
+
+def _sync_creator_brands_from_cases(db_path: Path, creator: CreatorProfile, cases: list[CreatorCase]) -> None:
+    if not cases:
+        return
+    brands = _dedupe([*creator.cooperation_brands, *[case.brand_name for case in cases if case.brand_name]])
+    if brands == creator.cooperation_brands:
+        return
+    updated = CreatorProfile(**{**asdict(creator), "cooperation_brands": brands, "last_synced_at": now_iso()})
+    save_profile(db_path, updated)
 
 
 def settlement_writeback(
@@ -282,28 +320,36 @@ def case_summary(case: CreatorCase) -> str:
 
 def _case_from_payload(creator_id: str, data: dict[str, Any]) -> CreatorCase:
     brand = str(data.get("brand_name") or data.get("brand") or "未命名品牌").strip()
+    title = str(data.get("case_title") or data.get("title") or data.get("content_topic") or "").strip()
+    summary = str(data.get("case_summary") or data.get("summary") or data.get("comment_feedback") or "").strip()
     performance = data.get("performance") if isinstance(data.get("performance"), dict) else {}
     for key in ["exposure", "views", "likes", "comments", "sales", "reads"]:
         if data.get(key):
             performance[key] = data[key]
+    featured_raw = data.get("featured_on_kit")
+    featured_on_kit = True if featured_raw is None else bool(featured_raw)
+    existing_id = str(data.get("case_id") or "").strip()
     return CreatorCase(
-        case_id=str(data.get("case_id") or case_id_for(creator_id or brand, brand)),
+        case_id=case_id_for(creator_id, brand, title, existing_id=existing_id),
         creator_id=creator_id,
         creator_name=str(data.get("creator_name") or ""),
         brand_name=brand,
+        case_title=title,
+        case_summary=summary,
         industry=str(data.get("industry") or ""),
         product=str(data.get("product") or ""),
         platform=str(data.get("platform") or ""),
         content_format=str(data.get("content_format") or data.get("format") or ""),
         content_url=str(data.get("content_url") or data.get("url") or ""),
-        content_topic=str(data.get("content_topic") or data.get("topic") or ""),
+        content_topic=str(data.get("content_topic") or data.get("topic") or title or ""),
         cooperation_goal=str(data.get("cooperation_goal") or data.get("goal") or ""),
         active_tags=split_tags(data.get("active_tags")),
         performance=performance,
-        comment_feedback=str(data.get("comment_feedback") or ""),
+        comment_feedback=str(data.get("comment_feedback") or summary or ""),
         is_successful=str(data.get("is_successful") or ""),
         reuse_suggestion=str(data.get("reuse_suggestion") or ""),
-        visibility=str(data.get("visibility") or "client_summary"),
+        visibility=str(data.get("visibility") or "public"),
+        featured_on_kit=featured_on_kit,
         verification_status=str(data.get("verification_status") or "approved"),
     )
 

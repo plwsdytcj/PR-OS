@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>博主商业化合作案例库 · PR-OS</title>
+    <link rel="stylesheet" href="/static/showcase.css" />
+  </head>
+  <body>
+    <main class="showcase-page">
+      <header class="showcase-hero">
+        <div class="card-kicker">PR-OS · commercial showcase</div>
+        <h1>博主商业化合作案例库</h1>
+        <p class="meta">按品牌、达人、行业浏览对外公开的合作案例。数据来自达人商业档案与案例库同步。</p>
+      </header>
+      <div class="showcase-toolbar">
+        <input id="showcaseSearch" class="search" type="search" placeholder="搜索品牌、达人、行业、案例标题…" />
+        <select id="showcaseIndustry">
+          <option value="">全部行业</option>
+        </select>
+        <select id="showcasePlatform">
+          <option value="">全部平台</option>
+        </select>
+      </div>
+      <div id="showcaseFacets" class="showcase-facets" hidden></div>
+      <div id="showcaseOutput" class="showcase-grid">
+        <div class="showcase-empty">正在加载案例…</div>
+      </div>
+    </main>
+    <script src="/static/build-version.js"></script>
+    <script>
+      const $ = (s) => document.querySelector(s);
+      const escapeHTML = (v) =>
+        String(v ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+
+      function prOsPathPrefix() {
+        return window.location.pathname.includes("/pr-os/") ? "/pr-os" : "";
+      }
+
+      function brandPagePath(brandName) {
+        if (!brandName) return "";
+        return `${prOsPathPrefix()}/showcase/brands/${encodeURIComponent(brandName)}`;
+      }
+
+      const state = { brand: "", items: [], facets: {} };
+
+      function buildQuery() {
+        const params = new URLSearchParams();
+        const q = ($("#showcaseSearch")?.value || "").trim();
+        const industry = $("#showcaseIndustry")?.value || "";
+        const platform = $("#showcasePlatform")?.value || "";
+        if (q) params.set("q", q);
+        if (state.brand) params.set("brand", state.brand);
+        if (industry) params.set("industry", industry);
+        if (platform) params.set("platform", platform);
+        const query = params.toString();
+        return query ? `?${query}` : "";
+      }
+
+      function renderFacets() {
+        const node = $("#showcaseFacets");
+        if (!node) return;
+        const brands = state.facets.brands || [];
+        if (!brands.length) {
+          node.hidden = true;
+          return;
+        }
+        node.hidden = false;
+        node.innerHTML = [
+          `<button type="button" class="showcase-facet ${state.brand ? "" : "active"}" data-brand="">全部品牌</button>`,
+          ...brands.slice(0, 24).map(
+            (brand) =>
+              `<button type="button" class="showcase-facet ${state.brand === brand ? "active" : ""}" data-brand="${escapeHTML(brand)}">${escapeHTML(brand)}</button><a class="showcase-facet-link" href="${escapeHTML(brandPagePath(brand))}" title="品牌专题页">→</a>`,
+          ),
+        ].join("");
+      }
+
+      function fillSelect(id, values, label) {
+        const select = $(id);
+        if (!select) return;
+        const current = select.value;
+        select.innerHTML =
+          `<option value="">${label}</option>` +
+          (values || []).map((value) => `<option value="${escapeHTML(value)}">${escapeHTML(value)}</option>`).join("");
+        if (current && (values || []).includes(current)) select.value = current;
+      }
+
+      function renderCases() {
+        const output = $("#showcaseOutput");
+        if (!output) return;
+        const items = state.items || [];
+        if (!items.length) {
+          output.innerHTML = '<div class="showcase-empty">暂无公开案例。达人档案录入并设为「对外公开」后会出现在这里。</div>';
+          output.className = "";
+          return;
+        }
+        output.className = "showcase-grid";
+        output.innerHTML = items
+          .map((item) => {
+            const creator = item.creator || {};
+            const casePath = item.public_url || `/cases/${encodeURIComponent(item.case_id)}`;
+            const brandPath = item.brand_slug ? brandPagePath(decodeURIComponent(item.brand_slug)) : brandPagePath(item.brand_name);
+            const brandLabel = item.brand_name || item.industry || "合作案例";
+            return `
+              <article class="showcase-card">
+                <div class="card-kicker">${item.brand_name ? `<a class="showcase-brand-link" href="${escapeHTML(brandPath)}">${escapeHTML(brandLabel)}</a>` : escapeHTML(brandLabel)}</div>
+                <h2><a href="${escapeHTML(casePath)}">${escapeHTML(item.case_title || item.brand_name || "合作案例")}</a></h2>
+                <p>${escapeHTML(item.case_summary || item.content_topic || item.cooperation_goal || "")}</p>
+                <div class="showcase-card-meta">
+                  <span>${escapeHTML(creator.name || item.creator_name || "达人")}</span>
+                  ${item.platform ? `<span>${escapeHTML(item.platform)}</span>` : ""}
+                  ${item.content_format ? `<span>${escapeHTML(item.content_format)}</span>` : ""}
+                </div>
+                <div class="showcase-card-links">
+                  <a href="${escapeHTML(casePath)}">案例详情</a>
+                  ${item.creator_kit_url ? `<a href="${escapeHTML(item.creator_kit_url)}">达人刊例</a>` : ""}
+                  ${item.content_url ? `<a href="${escapeHTML(item.content_url)}" target="_blank" rel="noreferrer">原内容</a>` : ""}
+                </div>
+              </article>
+            `;
+          })
+          .join("");
+      }
+
+      async function loadCases() {
+        const output = $("#showcaseOutput");
+        if (output) output.innerHTML = '<div class="showcase-empty">正在加载案例…</div>';
+        try {
+          const apiBase = prOsPathPrefix();
+          const response = await fetch(`${apiBase}/api/public/cases${buildQuery()}`);
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.detail || "加载失败");
+          state.items = data.items || [];
+          state.facets = data.facets || {};
+          fillSelect("#showcaseIndustry", state.facets.industries, "全部行业");
+          fillSelect("#showcasePlatform", state.facets.platforms, "全部平台");
+          renderFacets();
+          renderCases();
+        } catch (error) {
+          if (output) output.innerHTML = `<div class="showcase-empty">${escapeHTML(error.message || "加载失败")}</div>`;
+        }
+      }
+
+      $("#showcaseSearch")?.addEventListener("input", () => {
+        window.clearTimeout(window.__showcaseSearchTimer);
+        window.__showcaseSearchTimer = window.setTimeout(loadCases, 260);
+      });
+      $("#showcaseIndustry")?.addEventListener("change", loadCases);
+      $("#showcasePlatform")?.addEventListener("change", loadCases);
+      $("#showcaseFacets")?.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-brand]");
+        if (!button) return;
+        state.brand = button.dataset.brand || "";
+        renderFacets();
+        loadCases();
+      });
+
+      loadCases();
+    </script>
+  </body>
+</html>

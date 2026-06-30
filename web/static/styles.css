@@ -1889,6 +1889,120 @@ button {
   margin-bottom: 10px;
 }
 
+.case-card-badges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.case-visibility {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(15, 118, 110, 0.1);
+  color: #0f766e;
+  white-space: nowrap;
+}
+
+.case-visibility.internal {
+  background: #eef2f7;
+  color: #526070;
+}
+
+.case-visibility.client_summary {
+  background: rgba(245, 166, 35, 0.15);
+  color: #9a6700;
+}
+
+.creator-commercial-cases-editor {
+  margin-top: 14px;
+  border-top: 1px dashed var(--line);
+  padding-top: 14px;
+}
+
+.creator-commercial-cases-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.creator-commercial-cases-head .meta {
+  margin: 4px 0 0;
+}
+
+.creator-commercial-cases-list {
+  display: grid;
+  gap: 12px;
+}
+
+.commercial-case-row {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  background: #fff;
+}
+
+.commercial-case-row textarea {
+  width: 100%;
+  margin: 8px 0;
+}
+
+.commercial-case-row-meta {
+  align-items: center;
+}
+
+.commercial-case-row-meta .danger-text {
+  margin-left: auto;
+}
+
+.commercial-case-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.commercial-case-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fffdf8;
+  padding: 12px;
+}
+
+.commercial-case-card-brand {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.commercial-case-card h5 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.commercial-case-card p {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.commercial-case-card-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.commercial-case-card-links a {
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .case-card h3 {
   margin: 0 0 4px;
   font-size: 18px;

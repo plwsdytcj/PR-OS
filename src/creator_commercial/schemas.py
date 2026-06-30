@@ -48,6 +48,8 @@ class CreatorCase:
     creator_id: str
     brand_name: str
     creator_name: str = ""
+    case_title: str = ""
+    case_summary: str = ""
     industry: str = ""
     product: str = ""
     platform: str = ""
@@ -60,7 +62,8 @@ class CreatorCase:
     comment_feedback: str = ""
     is_successful: str = ""
     reuse_suggestion: str = ""
-    visibility: str = "client_summary"
+    visibility: str = "public"
+    featured_on_kit: bool = True
     verification_status: str = "approved"
     created_at: str = field(default_factory=now_iso)
     updated_at: str = field(default_factory=now_iso)
@@ -139,5 +142,14 @@ def submission_id_for(invitation_id: str) -> str:
     return stable_id(invitation_id, now_iso(), prefix="submission")
 
 
-def case_id_for(creator_id: str, brand_name: str) -> str:
-    return stable_id(creator_id, brand_name, prefix="case")
+def case_id_for(creator_id: str, brand_name: str, title: str = "", existing_id: str = "") -> str:
+    if existing_id:
+        return existing_id
+    seed = "|".join([creator_id, brand_name, title or now_iso()])
+    return stable_id(seed, prefix="case")
+
+
+def brand_slug(brand_name: str) -> str:
+    from urllib.parse import quote
+
+    return quote((brand_name or "brand").strip())

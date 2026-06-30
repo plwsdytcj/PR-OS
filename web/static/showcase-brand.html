@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>品牌合作案例 · PR-OS</title>
+    <link rel="stylesheet" href="/static/showcase.css" />
+  </head>
+  <body>
+    <main class="showcase-page">
+      <a class="showcase-back" href="/showcase">← 返回案例库</a>
+      <header class="showcase-hero">
+        <div class="card-kicker">PR-OS · brand showcase</div>
+        <h1 id="brandTitle">品牌合作案例</h1>
+        <p id="brandMeta" class="meta">正在加载品牌案例…</p>
+      </header>
+      <div class="showcase-toolbar">
+        <input id="brandShowcaseSearch" class="search" type="search" placeholder="在本品牌案例内搜索…" />
+      </div>
+      <div id="brandShowcaseOutput" class="showcase-grid">
+        <div class="showcase-empty">正在加载案例…</div>
+      </div>
+    </main>
+    <script src="/static/build-version.js"></script>
+    <script>
+      const $ = (s) => document.querySelector(s);
+      const escapeHTML = (v) =>
+        String(v ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+
+      function prOsPathPrefix() {
+        return window.location.pathname.includes("/pr-os/") ? "/pr-os" : "";
+      }
+
+      function parseBrandSlug() {
+        const parts = window.location.pathname.split("/").filter(Boolean);
+        const idx = parts.indexOf("brands");
+        if (idx >= 0) return decodeURIComponent(parts[idx + 1] || "");
+        return decodeURIComponent(parts[parts.length - 1] || "");
+      }
+
+      function brandPagePath(brandName) {
+        if (!brandName) return "";
+        return `${prOsPathPrefix()}/showcase/brands/${encodeURIComponent(brandName)}`;
+      }
+
+      const state = { brandSlug: "", brandName: "", items: [] };
+
+      function renderCases() {
+        const output = $("#brandShowcaseOutput");
+        if (!output) return;
+        const items = state.items || [];
+        if (!items.length) {
+          output.innerHTML = `<div class="showcase-empty">${escapeHTML(state.brandName || "该品牌")}暂无公开合作案例。</div>`;
+          output.className = "";
+          return;
+        }
+        output.className = "showcase-grid";
+        output.innerHTML = items
+          .map((item) => {
+            const creator = item.creator || {};
+            const casePath = item.public_url || `/cases/${encodeURIComponent(item.case_id)}`;
+            return `
+              <article class="showcase-card">
+                <div class="card-kicker">${escapeHTML(item.content_format || item.platform || "合作案例")}</div>
+                <h2><a href="${escapeHTML(casePath)}">${escapeHTML(item.case_title || item.brand_name || "合作案例")}</a></h2>
+                <p>${escapeHTML(item.case_summary || item.content_topic || item.cooperation_goal || "")}</p>
+                <div class="showcase-card-meta">
+                  <span>${escapeHTML(creator.name || item.creator_name || "达人")}</span>
+                  ${item.platform ? `<span>${escapeHTML(item.platform)}</span>` : ""}
+                </div>
+                <div class="showcase-card-links">
+                  <a href="${escapeHTML(casePath)}">案例详情</a>
+                  ${item.creator_kit_url ? `<a href="${escapeHTML(item.creator_kit_url)}">达人刊例</a>` : ""}
+                  ${item.content_url ? `<a href="${escapeHTML(item.content_url)}" target="_blank" rel="noreferrer">原内容</a>` : ""}
+                </div>
+              </article>
+            `;
+          })
+          .join("");
+      }
+
+      async function loadBrandCases() {
+        const output = $("#brandShowcaseOutput");
+        if (output) output.innerHTML = '<div class="showcase-empty">正在加载案例…</div>';
+        const brandSlug = state.brandSlug || parseBrandSlug();
+        if (!brandSlug) {
+          $("#brandTitle").textContent = "无效的品牌链接";
+          $("#brandMeta").textContent = "请从案例库进入品牌专题页。";
+          if (output) output.innerHTML = '<div class="showcase-empty">无效的品牌链接。</div>';
+          return;
+        }
+        state.brandSlug = brandSlug;
+        try {
+          const apiBase = prOsPathPrefix();
+          const q = ($("#brandShowcaseSearch")?.value || "").trim();
+          const query = q ? `?q=${encodeURIComponent(q)}` : "";
+          const response = await fetch(`${apiBase}/api/public/brands/${encodeURIComponent(brandSlug)}/cases${query}`);
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.detail || "加载失败");
+          state.brandName = data.brand_name || brandSlug;
+          state.items = data.items || [];
+          document.title = `${state.brandName} · 品牌合作案例 · PR-OS`;
+          $("#brandTitle").textContent = `${state.brandName} · 合作案例`;
+          $("#brandMeta").textContent = `共 ${data.total || state.items.length} 条对外公开案例，来自达人商业档案同步。`;
+          renderCases();
+        } catch (error) {
+          $("#brandTitle").textContent = "加载失败";
+          $("#brandMeta").textContent = error.message || "请稍后重试。";
+          if (output) output.innerHTML = `<div class="showcase-empty">${escapeHTML(error.message || "加载失败")}</div>`;
+        }
+      }
+
+      $("#brandShowcaseSearch")?.addEventListener("input", () => {
+        window.clearTimeout(window.__brandShowcaseSearchTimer);
+        window.__brandShowcaseSearchTimer = window.setTimeout(loadBrandCases, 260);
+      });
+
+      loadBrandCases();
+    </script>
+  </body>
+</html>
